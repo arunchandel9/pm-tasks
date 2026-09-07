@@ -1,253 +1,130 @@
-# Mangowise PM Automation — Planning Document (v0.1, draft for discussion)
+# Mangowise PM Automation — Plan (v0.2)
 
-Status: **discussion draft**. Nothing here is built yet. This document exists so we can
-argue about the design before writing code.
+Guiding rule: **this exists to remove work, not add it.** Every piece below has to
+earn its place by deleting a manual step. If it doesn't, it's out.
 
-## 1. Problem statement
+## 1. What it does, in one paragraph
 
-Mangowise runs multiple clients / clinics. Client requests arrive on whichever channel
-the client happens to use (Slack, email, WhatsApp to a staff member's phone, ad-platform
-notifications). A human PM has to notice the message, work out what is being asked,
-create the task on the board ("Pulp" Kanban), and keep the PM overview sheet in sync.
+A client says something, on whatever channel. It ends up in one place. The system
+works out what is being asked, which client, which team, and how confident it is.
+Clear cases become a card in Pulp and a row in the PM sheet, with a link back to the
+original message. Unclear cases go to one Slack channel where a human clicks
+Approve, Edit, Merge, or Not a task. When cards move in Pulp, the sheet follows.
+At the end of the day, one summary message says what was created, what moved, and
+what needs a decision.
 
-Goals:
+## 2. Decisions (made, not open)
 
-1. **One intake point.** Every request, from any channel, lands in one queue.
-2. **Automatic triage.** Summarise, classify (client / department / request type),
-   draft a properly-formatted task, create the card, update the PM sheet.
-3. **Transparency.** Anyone can look at the sheet and see what is in flight, what
-   priority it is, and where it came from.
-4. **Human-in-the-loop only when needed.** Ambiguous requests get flagged for review
-   rather than guessed at.
-5. **Daily oversight.** End-of-day summary of what was created, what moved, what needs
-   a decision.
+| Topic | Decision | Why |
+|---|---|---|
+| One agent or many | **One app.** One Slack bot, one deployment, one database. The "agents" in the brief are steps inside a single pipeline, each a Claude call with a strict JSON schema. | Multiple independent agents means multiple things to deploy, monitor and debug. Nothing here needs it. |
+| Hosting | **Vercel** (you already have it). Next.js + TypeScript, Neon Postgres (free tier, integrates with Vercel in one click). | Uses what you have. Webhooks and scheduled jobs are all Vercel needs to do. |
+| Scheduling | Vercel Cron on **Pro** (per-minute). On **Hobby**, cron is once a day only, so a free external pinger (cron-job.org) hits `/api/tick` every 5 min instead. Either way, same code. | Vercel's Hobby cron limit is the only real plan constraint. Function time limits (300s Hobby, 800s Pro) are more than enough per message. |
+| Board | **Pulp**, via its API. Since we own Pulp, add **one webhook** in Pulp: "card moved list". That replaces polling for status sync. | Simplest possible status sync. |
+| Source of truth | Postgres owned by the app. Pulp and the sheet are written *from* it. | Dedupe, audit trail, and "why did it do that?" need one place that remembers everything. |
+| Slack | One Slack app, added to the client channels. Free plan is fine: Events API and slash commands work on free. Assumption: those channels live in **Mangowise's** workspace (clients as guests). If a client channel lives in the client's own workspace, their admin has to install the app, or that client's messages come via forwarding. | |
+| Email | One Gmail inbox (Google Workspace), e.g. `pm@…`. Anything sent or forwarded there is intake. Ad-platform notifications already come by email, so they need no separate integration. | |
+| WhatsApp | **Phase 1: forward.** Staff forward the WhatsApp message to the intake email, or paste it with `/task` in Slack. The WhatsApp Business *app* has no API, so there is no clean way to read it. **Phase 2, optional:** move the business number to WhatsApp Business Platform (Cloud API). Messages then arrive by webhook like Slack, but the phone app stops working for that number and replies go through an inbox tool. Decide after Phase 1 is live. | Forwarding costs 5 seconds per message and needs nothing built. Migrating the number is a real change to how you talk to clients. |
+| Review queue | One Slack channel, `#pm-review`, with buttons. No separate UI. | People already live in Slack. |
+| PM sheet | Written by the app. Bot-owned columns vs human-owned columns (§5). | A hand edit must never get overwritten. |
+| Phase 1 gate | **Everything goes to `#pm-review` first**, even confident cases, for the first ~2 weeks. | The approve/edit clicks give us real data to set thresholds. Then we open the gate. |
 
-Non-goals (for now): replacing client conversations, estimating effort, invoicing.
-
-## 2. Proposed architecture
+## 3. Architecture
 
 ```mermaid
 flowchart LR
-    subgraph Channels
-        S[Slack client channels]
-        E[Shared mailbox\npm@... ]
-        W[WhatsApp\n(forwarded)]
-        A[Ad platform\nnotifications]
-        F[Manual intake\n/task command or form]
-    end
+    S[Slack channels] --> W
+    E[Intake mailbox] --> W
+    F["/task" in Slack] --> W
+    WA[WhatsApp, forwarded] --> E
 
-    S --> N
-    E --> N
-    W --> N
-    A --> N
-    F --> N
+    W[Next.js on Vercel] --> DB[(Postgres)]
+    W --> P[Pipeline: dedupe → extract → classify → route]
+    P -->|confident| C[Create Pulp card + sheet row + ack on thread]
+    P -->|unsure| R["#pm-review" buttons]
+    R --> C
 
-    N[Normaliser\none Message schema] --> D[Dedupe]
-    D --> X[Extract & summarise\nClaude, structured output]
-    X --> C[Classify & route\nrules + Claude, with confidence]
-    C -->|confident| T[Draft task]
-    C -->|low confidence| R[Review queue\nSlack channel with approve / edit]
-    R -->|approved| T
-    T --> B[Board: create card]
-    T --> G[PM sheet: append row]
-    B --> K[Ack back on source thread\naudit link]
-
-    B -.status changes.-> Y[Status sync]
-    Y --> G
-    Y --> EOD[End-of-day summary]
+    PULP[Pulp webhook: card moved] --> W
+    W --> SHEET[PM sheet]
+    CRON[Cron: poll mail, retry, EOD summary] --> W
 ```
 
-### 2.1 Single source of truth
+Endpoints:
 
-A small database (Postgres; SQLite is fine to start) owned by the automation holds:
+- `POST /api/slack/events` — messages in client channels, `/task` command, button clicks
+- `POST /api/pulp/webhook` — card moved / completed
+- `GET  /api/tick` — every 1–5 min: poll Gmail, retry failed steps
+- `GET  /api/eod` — once a day: post summary
 
-- `messages` — every inbound message, raw text, channel, sender, client, permalink,
-  content hash, embedding.
-- `requests` — one row per distinct client ask (a message can contain several, and
-  several messages can be the same ask). Holds summary, classification, confidence,
-  routing decision, review state.
-- `tasks` — one row per board card created, with board id, list/stage, sheet row id,
-  and the `request` it came from. This is the audit trail.
-- `status_events` — every stage change observed on the board, timestamped.
+Database (four tables, that's all):
 
-The PM sheet and the board are **views** the system writes to, not the source of
-truth. This matters for dedupe, audit, and for surviving someone hand-editing a row.
+- `messages` — raw inbound, channel, sender, resolved client, permalink, hash
+- `requests` — one per distinct ask: summary, classification, confidence, review state
+- `tasks` — one per Pulp card: pulp id, list, sheet row, linked request. This is the audit trail.
+- `status_events` — every list change, timestamped. Feeds the sheet and the EOD summary.
 
-Human-owned vs bot-owned columns in the sheet must be explicit (see §5) so that a PM
-changing a priority by hand is respected and read back, and a bot update never
-overwrites a human edit.
+## 4. Pipeline
 
-### 2.2 Intake channels (phased)
-
-| Channel | How we get messages | Difficulty | Phase |
-|---|---|---|---|
-| Slack | Slack app in client channels, Events API (`message`, `app_mention`, reactions) | Low | 1 |
-| Email | One shared mailbox (e.g. `pm@mangowise…`); clients CC it, staff forward to it. Gmail API push or 5-min poll. | Low | 1 |
-| Manual | `/task` slash command in Slack, or a tiny web form. Covers "client called me". | Low | 1 |
-| WhatsApp | Honest answer: personal WhatsApp numbers cannot be monitored. Options: (a) staff forward the message to the shared mailbox or paste into `/task`; (b) move client WhatsApp to a WhatsApp Business (Cloud API) number with webhooks. Recommend (a) now, (b) later. | High | 2 |
-| Ad platforms | Almost all of these already arrive as email notifications, so they ride on the email channel. Direct API polling only if a specific platform needs it. | Med | 2 |
-
-Every channel normalises to the same `Message` shape:
-
-```
-Message {
-  id, channel, client_id (resolved), sender, sent_at,
-  text, attachments[], permalink, thread_ref,
-  raw (original payload)
-}
-```
-
-**Client resolution** is the first thing that has to work: Slack channel → client,
-sender email domain → client, WhatsApp number → client. This is a config table we
-maintain, not something the model guesses.
-
-### 2.3 Pipeline stages
-
-1. **Normalise.** Channel adapter converts to `Message`, resolves `client_id`.
-2. **Dedupe.** Exact hash match, then embedding similarity against open `requests` for
-   the same client in the last N days (start with 14). Above a high threshold →
-   attach message to existing request and post "already tracked as TASK-123" back
-   to the thread. In a grey band → send to review queue as "possible duplicate".
-3. **Extract & summarise.** Claude with a strict JSON schema: bullet summary, list of
-   distinct asks (one message may contain three), quoted evidence for each ask,
-   any mentioned deadline or URL.
-4. **Classify & route.** Per ask: department (content / dev / design / SEO / general),
-   request type (new page, content feedback, dev issue, graphic fix, general update,
-   question), priority signal, and a **confidence score with a stated reason**.
-   Deterministic routing rules (§3) run on top of the classification.
-5. **Gate.** Confidence ≥ threshold → auto-create. Otherwise → review queue.
-   Threshold tuned per request type; start conservative (everything except the
-   clearest cases goes to review for the first two weeks, then loosen).
-6. **Draft task.** Title, description (summary + quoted original + link to source),
-   labels, board/list, priority, client tab. Format matches how the board is set up
-   today (needs the board structure from you, see §7).
-7. **Create.** Card on board + row in PM sheet + `tasks` row. Then post an
-   acknowledgement in the source thread (Slack reply / email reply) with the card
-   link. That reply *is* the audit trail from the client's side.
-8. **Status sync.** Poll the board (or webhook if the tool supports it) every few
-   minutes; on stage change, update the sheet row and log a `status_event`.
-9. **EOD summary.** Scheduled job at a fixed time per day, posted to a Slack channel
-   and/or email (format in §6).
-
-### 2.4 Review queue
-
-A Slack channel (e.g. `#pm-review`) where each flagged item is a message with buttons:
-**Approve** (creates as drafted), **Edit** (opens a modal to change client /
-department / title), **Merge into…** (duplicate), **Not a task** (dismiss). Every
-decision is recorded and later used to tune prompts and thresholds.
-
-## 3. Routing rules (from Anuj's brief)
-
-These are deterministic and live in config, not in a prompt.
-
-| Request type | Route |
-|---|---|
-| New page development | Creates a **parent task** plus ordered sub-tasks: SEO research → Content creation → Web development → Graphic design (page assets/photos) → Client approval → Build → Menu linking. Only the first sub-task is "ready"; the rest unblock as the previous one completes. |
-| Content feedback | Content board / content writers |
-| Development feedback / dev issue | Dev board, as a dev task |
-| Graphic issue | Design board first (fix the asset); on completion, auto-create the follow-up dev task to push it live |
-| General update / question | No card. Logged, and surfaced in EOD summary as "client updates". Unless a PM marks it as a task in review. |
-| Anything else / low confidence | Review queue |
-
-Open question: for "new page" chains, do we want all sub-tasks created up front (visible
-plan, more noise) or created one at a time as each stage completes (cleaner board)?
-Recommend: all created up front, but only the active one shows in the "ready" list.
-
-## 4. Duplicate detection
-
-- Layer 1: same client + normalised text hash → exact duplicate (forwarded email).
-- Layer 2: same client + embedding cosine similarity > 0.90 against open requests →
-  auto-merge, reply "tracked as …".
-- Layer 3: 0.75–0.90 → review queue item "possible duplicate of TASK-123".
-- Cross-channel: because everything goes through the same `requests` table, a Slack
-  message and an email about the same thing will meet here.
+1. **Normalise.** Any channel → one `Message` shape. Resolve client from a config
+   table (Slack channel → client, email domain → client). The model never guesses
+   the client.
+2. **Dedupe.** Same client, same text hash → merge silently. Same client, high
+   similarity to an open request → merge and reply "already tracked as TASK-123".
+   Middle band → review queue as "possible duplicate".
+3. **Extract.** One Claude call, strict JSON: bullet summary, list of distinct asks
+   (a message can contain three), a quote for each, any deadline or URL.
+4. **Classify.** Per ask: department, request type, priority hint, **confidence and
+   the reason**. Then the routing table (§6) decides where it goes.
+5. **Gate.** Confident → create. Unsure → `#pm-review`.
+6. **Create.** Pulp card, sheet row, `tasks` row, and a reply on the original
+   Slack thread / email with the card link.
+7. **Sync.** Pulp webhook → `status_events` → sheet row updated.
+8. **EOD.** Summary to Slack + email (§7).
 
 ## 5. PM sheet contract
 
-Could not read the sheet from this environment (Drive connector needs re-authorising;
-direct access to docs.google.com is blocked). The following is the proposed contract,
-to be reconciled with the real sheet.
+Still to be reconciled with the real sheet (Drive connector needs re-authorising).
 
-Bot-owned columns (system writes, humans should not edit):
-`Task ID`, `Client`, `Department`, `Type`, `Title`, `Board link`, `Source channel`,
-`Source link`, `Created at`, `Stage`, `Last moved at`, `Completed at`.
+- **Bot-owned:** Task ID, Client, Department, Type, Title, Pulp link, Source, Source
+  link, Created, Stage, Last moved, Completed.
+- **Human-owned, never overwritten:** Priority, Owner, PM notes, Client ETA.
 
-Human-owned columns (system reads, never overwrites):
-`Priority`, `Owner`, `PM notes`, `Client-facing ETA`.
+## 6. Routing rules (config, not prompt)
 
-One overview tab (all clients) + one tab per client, both written by the system from the
-same `tasks` table. If the current sheet has a different layout, we either adapt the
-writer or add a hidden "system" tab and let the existing tabs formula off it.
+| Request type | Route |
+|---|---|
+| New page | Parent card + ordered sub-cards: SEO research → Content → Web dev → Graphic design → Client approval → Build → Menu linking. Next one unblocks when the previous completes. |
+| Content feedback | Content board |
+| Dev feedback / issue | Dev board |
+| Graphic issue | Design board; on completion, auto-create the dev card to push it live |
+| General update / question | No card. Logged; shows in EOD as "client updates". |
+| Low confidence | `#pm-review` |
 
-## 6. End-of-day summary format
-
-Posted at a fixed time, one per day, to Slack + email:
+## 7. End-of-day summary
 
 ```
 Mangowise PM summary — Mon 7 Sep
 
-Created today (N)
-  • [Client] TASK-131  Dev   — Fix broken booking button on /contact   (from Slack)
-  • …
-
-Moved stage (N)
-  • [Client] TASK-118  Content → Web development
-  • …
-
-Completed (N)
-  • …
-
-Needs your decision (N)
-  • Possible duplicate: TASK-129 vs new email from …   [review link]
-  • Low confidence: "can we do something with the homepage" (Client X)   [review link]
-
-Client updates logged, no task created (N)
-  • …
+Created (N)          [Client] TASK-131  Dev — Fix booking button on /contact  (Slack)
+Moved (N)            [Client] TASK-118  Content → Web development
+Completed (N)        …
+Needs a decision (N) Possible duplicate: TASK-129 vs email from …  [review]
+Updates, no task (N) …
 ```
 
-## 7. What we need from you before building
+## 8. Build order
 
-1. **What is "Pulp"?** No product by that name with a task/board API turned up. Is it a
-   different spelling (Plane? Pulse? Plaky?), an internal tool, or a hosted product?
-   Whether it has an API or webhooks decides how the "board update" and "status sync"
-   stages work. If it has no API, the options are: browser automation (fragile),
-   move the board to a tool with an API, or make the sheet the board.
-2. **PM sheet access.** Re-authorise the Google Drive connector, or paste the tab
-   names and header rows here. We need the real column layout for §5.
-3. **Board structure.** One board per client or per department? What are the
-   lists/stages, and what labels exist today?
-4. **Client → channel map.** Which Slack channels, email addresses/domains, and
-   WhatsApp numbers belong to which client.
-5. **Priority.** How is priority decided today in the sheet? Is it something the
-   system should infer (client tier, deadline words, "urgent") or purely human?
-6. **Reviewer.** Who owns the review queue (Anuj?) and where should it live
-   (Slack channel is the recommendation).
-7. **Hosting.** Preference between a small VPS, Railway/Fly, or a serverless setup.
-   Any of them works; the pipeline is a single service plus a scheduler.
-8. **"J2D communications"** was mentioned in the brief; please clarify what this
-   refers to (a client? a channel? day-to-day comms?).
-
-## 8. Proposed build order
-
-| Phase | Scope | Outcome |
+| Phase | Ships | Manual work removed |
 |---|---|---|
-| 0 | Config: client map, routing rules, sheet contract, board structure | Agreed spec |
-| 1 | Slack + email + `/task` intake → normalise → dedupe → extract → classify → **review queue for everything** → create card + sheet row + ack | PM stops watching channels; still approves each task |
-| 2 | Confidence gate (auto-create clear cases), status sync, EOD summary | PM approves only ambiguous ones |
-| 3 | New-page chain automation, graphic→dev follow-up, WhatsApp Business, ad-platform APIs | Full routing rules live |
+| 1 | Slack + email + `/task` intake, dedupe, extract, classify, `#pm-review` with buttons, Pulp card + sheet row + ack | Nobody watches channels. PM approves drafted tasks instead of writing them. |
+| 2 | Confidence gate opens, Pulp webhook → sheet, EOD summary | PM approves only unsure ones. Sheet updates itself. |
+| 3 | New-page chain, graphic→dev follow-up, WhatsApp Cloud API if wanted | Full routing rules live. |
 
-Phase 1 running "review everything" first is deliberate: it produces the labelled
-examples we need to set thresholds honestly instead of guessing.
+## 9. Needed to start Phase 1
 
-## 9. Tech choices (proposal)
-
-- **Language / runtime:** Python 3.12, one service (FastAPI for webhooks + a worker
-  loop for polling and scheduled jobs).
-- **LLM:** Claude via the Anthropic API with structured outputs for extraction and
-  classification; embeddings for dedupe.
-- **DB:** SQLite to start, Postgres when hosted.
-- **Integrations:** Slack Bolt, Gmail API, Google Sheets API, board API (TBD).
-- **Config over prompts:** client map, routing rules, thresholds, and sheet column map
-  all live in versioned YAML in this repo.
-- **Observability:** every pipeline decision logged with the model's stated reason, so
-  a PM can always answer "why did it do that?".
+1. **Pulp API:** base URL, auth method, and the endpoints for boards, lists, cards
+   (create, move, get). A link to the code or a Postman collection is ideal.
+2. **PM sheet:** re-authorise the Google Drive connector, or paste tab names + headers.
+3. **Client map:** client name → Slack channel(s), email domain(s). A short list is fine.
+4. **Vercel plan:** Hobby or Pro (only affects how the tick is scheduled).
+5. **Slack:** confirm the client channels are in Mangowise's workspace.
