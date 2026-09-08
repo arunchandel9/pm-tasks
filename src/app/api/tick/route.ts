@@ -78,10 +78,12 @@ export async function GET(req: Request) {
     } catch (e) { report.pulp = { error: (e as Error).message }; }
   }
 
-  // 4. Housekeeping, once an hour: drop raw payloads older than 90 days (text, links and decisions are kept).
-  if (new Date().getMinutes() === 7) {
+  // 4. Housekeeping, off by default: RAW_RETENTION_DAYS=90 would drop the raw envelope of old messages.
+  // Text, sender, links, classifications, decisions, tasks and status history are always kept.
+  const retention = Number(process.env.RAW_RETENTION_DAYS || 0);
+  if (retention > 0 && new Date().getMinutes() === 7) {
     try {
-      const r = await sql()`update messages set raw = null where raw is not null and created_at < now() - interval '90 days'`;
+      const r = await sql()`update messages set raw = null where raw is not null and created_at < now() - (${retention} || ' days')::interval`;
       report.housekeeping = { rawCleared: (r as unknown as { length?: number }).length ?? "ok" };
     } catch (e) { report.housekeeping = { error: (e as Error).message }; }
   }
