@@ -84,7 +84,7 @@ export async function tabHeaders(tab: string): Promise<string[]> {
   if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.headers;
   const row = sheetConfig().header_row;
   const res = await sheets().spreadsheets.values.get({ spreadsheetId: sheetId(), range: `'${tab}'!${row}:${row}` });
-  const headers = (res.data.values?.[0] ?? []).map((v) => String(v ?? ""));
+  const headers = (res.data.values?.[0] ?? []).map((v) => String(v ?? "").trim());
   headerCache.set(tab, { headers, at: Date.now() });
   return headers;
 }
@@ -92,10 +92,11 @@ export async function tabHeaders(tab: string): Promise<string[]> {
 /** The client's tab: explicit sheet_tab from Config, else exact/case-insensitive/prefix match on the client name. */
 export async function findClientTab(client: Client | null): Promise<string | null> {
   const tabs = await listTabs();
-  if (client?.sheetTab) return tabs.find((t) => t.toLowerCase() === client.sheetTab!.toLowerCase()) ?? null;
-  const wanted = [client?.name ?? "Internal", client?.id ?? "internal"].map((s) => s.toLowerCase());
-  return tabs.find((t) => wanted.includes(t.toLowerCase()))
-    ?? tabs.find((t) => wanted.some((w) => t.toLowerCase().startsWith(w)))
+  const key = (s: string) => s.trim().toLowerCase();
+  if (client?.sheetTab) return tabs.find((t) => key(t) === key(client.sheetTab!)) ?? null;
+  const wanted = [client?.name ?? "MangoEyes", client?.id ?? "internal"].map(key);
+  return tabs.find((t) => wanted.includes(key(t)))
+    ?? tabs.find((t) => wanted.some((w) => key(t).startsWith(w) || key(t).endsWith("- " + w)))
     ?? null;
 }
 
