@@ -105,6 +105,11 @@ async function runJob(kind: string, payload: Record<string, unknown>) {
         select 1 from messages r where r.channel = 'slack' and r.sender_is_staff and r.sent_at > ${m.sent_at}
           and split_part(r.external_id, ':', 1) = ${channelId} limit 1`;
       if (replied.length) return;
+      // One nudge per channel per window, however many messages the client sent.
+      const last = await sql()`select value from settings where key = ${"reply_nudged:" + channelId}`;
+      const { noise: noiseCfg } = await import("@/lib/config");
+      if (last.length && Date.now() - new Date(last[0].value as string).getTime() < noiseCfg().reply_nudge_minutes * 60 * 1000) return;
+      await sql()`insert into settings (key, value) values (${"reply_nudged:" + channelId}, ${JSON.stringify(new Date().toISOString())}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
       const { postText } = await import("@/lib/review");
       const { noise } = await import("@/lib/config");
       const mins = noise().reply_nudge_minutes;

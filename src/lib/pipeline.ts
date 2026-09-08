@@ -62,7 +62,8 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
       join requests r on r.message_id = pm.id left join tasks t on t.request_id = r.id
       where pm.channel = ${m.channel} and pm.external_id = ${m.threadRef} order by r.ask_index limit 1`;
     if (root.length) {
-      await postThreadFollowupComment({ taskId: root[0].task_id, requestId: root[0].request_id, message: m });
+      const chasing = /\b(any update|update on|status|eta|any news|when will|still waiting|following up|follow up)\b|\?\s*$/i.test(m.text);
+      await postThreadFollowupComment({ taskId: root[0].task_id, requestId: root[0].request_id, message: m, flag: chasing ? "client_waiting" : undefined });
       return { messageId, outcome: "attached", requestIds: [root[0].request_id] };
     }
   }
