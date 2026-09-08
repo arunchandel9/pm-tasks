@@ -43,7 +43,7 @@ export function routingForPrompt(): string {
 }
 
 export const env = {
-  model: () => process.env.LLM_MODEL || "claude-opus-5",
+  model: () => process.env.LLM_MODEL || "claude-sonnet-5",
   reviewChannel: () => process.env.SLACK_REVIEW_CHANNEL || "#pm-review",
   intakeChannel: () => process.env.SLACK_INTAKE_CHANNEL || "#intake",
   p1Channel: () => process.env.SLACK_P1_CHANNEL || process.env.SLACK_REVIEW_CHANNEL || "#pm-review",
