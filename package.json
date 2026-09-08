@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "tsx scripts/gen-schema.ts",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "tsx scripts/gen-schema.ts && vitest run",
     "db:migrate": "tsx db/migrate.ts"
   },
   "dependencies": {

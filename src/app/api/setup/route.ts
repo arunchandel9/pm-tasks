@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { cronAuthorized } from "@/lib/auth";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { sql } from "@/lib/db";
+import { SCHEMA_SQL } from "@/lib/schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,12 +14,15 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   if (!cronAuthorized(req)) return new NextResponse("unauthorized", { status: 401 });
 
-  const schema = readFileSync(path.join(process.cwd(), "db", "schema.sql"), "utf8");
-  const statements = schema.split(/;\s*\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("--"));
+  const statements = SCHEMA_SQL.split(/;\s*\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("--"));
   let applied = 0;
-  for (const stmt of statements) {
-    await sql().query(stmt);
-    applied++;
+  try {
+    for (const stmt of statements) {
+      await sql().query(stmt);
+      applied++;
+    }
+  } catch (e) {
+    return NextResponse.json({ ok: false, applied, failed_statement: statements[applied]?.slice(0, 120), error: (e as Error).message }, { status: 500 });
   }
 
   const url = new URL(req.url);
