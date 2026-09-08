@@ -28,6 +28,7 @@ create table if not exists clients (
 );
 alter table clients add column if not exists slack_team_id text;
 alter table clients add column if not exists aliases text[] not null default '{}';
+alter table clients add column if not exists sheet_tab text;
 
 -- One row per Slack workspace the app is installed in (MangoEyes' own + one per client).
 create table if not exists slack_workspaces (

@@ -68,8 +68,7 @@ export async function GET(req: Request) {
             const listName = (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
             const done = /done|complete|closed|live/i.test(listName);
             if (done) await sql()`update tasks set completed_at = now() where id = ${t[0].id} and completed_at is null`;
-            const today = new Date().toISOString().slice(0, 10);
-            await updateTaskCells(String(tabRow[0].tab), Number(tabRow[0].sheet_row), { stage: done ? sheetConfig().stage_values.done : listName, last_moved: today, completed: done ? today : undefined });
+            await updateTaskCells(String(tabRow[0].tab), Number(tabRow[0].sheet_row), { stage: done ? sheetConfig().stage_values.done : listName, completed: done ? new Date() : undefined });
           }
         } catch (e) { console.error("sheet stage update failed", (e as Error).message); }
         synced++;

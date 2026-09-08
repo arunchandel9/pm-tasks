@@ -1,4 +1,4 @@
-import { routing } from "./config";
+import { routing, boards as boardDefaults } from "./config";
 import type { Client, Priority, RouteDecision, RequestTypeRule } from "./types";
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -56,8 +56,10 @@ export function route(opts: {
 
   const noCard = !!rule?.no_card;
   const gated = !!rule?.gated;
-  const boards = opts.client?.boards ?? {};
-  const target = gated ? boards["scope"] ?? boards[department] : boards[department];
+  const own = opts.client?.boards ?? {};
+  const def = boardDefaults().departments;
+  const pick = (k: string) => (own[k]?.board ? own[k] : def[k]?.board ? { ...def[k], ...(own[k] ?? {}), board: def[k].board } : own[k] ?? def[k]);
+  const target = gated ? pick("scope") ?? pick(department) : pick(department);
 
   let dueAt: Date | null = null;
   if (!noCard) {

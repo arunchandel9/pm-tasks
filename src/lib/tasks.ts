@@ -1,6 +1,7 @@
 import { sql, enqueue } from "./db";
 import { pulp } from "./pulp";
-import { appendTaskRow, sheetsConfigured, findClientTab, sheetConfig } from "./sheets";
+import { insertTaskRow, sheetsConfigured, findClientTab } from "./sheets";
+import { boards as boardDefaults } from "./config";
 import type { Client, Draft, Message, RouteDecision } from "./types";
 
 export interface TaskRow { id: string; pulpCardId: string | null }
@@ -49,7 +50,7 @@ export async function createStagingCard(p: { requestId: string; client: Client |
 export async function approveRequest(requestId: string, decidedBy: string): Promise<void> {
   const rows = await sql()`
     select t.id as task_id, t.pulp_card_id, t.board_id, t.title, t.priority, r.department, r.request_type, r.client_id,
-           c.name as client_name, c.boards, m.channel, m.permalink
+           c.name as client_name, c.boards, c.sheet_tab, m.channel, m.permalink
     from requests r
     left join tasks t on t.request_id = r.id
     left join clients c on c.id = r.client_id
@@ -72,18 +73,15 @@ export async function approveRequest(requestId: string, decidedBy: string): Prom
   }
 
   if (x.task_id && sheetsConfigured()) {
-    const now = new Date().toISOString().slice(0, 10);
     try {
-      const client = x.client_id ? { id: String(x.client_id), name: String(x.client_name ?? x.client_id) } as Client : null;
+      const client = x.client_id ? { id: String(x.client_id), name: String(x.client_name ?? x.client_id), sheetTab: x.sheet_tab as string | null } as Client : null;
       const tab = await findClientTab(client);
       if (!tab) throw new Error(`no tab for ${client?.name ?? "Internal"} in the PM sheet`);
-      const due = (await sql()`select to_char(due_at, 'YYYY-MM-DD') as d, assignee from tasks where id = ${x.task_id}`)[0];
-      const r = await appendTaskRow(tab, {
-        task_id: String(x.task_id).slice(0, 8), title: String(x.title), department: String(x.department), type: String(x.request_type),
-        stage: sheetConfig().stage_values.created, created: now, due: String(due?.d ?? ""), last_moved: now, completed: "",
-        source: String(x.channel), source_link: String(x.permalink ?? ""),
-        pulp_link: x.pulp_card_id ? `${process.env.PULP_BASE_URL?.replace(/\/api$/, "")}/cards/${x.pulp_card_id}` : "",
-        assignee: String(due?.assignee ?? ""),
+      const t = (await sql()`select due_at, assignee, priority from tasks where id = ${x.task_id}`)[0];
+      const r = await insertTaskRow(tab, {
+        title: String(x.title), department: String(x.department), priority: String(t?.priority ?? "P3"), assignee: String(t?.assignee ?? ""),
+        pulp_link: x.pulp_card_id ? `${boardDefaults().base_url}/board/${x.board_id}/card/${x.pulp_card_id}` : "",
+        source_link: String(x.permalink ?? ""), created: new Date(), due: t?.due_at ? new Date(t.due_at as string) : null,
       });
       await sql()`update tasks set sheet_row = ${r.row} where id = ${x.task_id}`;
       await sql()`insert into settings (key, value) values (${"sheet_tab:" + x.task_id}, ${JSON.stringify(tab)}::jsonb) on conflict (key) do update set value = excluded.value`;

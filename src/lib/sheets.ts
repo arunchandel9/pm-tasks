@@ -20,9 +20,12 @@ function sheets(): sheets_v4.Sheets {
 export const sheetsConfigured = () => !!process.env.GOOGLE_SERVICE_ACCOUNT_B64 && !!process.env.PM_SHEET_ID;
 const sheetId = () => process.env.PM_SHEET_ID!;
 
-// ---- column mapping config ----
+// ---- config ----
 
-interface SheetConfig { header_row: number; columns: Record<string, string[]>; stage_values: Record<string, string> }
+interface SheetConfig {
+  header_row: number; date_format: string; done_divider: string[]; columns: Record<string, string[]>;
+  initial_note: string; department_labels: Record<string, string>; stage_values: Record<string, string>;
+}
 let _cfg: SheetConfig | null = null;
 export function sheetConfig(): SheetConfig {
   if (!_cfg) _cfg = YAML.parse(readFileSync(path.join(process.cwd(), "config", "sheet.yaml"), "utf8")) as SheetConfig;
@@ -31,7 +34,7 @@ export function sheetConfig(): SheetConfig {
 
 const normHeader = (h: string) => h.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
-/** Map a tab's header row to our field names: field → 0-based column index. Unknown headers are ignored. */
+/** Map a tab's header row to field names: field → 0-based column index. Unknown headers are ignored. */
 export function mapHeaders(headers: string[], cfg: SheetConfig = sheetConfig()): Record<string, number> {
   const out: Record<string, number> = {};
   const normed = headers.map(normHeader);
@@ -41,16 +44,38 @@ export function mapHeaders(headers: string[], cfg: SheetConfig = sheetConfig()):
       if (idx >= 0) { out[field] = idx; break; }
     }
   }
+  // A tab whose link column has a blank header right after TASK: treat it as the pulp link.
+  if (out.pulp_link === undefined && out.title !== undefined && headers[out.title + 1] !== undefined && normed[out.title + 1] === "") out.pulp_link = out.title + 1;
   return out;
 }
 
 export const colLetter = (i: number) => { let s = "", n = i + 1; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; };
 
-// ---- tabs and headers ----
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function formatDate(d: Date | null | undefined, fmt = sheetConfig().date_format): string {
+  if (!d) return "";
+  const dd = String(d.getDate()).padStart(2, "0"), mmm = MONTHS[d.getMonth()], yyyy = String(d.getFullYear()), mm = String(d.getMonth() + 1).padStart(2, "0");
+  return fmt.replace("DD", dd).replace("MMM", mmm).replace("YYYY", yyyy).replace("MM", mm);
+}
 
-export async function listTabs(): Promise<string[]> {
-  const res = await sheets().spreadsheets.get({ spreadsheetId: sheetId(), fields: "sheets.properties.title" });
-  return (res.data.sheets ?? []).map((s) => s.properties?.title ?? "").filter(Boolean);
+export const departmentLabel = (dep: string) => sheetConfig().department_labels[dep] ?? dep;
+
+// ---- tabs, headers, rows ----
+
+const tabMetaCache = new Map<string, { id: number; at: number }>();
+async function tabMeta(): Promise<Array<{ title: string; id: number }>> {
+  const res = await sheets().spreadsheets.get({ spreadsheetId: sheetId(), fields: "sheets.properties(title,sheetId)" });
+  const list = (res.data.sheets ?? []).map((s) => ({ title: s.properties?.title ?? "", id: s.properties?.sheetId ?? 0 })).filter((t) => t.title);
+  for (const t of list) tabMetaCache.set(t.title, { id: t.id, at: Date.now() });
+  return list;
+}
+export async function listTabs(): Promise<string[]> { return (await tabMeta()).map((t) => t.title); }
+async function tabNumericId(tab: string): Promise<number> {
+  const hit = tabMetaCache.get(tab);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.id;
+  const t = (await tabMeta()).find((x) => x.title === tab);
+  if (!t) throw new Error(`tab "${tab}" not found`);
+  return t.id;
 }
 
 const headerCache = new Map<string, { headers: string[]; at: number }>();
@@ -64,21 +89,43 @@ export async function tabHeaders(tab: string): Promise<string[]> {
   return headers;
 }
 
-/** Find the client's tab: exact name, then case-insensitive, then a tab that starts with the client name. */
+/** The client's tab: explicit sheet_tab from Config, else exact/case-insensitive/prefix match on the client name. */
 export async function findClientTab(client: Client | null): Promise<string | null> {
   const tabs = await listTabs();
+  if (client?.sheetTab) return tabs.find((t) => t.toLowerCase() === client.sheetTab!.toLowerCase()) ?? null;
   const wanted = [client?.name ?? "Internal", client?.id ?? "internal"].map((s) => s.toLowerCase());
   return tabs.find((t) => wanted.includes(t.toLowerCase()))
     ?? tabs.find((t) => wanted.some((w) => t.toLowerCase().startsWith(w)))
     ?? null;
 }
 
-// ---- config tab → clients ----
+/** Read the whole used area of a tab (values only). */
+async function tabRows(tab: string): Promise<string[][]> {
+  const res = await sheets().spreadsheets.values.get({ spreadsheetId: sheetId(), range: `'${tab}'!A1:Z2000` });
+  return (res.data.values ?? []).map((r) => r.map((v) => String(v ?? "")));
+}
 
 /**
- * Config tab → clients. Header row (order-insensitive, case-insensitive):
- * id | name | scope | slack_team_id | aliases | slack_channels | email_domains | whatsapp_numbers | dev_board | dev_list | dev_staging | dev_assignee | content_board | … | client_facing_ack
+ * Where a new task row goes: the row of the DONE divider (new row is inserted above it), else one past the last
+ * row with any content. Also returns the next serial number from the serial column above that point.
  */
+export function placement(rows: string[][], map: Record<string, number>, cfg: SheetConfig = sheetConfig()): { insertAt: number; nextSerial: number } {
+  const headerIdx = cfg.header_row - 1;
+  let divider = -1;
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const firstText = rows[i].find((c) => c.trim());
+    if (firstText && cfg.done_divider.includes(normHeader(firstText)) && rows[i].filter((c) => c.trim()).length <= 2) { divider = i; break; }
+  }
+  const lastFilled = (() => { for (let i = (divider >= 0 ? divider : rows.length) - 1; i > headerIdx; i--) if (rows[i].some((c, ci) => ci !== map.serial && c.trim())) return i; return headerIdx; })();
+  let nextSerial = 1;
+  if (map.serial !== undefined) {
+    for (let i = headerIdx + 1; i <= lastFilled; i++) { const n = Number(rows[i]?.[map.serial]); if (Number.isFinite(n) && n >= nextSerial) nextSerial = n + 1; }
+  }
+  return { insertAt: divider >= 0 ? divider : lastFilled + 1, nextSerial };
+}
+
+// ---- config tab → clients ----
+
 export async function readConfigTab(): Promise<{ clients: Client[]; errors: string[] }> {
   const tab = process.env.PM_SHEET_CONFIG_TAB || "Config";
   const res = await sheets().spreadsheets.values.get({ spreadsheetId: sheetId(), range: `'${tab}'!A1:AZ200` });
@@ -102,7 +149,7 @@ export async function readConfigTab(): Promise<{ clients: Client[]; errors: stri
       if (!board) continue;
       boards[dep] = { board, list: get(`${dep}_list`) || "To Do", staging: get(`${dep}_staging`) || "Staging", assignee: get(`${dep}_assignee`) || undefined };
     }
-    if (scope === "client" && Object.keys(boards).length === 0) errors.push(`row ${i + 1} (${cid}): no boards`);
+    if (!get("slack_team_id") && scope === "client") errors.push(`row ${i + 1} (${cid}): no slack_team_id`);
     clients.push({
       id: cid, name: get("name") || cid, scope,
       slackChannels: list(get("slack_channels")), emailDomains: list(get("email_domains")).map((d) => d.toLowerCase()),
@@ -110,48 +157,67 @@ export async function readConfigTab(): Promise<{ clients: Client[]; errors: stri
       clientFacingAck: /^(true|yes|1)$/i.test(get("client_facing_ack")),
       slackTeamId: get("slack_team_id") || null,
       aliases: list(get("aliases")),
+      sheetTab: get("sheet_tab") || null,
     });
   }
   return { clients, errors };
 }
 
-// ---- writing task rows into a client's own tab, under its own headers ----
+// ---- writing task rows ----
 
 export interface TaskFields {
-  task_id: string; title: string; department: string; type: string; stage: string; created: string; due: string;
-  last_moved: string; completed: string; source: string; source_link: string; pulp_link: string; assignee: string;
+  title: string; department: string; priority: string; assignee: string; pulp_link: string; source_link: string;
+  created: Date; due: Date | null;
 }
 
-/** Append one row to the client's tab, placing each value under the matching header. Returns the row number. */
-export async function appendTaskRow(tab: string, f: TaskFields): Promise<{ row: number; wrote: string[]; unmapped: string[] }> {
+/**
+ * Insert one task row into the client's tab, above the DONE divider if there is one, with the next serial number,
+ * dates in the sheet's format, the department label the sheet uses, Status "To Do", and the initial comment.
+ * Returns the 1-based row number written.
+ */
+export async function insertTaskRow(tab: string, f: TaskFields): Promise<{ row: number; wrote: string[] }> {
+  const cfg = sheetConfig();
   const headers = await tabHeaders(tab);
-  if (!headers.length) throw new Error(`tab "${tab}" has no header row ${sheetConfig().header_row}`);
-  const map = mapHeaders(headers);
+  if (!headers.length) throw new Error(`tab "${tab}" has no header row ${cfg.header_row}`);
+  const map = mapHeaders(headers, cfg);
+  const rows = await tabRows(tab);
+  const { insertAt, nextSerial } = placement(rows, map, cfg);
+
+  const values: Record<string, string> = {
+    serial: String(nextSerial), title: f.title, pulp_link: f.pulp_link, created: formatDate(f.created, cfg.date_format),
+    due: formatDate(f.due, cfg.date_format), priority: f.priority, assignee: f.assignee, stage: cfg.stage_values.created,
+    department: departmentLabel(f.department), notes: cfg.initial_note, source_link: f.source_link,
+  };
   const row: string[] = new Array(headers.length).fill("");
-  const wrote: string[] = [], unmapped: string[] = [];
-  for (const [field, value] of Object.entries(f)) {
-    if (field === "priority" || field === "notes") continue;
+  const wrote: string[] = [];
+  for (const [field, v] of Object.entries(values)) {
     const idx = map[field];
-    if (idx === undefined) { if (value) unmapped.push(field); continue; }
-    row[idx] = value; wrote.push(field);
+    if (idx === undefined || !v) continue;
+    row[idx] = v; wrote.push(field);
   }
-  const res = await sheets().spreadsheets.values.append({
-    spreadsheetId: sheetId(), range: `'${tab}'!A${sheetConfig().header_row + 1}`, valueInputOption: "USER_ENTERED", insertDataOption: "INSERT_ROWS",
+
+  const sid = await tabNumericId(tab);
+  await sheets().spreadsheets.batchUpdate({
+    spreadsheetId: sheetId(),
+    requestBody: { requests: [{ insertDimension: { range: { sheetId: sid, dimension: "ROWS", startIndex: insertAt, endIndex: insertAt + 1 }, inheritFromBefore: insertAt > cfg.header_row } }] },
+  });
+  const rowNumber = insertAt + 1;
+  await sheets().spreadsheets.values.update({
+    spreadsheetId: sheetId(), range: `'${tab}'!A${rowNumber}:${colLetter(headers.length - 1)}${rowNumber}`, valueInputOption: "USER_ENTERED",
     requestBody: { values: [row] },
   });
-  const m = (res.data.updates?.updatedRange ?? "").match(/![A-Z]+(\d+)/);
-  return { row: m ? Number(m[1]) : -1, wrote, unmapped };
+  return { row: rowNumber, wrote };
 }
 
-/** Update only the bot-owned status cells of an existing row. */
-export async function updateTaskCells(tab: string, rowNumber: number, f: Partial<Pick<TaskFields, "stage" | "last_moved" | "completed" | "pulp_link">>): Promise<void> {
-  const map = mapHeaders(await tabHeaders(tab));
+/** Update only bot-owned status cells of an existing row: Status, Date Completed, Pulp link. Never priority, assignee or comments. */
+export async function updateTaskCells(tab: string, rowNumber: number, f: { stage?: string; completed?: Date | null; pulp_link?: string }): Promise<void> {
+  const cfg = sheetConfig();
+  const map = mapHeaders(await tabHeaders(tab), cfg);
   const data: sheets_v4.Schema$ValueRange[] = [];
-  for (const [field, value] of Object.entries(f)) {
-    const idx = map[field];
-    if (idx === undefined || value === undefined) continue;
-    data.push({ range: `'${tab}'!${colLetter(idx)}${rowNumber}`, values: [[value]] });
-  }
+  const put = (field: string, v: string | undefined) => { const idx = map[field]; if (idx !== undefined && v !== undefined) data.push({ range: `'${tab}'!${colLetter(idx)}${rowNumber}`, values: [[v]] }); };
+  put("stage", f.stage);
+  put("completed", f.completed === undefined ? undefined : formatDate(f.completed, cfg.date_format));
+  put("pulp_link", f.pulp_link);
   if (!data.length) return;
   await sheets().spreadsheets.values.batchUpdate({ spreadsheetId: sheetId(), requestBody: { valueInputOption: "USER_ENTERED", data } });
 }

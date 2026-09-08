@@ -1,30 +1,40 @@
-# How the hub writes into each client's tab in the PM sheet.
-# It reads the tab's own header row and places each value under the first header that matches an alias below
-# (case-insensitive, ignoring punctuation). Headers it doesn't know are never touched. Human-owned columns
-# (priority, owner, notes, ETA) are never written, except assignee when the cell is empty on creation.
+# How the hub writes into each client's tab in the PM Overview sheet.
+# It reads the tab's own header row and places each value under the first header matching an alias
+# (case-insensitive, punctuation ignored). Headers it doesn't know are never touched.
 
-# Row 1 is the header by default; set per-tab overrides if a tab has a title row above the headers.
 header_row: 1
+date_format: "DD-MMM-YYYY"        # 08-Sep-2026, as the sheet already uses
+
+# New rows go above this divider when a tab has one (a merged row reading DONE / COMPLETED), else after the last filled row.
+done_divider: ["done", "completed", "completed tasks"]
 
 columns:
-  task_id:     ["task id", "id", "ref", "task ref", "#", "sr no", "s no", "sl no"]
-  title:       ["task", "title", "task name", "task title", "description", "task description", "request", "work"]
+  serial:      ["s no", "s no.", "sr no", "sl no", "#", "no"]           # next number in sequence
+  title:       ["task", "task deliverable", "task description", "title", "request"]
+  pulp_link:   ["pulp link", "card link", "pulp", "card", "board link"]
+  created:     ["date added", "date", "created", "created on", "added on", "received"]
+  due:         ["due date", "due", "deadline", "target date"]
+  priority:    ["priority", "urgency"]                                   # written once on creation, never changed
+  assignee:    ["assigned to", "assignee", "owner", "responsible"]      # written once on creation if empty
+  stage:       ["status", "stage", "state"]
   department:  ["department", "team", "dept"]
-  type:        ["type", "category", "request type", "task type"]
-  stage:       ["status", "stage", "state", "progress"]
-  created:     ["date", "created", "created on", "added on", "date added", "start date", "received"]
-  due:         ["due", "due date", "deadline", "eta", "target date"]
-  last_moved:  ["last moved", "last updated", "updated", "last update"]
-  completed:   ["completed", "completed on", "done on", "closed", "finished"]
-  source:      ["source", "channel", "came from", "via"]
-  source_link: ["source link", "link", "message link", "reference"]
-  pulp_link:   ["pulp", "pulp link", "card", "card link", "board link"]
-  assignee:    ["assigned to", "assignee", "owner", "responsible", "who"]   # written only when empty
-  priority:    ["priority", "urgency"]                                       # human-owned: read, never written
-  notes:       ["notes", "pm notes", "comments", "remarks"]                  # human-owned: never written
+  notes:       ["comments", "notes", "pm notes", "remarks"]              # written once on creation with initial_note, never changed
+  completed:   ["date completed", "completed", "completed on", "done on"]
+  source_link: ["source link", "message link", "source"]
+  trello_link: ["trello link"]                                           # recognised so it is never mistaken for the pulp link
 
-# Value written to the stage column at each point.
+initial_note: "Task assigned."
+
+# Our department keys → the labels the sheet uses
+department_labels:
+  dev: Development
+  content: Content
+  design: Graphics
+  seo: SEO
+  general: PM
+  internal: PM
+
+# Status text written at each point
 stage_values:
   created: "To Do"
-  staging: "Draft"
   done: "Done"

@@ -37,6 +37,7 @@ export interface Client {
   clientFacingAck: boolean;
   slackTeamId?: string | null;
   aliases?: string[];
+  sheetTab?: string | null;
 }
 
 export interface RequestTypeRule {
