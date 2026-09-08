@@ -153,7 +153,7 @@
       <span class="eyebrow accent">With the Task Hub</span>
       <ul>
         <li>Everything lands in one place. Client and team are worked out automatically.</li>
-        <li>Clear requests become a Pulp card, a sheet row, and a reply on the original thread, in under a minute.</li>
+        <li>Clear requests become a Pulp card and a sheet row in under a minute, with an internal acknowledgement on the original message.</li>
         <li>Unclear ones go to one Slack channel where a person clicks Approve or Edit.</li>
         <li>When a card moves, the sheet follows. One end-of-day summary. Anyone can ask the hub a question from their own assistant.</li>
       </ul>
@@ -252,7 +252,7 @@
       <rect class="box" x="910" y="120" width="160" height="48" rx="3"/>
       <text class="lbl" x="922" y="140">PM sheet row</text><text class="sub" x="922" y="156">with a link to the source</text>
       <rect class="box" x="910" y="192" width="160" height="48" rx="3"/>
-      <text class="lbl" x="922" y="212">Reply on the thread</text><text class="sub" x="922" y="228">“Tracked as TASK-131”</text>
+      <text class="lbl" x="922" y="212">Internal acknowledgement</text><text class="sub" x="922" y="228">reaction on the message + card link</text>
 
       <text class="sub" x="770" y="372">Every task links back to</text>
       <text class="sub" x="770" y="386">the exact message it came from.</text>
@@ -272,7 +272,7 @@
     <li><div><b>Team and type are worked out</b><span>Ask 1: a dev issue for the Dev team. Ask 2: a content update for the Content team. Both clearly. Each gets a drafted title, description, and labels.</span></div></li>
     <li><div><b>The rules say where it goes</b><span>Dev issues go to the Dev board, content updates to the Content board. "This week" is noted as a priority hint.</span></div></li>
     <li><div><b>A person reviews</b><span>In the first two weeks, both drafts appear in <code>#pm-review</code>. A PM clicks Approve on each. Later, clear cases like these skip this step.</span></div></li>
-    <li><div><b>It is created</b><span>Two Pulp cards, two sheet rows, and one reply in the Slack thread: "Tracked as TASK-131 and TASK-132." The client sees it was heard.</span></div></li>
+    <li><div><b>It is created</b><span>Two Pulp cards with owner, priority, and due date, two sheet rows, and a ✅ reaction on the client's message. Nothing is sent to the client automatically; a PM replies when they choose.</span></div></li>
     <li><div><b>It stays in sync</b><span>When the developer moves TASK-131 to Done in Pulp, the sheet row updates within seconds and it appears in that evening's summary.</span></div></li>
   </ol>
 
@@ -316,7 +316,7 @@
   <table>
     <thead><tr><th>Request type</th><th>Where it goes</th></tr></thead>
     <tbody>
-      <tr><td>New page</td><td>One parent card plus ordered sub-cards: SEO research → Content → Web dev → Graphic design → Client approval → Build → Menu linking. Each unblocks when the previous one completes.</td></tr>
+      <tr><td>New page or feature</td><td>"Needs scope" list first, and a person moves it on. Then one parent card plus ordered sub-cards: SEO research → Content → Web dev → Graphic design → Client approval → Build → Menu linking. Each unblocks when the previous one completes.</td></tr>
       <tr><td>Content feedback</td><td>Content board</td></tr>
       <tr><td>Dev issue or feedback</td><td>Dev board</td></tr>
       <tr><td>Graphic issue</td><td>Design board first. When done, a dev card is created automatically to push it live.</td></tr>
@@ -379,6 +379,8 @@ Moved (3)
   Clinic Y   TASK-118  Content → Web development
   …
 Completed (2)   …
+Overdue (1)
+  Clinic Y   TASK-102  Design   Replace hero image  due Mon, P2
 Needs a decision (1)
   Possible duplicate: TASK-129 vs new email from Clinic Z
 Client owes us (1)
@@ -430,7 +432,7 @@ Client owes us (1)
     <tbody>
       <tr><td>0–1</td><td>Project scaffold, database, config files</td><td>Slack app from the manifest, Vercel project, database, API key, Pulp access, client list</td><td></td></tr>
       <tr><td>1–4</td><td>Slack intake, noise filter, the two reading steps, #pm-review with buttons</td><td>Add the app to a test channel, send real messages</td><td>Drafts appear in review</td></tr>
-      <tr><td>4–6</td><td>Pulp card creation, sheet rows, thread reply</td><td>Confirm board and list names, sheet layout</td><td><b>A.</b> Slack message → card, row, reply</td></tr>
+      <tr><td>4–6</td><td>Pulp card creation, sheet rows, thread reply</td><td>Confirm board and list names, sheet layout</td><td><b>A.</b> Slack message → card, row, acknowledgement</td></tr>
       <tr><td>6–8</td><td>Mailbox intake, email filter, #intake share, /task</td><td>Mailbox access, CC a real client thread</td><td>Every channel feeding the hub</td></tr>
       <tr><td>8–10</td><td>Status sync (Pulp checked every minute), daily summary</td><td>Move a card in Pulp, read the summary</td><td><b>B.</b> Sheet updates itself</td></tr>
       <tr><td>10–13</td><td>Ask the hub from your own assistant, per-person keys, internal scope</td><td>Connect your own Claude, ask it questions</td><td><b>C.</b> Ask the hub</td></tr>

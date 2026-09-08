@@ -97,8 +97,9 @@ Database (five tables, that's all):
 4. **Classify.** Per ask: department, request type, priority hint, **confidence and
    the reason**. Then the routing table (§6) decides where it goes.
 5. **Gate.** Confident → create. Unsure → `#pm-review`.
-6. **Create.** Pulp card, sheet row, `tasks` row, and a reply on the original
-   Slack thread / email with the card link.
+6. **Create.** Pulp card (owner, priority, due date set), sheet row, `tasks` row, and
+   an **internal** acknowledgement: emoji reaction on the source message + card link
+   in `#pm-review`. Client-facing replies only if enabled per client (§4f).
 7. **Sync.** Pulp webhook → `status_events` → sheet row updated.
 8. **EOD.** Summary to Slack + email (§7).
 
@@ -218,6 +219,28 @@ messages:
   cent per message. It is done because it is the correct layout and it costs nothing
   to do right, not because it changes the bill at this volume.
 
+## 4f. Team review additions (accepted)
+
+| Item | Decision |
+|---|---|
+| Client → board → assignee map | The client map lives in a **Config tab of the PM sheet**: sender / channel / number → client → board per department → default list → default assignee. Read by the hub every few minutes, validated; a bad row goes to review, never breaks intake. Unknown sender → review lane. |
+| Priority | P1–P3 on every card. Keyword list in config forces P1 (site down, broken form, leads not coming, ad disapproved, payment failed). P1 pings a Slack channel immediately, also in review mode. Keywords only raise priority, never lower it. |
+| Multi-request splitting | Already the design: one card per distinct ask, all linked to the same source message. |
+| Thread continuity | A match has **three outcomes**: duplicate → merge; nudge ("any update?") → comment on the existing card + "client waiting" flag, shown in EOD; change request → review as a follow-up on that card. Nothing silently dropped. |
+| Scope gate | New page / new feature → **"Needs scope"** list first. A person moves it into the chain or marks it covered by the retainer. Routing table gets a `gated: true` flag per type. |
+| Client approval loop | The hub never messages a client on its own. A person sends the preview; the hub records "waiting on client since", detects the reply via normal intake and moves the card, and nudges the **PM** after N days (config). Client-facing nudges exist only as drafts a PM sends. |
+| Reply to source | **Correction.** Default acknowledgement is internal: an emoji reaction on the message + card link in `#pm-review`. No automatic email reply to clients. Client-facing acknowledgement is opt-in per client with fixed, PM-approved wording. |
+| Assignee + SLA | Default owner from the map. Default SLA per request type in config (working days); P1 has its own. Due date set at creation. EOD gains an **Overdue** bucket. |
+| Stage handoff | On stage completion the hub copies asset links from the finished card to the next card. No attachments → it asks the designer in a card comment instead of moving on. |
+| Kill switch + shadow mode | One toggle pauses all intake, one per channel; paused messages queue, never vanish. Shadow mode = review-everything with Slack as the decision surface, plus "approve all pending". A Pulp staging list is available if boards are internal-only (drafts on a client-visible board would leak). |
+| Weekly per-client digest | Friday, per client: done / in progress / waiting on client / overdue. Sent to the PM as a draft to forward or reuse in reporting. |
+| Source retention | Already stored in full in the hub. Addition: the card description carries the quoted original text, not only the link. |
+
+Effect on the 24-hour plan: about 4 extra hours (priority, scope gate, SLA/overdue,
+three-way thread handling, kill switch, asset handoff) folded into hours 13–22. The
+weekly digest and approval-loop nudges need live data first and land in the days
+after go-live.
+
 ## 5. PM sheet contract
 
 Still to be reconciled with the real sheet (Drive connector needs re-authorising).
@@ -230,7 +253,7 @@ Still to be reconciled with the real sheet (Drive connector needs re-authorising
 
 | Request type | Route |
 |---|---|
-| New page | Parent card + ordered sub-cards: SEO research → Content → Web dev → Graphic design → Client approval → Build → Menu linking. Next one unblocks when the previous completes. |
+| New page / new feature | **Needs scope** list first (a person moves it on). Then parent card + ordered sub-cards: SEO research → Content → Web dev → Graphic design → Client approval → Build → Menu linking. Next one unblocks when the previous completes; asset links carried forward. |
 | Content feedback | Content board |
 | Dev feedback / issue | Dev board |
 | Graphic issue | Design board; on completion, auto-create the dev card to push it live |
@@ -245,7 +268,9 @@ MangoEyes PM summary — Mon 7 Sep
 Created (N)          [Client] TASK-131  Dev — Fix booking button on /contact  (Slack)
 Moved (N)            [Client] TASK-118  Content → Web development
 Completed (N)        …
+Overdue (N)          [Client] TASK-102  Design — due Mon, P2
 Needs a decision (N) Possible duplicate: TASK-129 vs email from …  [review]
+Waiting on client (N) [Client] TASK-118  preview sent Tue, no reply
 Updates, no task (N) …
 ```
 
