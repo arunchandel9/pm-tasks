@@ -3,9 +3,19 @@ import type { Client } from "./types";
 
 let _sql: NeonQueryFunction<false, false> | null = null;
 
+/** Accepts DATABASE_URL or any prefixed variant Vercel's Neon integration writes (e.g. storage_DATABASE_URL). */
+export function databaseUrl(): string | null {
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+  for (const [k, v] of Object.entries(process.env)) {
+    if (k.endsWith("_DATABASE_URL") && !k.endsWith("_UNPOOLED") && v) return v;
+  }
+  if (process.env.POSTGRES_URL) return process.env.POSTGRES_URL;
+  return null;
+}
+
 export function sql(): NeonQueryFunction<false, false> {
   if (!_sql) {
-    const url = process.env.DATABASE_URL;
+    const url = databaseUrl();
     if (!url) throw new Error("DATABASE_URL is not set");
     _sql = neon(url);
   }
