@@ -505,7 +505,7 @@ Client owes us (1)
     <div><b>A pipeline, not Hermes</b><p>Hermes is a conversational agent with personal memory. This needs a shared, exact ledger and the same result every time. Hermes stays useful as a client of the hub, with its loop and memory intact.</p></div>
     <div><b>Claude with strict JSON</b><p>Both AI steps return a fixed schema, so outputs can be stored, compared, and scored. Swapping the model later is a two-prompt change.</p></div>
     <div><b>Postgres is the truth</b><p>Pulp and the sheet are views. Dedupe, the audit trail, and "why did it do that" all need one place that remembers everything.</p></div>
-    <div><b>Review everything first</b><p>Two weeks of Approve and Edit clicks tell us where the system is reliable. Then the gate opens on evidence, not guesswork.</p></div>
+    <div><b>Review everything first</b><p>Every draft goes to #pm-review and a Staging list in Pulp (internal-only, so drafts never leak). Approve in either place. The gate opens per request type on evidence: 30 approvals, 95% unedited, never before day 3.</p></div>
     <div><b>WhatsApp by forwarding</b><p>The WhatsApp Business app has no API. Forwarding costs five seconds and nothing to build. Moving the number to the Cloud API is a later, separate decision.</p></div>
     <div><b>Pulp sends one webhook</b><p>We own Pulp, so "card moved" is one small addition. It replaces polling and makes status sync instant.</p></div>
     <div><b>Bot where it can live, #intake everywhere else</b><p>Automatic intake in channels in our workspace. Sharing a message to #intake is the manual path for a client's own workspace, WhatsApp, or a phone call. Same pipeline, same audit link.</p></div>
@@ -513,37 +513,40 @@ Client owes us (1)
 
   <!-- ============ PHASES ============ -->
   <h2>Timeline: 24 working hours, two people</h2>
-  <p>Not a calendar. Twenty-four hours of build with both of us on it, as two long days or three focused sessions. Your admin steps run in parallel with the build; each is 5 to 30 minutes, and each blocks the build if it waits. Milestones are where you can stop and have something real.</p>
+  <p>Not a calendar. Twenty-four hours of build with both of us on it, as two long days or three focused sessions. Your admin steps run in parallel with the build; each is 5 to 30 minutes, and each blocks the build if it waits. Milestones are where you can stop and have something real. Everything from the team review is inside these 24 hours.</p>
 
   <div class="timeline scroll">
     <div class="tl-row head"><span class="name" style="font-family:var(--mono);font-weight:400;font-size:11px">Hour</span><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span><span>22</span><span>23</span></div>
     <div class="tl-row"><span class="name">Setup</span><div class="bar you" style="grid-column: 2 / span 1"></div></div>
-    <div class="tl-row"><span class="name">Slack intake + review</span><div class="bar" style="grid-column: 3 / span 3">A</div></div>
-    <div class="tl-row"><span class="name">Pulp + sheet + reply</span><div class="bar" style="grid-column: 6 / span 2"></div></div>
-    <div class="tl-row"><span class="name">Email, #intake, /task</span><div class="bar" style="grid-column: 8 / span 2"></div></div>
+    <div class="tl-row"><span class="name">Slack intake + review</span><div class="bar" style="grid-column: 3 / span 3"></div></div>
+    <div class="tl-row"><span class="name">Pulp, sheet, staging</span><div class="bar" style="grid-column: 6 / span 2">A</div></div>
+    <div class="tl-row"><span class="name">Email, #intake, threads</span><div class="bar" style="grid-column: 8 / span 2"></div></div>
     <div class="tl-row"><span class="name">Sync + daily summary</span><div class="bar" style="grid-column: 10 / span 2">B</div></div>
-    <div class="tl-row"><span class="name">Hub for assistants</span><div class="bar" style="grid-column: 12 / span 3">C</div></div>
-    <div class="tl-row"><span class="name">Meetings, to-dos, ideas</span><div class="bar" style="grid-column: 15 / span 3"></div></div>
-    <div class="tl-row"><span class="name">Chains + follow-ups</span><div class="bar" style="grid-column: 18 / span 3"></div></div>
-    <div class="tl-row"><span class="name">Soak on live traffic</span><div class="bar data" style="grid-column: 21 / span 3">fix, tune</div></div>
+    <div class="tl-row"><span class="name">Hub for assistants</span><div class="bar" style="grid-column: 12 / span 2">C</div></div>
+    <div class="tl-row"><span class="name">Meetings, to-dos, ideas</span><div class="bar" style="grid-column: 14 / span 3"></div></div>
+    <div class="tl-row"><span class="name">Scope gate, chains, handoff</span><div class="bar" style="grid-column: 17 / span 3"></div></div>
+    <div class="tl-row"><span class="name">Soak on live traffic</span><div class="bar data" style="grid-column: 20 / span 4">fix, tune</div></div>
     <div class="tl-row"><span class="name">Live</span><div class="bar gate" style="grid-column: 24 / span 2">D</div></div>
   </div>
 
   <table>
     <thead><tr><th>Hours</th><th>Built</th><th>You, in parallel</th><th>Milestone</th></tr></thead>
     <tbody>
-      <tr><td>0–1</td><td>Project scaffold, database, config files</td><td>Slack app from the manifest, Vercel project, database, API key, Pulp access, client list</td><td></td></tr>
-      <tr><td>1–4</td><td>Slack intake, noise filter, the two reading steps, #pm-review with buttons</td><td>Add the app to a test channel, send real messages</td><td>Drafts appear in review</td></tr>
-      <tr><td>4–6</td><td>Pulp card creation, sheet rows, thread reply</td><td>Confirm board and list names, sheet layout</td><td><b>A.</b> Slack message → card, row, acknowledgement</td></tr>
-      <tr><td>6–8</td><td>Mailbox intake, email filter, #intake share, /task</td><td>Mailbox access, CC a real client thread</td><td>Every channel feeding the hub</td></tr>
-      <tr><td>8–10</td><td>Status sync (Pulp polled every minute until the webhook exists), daily summary</td><td>Move a card in Pulp, read the summary</td><td><b>B.</b> Sheet updates itself</td></tr>
-      <tr><td>10–13</td><td>MCP hub, per-PM keys, internal scope</td><td>Connect your own Claude, ask it questions</td><td><b>C.</b> Ask the hub</td></tr>
-      <tr><td>13–16</td><td>Meeting notes read from the Drive folder, batch review, client to-dos, decisions, ideas</td><td>Share the Meet notes folder, run one real call with notes on</td><td>Meeting actions become drafts</td></tr>
-      <tr><td>16–19</td><td>New-page chain, graphic → dev follow-up, weekly ideas resurface</td><td>Walk through a real new-page request</td><td>Full routing rules live</td></tr>
-      <tr><td>19–22</td><td>Soak on live traffic, fix, tune the filter, spend limit, monitoring</td><td>Watch #pm-review, say what looks wrong</td><td></td></tr>
+      <tr><td>0–1</td><td>Project scaffold, database, config, the Config tab in the PM sheet</td><td>Slack app from the manifest, Vercel project, database, API key, Pulp access, client list into the Config tab</td><td></td></tr>
+      <tr><td>1–4</td><td>Slack intake, noise filter, kill switch, the two reading steps, P1 keywords with instant ping, #pm-review with buttons</td><td>Add the app to a test channel, send real messages</td><td>Drafts appear in review</td></tr>
+      <tr><td>4–6</td><td>Pulp card with owner, priority, due date from SLA; Staging list; sheet rows; internal acknowledgement</td><td>Confirm board and list names, add a Staging list per board</td><td><b>A.</b> Slack message → card, row, acknowledgement</td></tr>
+      <tr><td>6–8</td><td>Mailbox intake, email filter, #intake share, /task, three-way thread handling (duplicate, nudge, change)</td><td>Mailbox access, CC a real client thread, reply "any update?" in a thread</td><td>Every channel feeding the hub</td></tr>
+      <tr><td>8–10</td><td>Status sync (Pulp polled every minute until the webhook exists), drag out of Staging counts as approve, daily summary with Overdue and Waiting on client</td><td>Move a card in Pulp, drag one out of Staging, read the summary</td><td><b>B.</b> Sheet updates itself</td></tr>
+      <tr><td>10–12</td><td>MCP hub, per-PM keys, internal scope</td><td>Connect your own Claude, ask it questions</td><td><b>C.</b> Ask the hub</td></tr>
+      <tr><td>12–15</td><td>Meeting notes read from the Drive folder, batch review, client to-dos, decisions, ideas</td><td>Share the Meet notes folder, run one real call with notes on</td><td>Meeting actions become drafts</td></tr>
+      <tr><td>15–18</td><td>Scope gate, new-page chain, asset links carried forward, graphic → dev follow-up, weekly ideas resurface</td><td>Walk through a real new-page request</td><td>Full routing rules live</td></tr>
+      <tr><td>18–22</td><td>Soak on live traffic, fix, tune the filter, spend limit, monitoring</td><td>Watch #pm-review and Staging, say what looks wrong</td><td></td></tr>
       <tr><td>22–24</td><td>Handover, team habits, review-everything mode on</td><td>Brief the team</td><td><b>D.</b> Live</td></tr>
     </tbody>
   </table>
+
+  <h3>If something slips</h3>
+  <p>Features slip before soak does, in this order: the weekly ideas resurface, then carrying asset links forward, then the Staging list (Slack review works alone), then meeting notes (forward the notes doc by hand for a day). The weekly per-client digest and the approval-loop nudges come in the days after go-live, because they need live data to be worth building.</p>
 
   <h3>What effort cannot compress</h3>
   <ul>

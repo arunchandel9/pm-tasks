@@ -232,7 +232,7 @@ messages:
 | Reply to source | **Correction.** Default acknowledgement is internal: an emoji reaction on the message + card link in `#pm-review`. No automatic email reply to clients. Client-facing acknowledgement is opt-in per client with fixed, PM-approved wording. |
 | Assignee + SLA | Default owner from the map. Default SLA per request type in config (working days); P1 has its own. Due date set at creation. EOD gains an **Overdue** bucket. |
 | Stage handoff | On stage completion the hub copies asset links from the finished card to the next card. No attachments → it asks the designer in a card comment instead of moving on. |
-| Kill switch + shadow mode | One toggle pauses all intake, one per channel; paused messages queue, never vanish. Shadow mode = review-everything with Slack as the decision surface, plus "approve all pending". A Pulp staging list is available if boards are internal-only (drafts on a client-visible board would leak). |
+| Kill switch + shadow mode | One toggle pauses all intake, one per channel; paused messages queue, never vanish. Shadow mode = every draft goes to `#pm-review` **and** is created as a real card in a **Staging** list on the right board (Pulp is internal-only, confirmed, so nothing leaks). Approve in Slack, or drag the card out of Staging; either counts, one state. Bulk days are a drag-select. |
 | Weekly per-client digest | Friday, per client: done / in progress / waiting on client / overdue. Sent to the PM as a draft to forward or reuse in reporting. |
 | Source retention | Already stored in full in the hub. Addition: the card description carries the quoted original text, not only the link. |
 
@@ -274,31 +274,38 @@ Waiting on client (N) [Client] TASK-118  preview sent Tue, no reply
 Updates, no task (N) …
 ```
 
-## 8. Build order: 24 working hours, two people
+## 8. Build order: 24 working hours, two people, everything in
 
 Not a calendar. Twenty-four hours of build with both of us on it (two long days or
 three focused sessions). Admin steps run in parallel and each blocks the build if it
-waits.
+waits. The team-review additions are built inside the passes that touch the same
+code (priority, SLA, assignee, staging → create step; kill switch → intake; scope
+gate → routing flag; three-way thread → dedupe), about 3 hours absorbed by denser
+middle blocks and one hour taken from the hub block. Soak goes up, not down.
 
 | Hours | Built | Arun, in parallel | Milestone |
 |---|---|---|---|
-| 0–1 | Scaffold, schema, config | Slack app (manifest provided), Vercel project, Neon, API key, Pulp access, client list | |
-| 1–4 | Slack intake, noise filter, extract + classify prompts, `#pm-review` buttons | App into a test channel, real messages | Drafts in review |
-| 4–6 | Pulp create card, sheet writer, thread reply | Board/list names, sheet layout | **A.** Slack → card, row, reply |
-| 6–8 | Gmail intake, email filter, `#intake` share, `/task` | Mailbox access, CC a real thread | All channels feeding |
-| 8–10 | Status sync (poll Pulp every minute until the webhook exists), EOD summary | Move a card, read the summary | **B.** Sheet self-updates |
-| 10–13 | MCP hub, per-PM keys, internal scope | Connect own Claude, ask questions | **C.** Ask the hub |
-| 13–16 | Meet notes from the Drive folder, batch review, client to-dos, decisions, ideas | Share the notes folder, one real call with notes on | Meeting actions → drafts |
-| 16–19 | New-page chain, graphic → dev follow-up, weekly ideas resurface | Walk through a real new-page ask | Full routing live |
-| 19–22 | Soak on live traffic, fixes, filter tuning, spend limit, monitoring | Watch `#pm-review` | |
+| 0–1 | Scaffold, schema, config, Config tab in the PM sheet | Slack app (manifest provided), Vercel, Neon, API key, Pulp access, client list into the Config tab | |
+| 1–4 | Slack intake, noise filter, kill switch, extract + classify prompts, P1 keywords + instant ping, `#pm-review` buttons | App into a test channel, real messages | Drafts in review |
+| 4–6 | Pulp create card (owner, priority, due date from SLA), Staging list, sheet writer, internal ack | Board/list names, add a Staging list per board | **A.** Slack → card, row, ack |
+| 6–8 | Gmail intake, email filter, `#intake` share, `/task`, three-way thread handling | Mailbox access, CC a real thread, reply "any update?" | All channels feeding |
+| 8–10 | Status sync (poll until webhook), drag-out-of-Staging = approve, EOD with Overdue + Waiting on client | Move a card, drag one out of Staging, read the summary | **B.** Sheet self-updates |
+| 10–12 | MCP hub, per-PM keys, internal scope | Connect own Claude, ask questions | **C.** Ask the hub |
+| 12–15 | Meet notes from the Drive folder, batch review, client to-dos, decisions, ideas | Share the notes folder, one real call with notes on | Meeting actions → drafts |
+| 15–18 | Scope gate, new-page chain, asset links carried forward, graphic → dev follow-up, weekly ideas resurface | Walk through a real new-page ask | Full routing live |
+| 18–22 | Soak on live traffic, fixes, filter tuning, spend limit, monitoring | Watch `#pm-review` and Staging | |
 | 22–24 | Handover, team habits, review-everything on | Brief the team | **D.** Live |
+
+**Cut order if something slips** (features before soak): weekly ideas resurface →
+asset links carried forward → Staging list (Slack review alone works) → Meet notes
+(forward the notes doc by hand for a day). Weekly per-client digest and approval-loop
+nudges land in the days after go-live; they need live data first.
 
 **Cannot be compressed by effort:**
 
 - *Google's side of meetings.* Full transcripts via the Meet + Workspace Events APIs
   need a Cloud project, consent screens and a Workspace admin. Day one uses the
   Gemini notes doc in the Drive "Meet Recordings" folder, polled every few minutes.
-  Transcripts are a later upgrade.
 - *The review gate.* Opens on evidence: per request type, once 30 approvals have gone
   through with ≥95% unedited, and never sooner than 3 days. Meetings always reviewed.
 
