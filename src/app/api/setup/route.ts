@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cronAuthorized } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { SCHEMA_SQL } from "@/lib/schema";
+import { splitSchema } from "@/lib/schema-split";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   if (!cronAuthorized(req)) return new NextResponse("unauthorized", { status: 401 });
 
-  const statements = SCHEMA_SQL.split(/;\s*\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("--"));
+  const statements = splitSchema(SCHEMA_SQL);
   let applied = 0;
   try {
     for (const stmt of statements) {
