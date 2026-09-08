@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifySlackSignature, web } from "@/lib/slack";
+import { verifySlackSignature, web, isStaffUser, homeTeamId } from "@/lib/slack";
 import { slackToMessage, type SlackMessageEvent } from "@/lib/normalize/slack";
 import { slackNoise } from "@/lib/filter/noise";
 import { noise, env } from "@/lib/config";
@@ -11,7 +11,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * One endpoint for Slack: URL verification, message events, slash command, and button clicks.
+ * One endpoint for Slack across every workspace the app is installed in:
+ * URL verification, message events, slash command, and button clicks.
  * Slack expects a 200 within 3 seconds; the pipeline runs after the ack.
  */
 export async function POST(req: Request) {
@@ -22,7 +23,6 @@ export async function POST(req: Request) {
 
   const ctype = req.headers.get("content-type") ?? "";
 
-  // Interactive components and slash commands arrive form-encoded.
   if (ctype.includes("application/x-www-form-urlencoded")) {
     const form = new URLSearchParams(raw);
     const payload = form.get("payload");
@@ -35,26 +35,23 @@ export async function POST(req: Request) {
   if (body.type === "url_verification") return NextResponse.json({ challenge: body.challenge });
   if (body.type !== "event_callback") return NextResponse.json({ ok: true });
 
-  // Slack retries on slow responses; we are idempotent on (channel, ts) so a retry is harmless.
   const ev = body.event as SlackMessageEvent;
   if (ev.type !== "message") return NextResponse.json({ ok: true });
+  const teamId: string | null = body.team_id ?? ev.team ?? null;
 
-  // Vercel keeps the function alive until the promise settles; Slack gets its 200 immediately.
-  void handleMessageEvent(ev).catch((e) => console.error("slack event failed", e));
+  // Slack retries on slow responses; (channel, ts) is unique so a retry is harmless.
+  void handleMessageEvent(ev, teamId).catch((e) => console.error("slack event failed", e));
   return NextResponse.json({ ok: true });
 }
 
-async function slackContext() {
+async function handleMessageEvent(ev: SlackMessageEvent, teamId: string | null) {
   const clients = await allClients();
-  const staff = await getSetting<string[]>("staff_slack_user_ids", []);
+  const home = await homeTeamId();
   const intakeId = await getSetting<string | null>("intake_channel_id", null);
-  const workspaceUrl = await getSetting<string>("workspace_url", "https://slack.com");
-  return { clients, staffUserIds: staff, intakeChannelId: intakeId, workspaceUrl };
-}
+  const senderIsStaff = ev.user ? await isStaffUser(teamId, ev.user) : false;
+  const workspaceUrl = await getSetting<string | null>(`workspace_url:${teamId}`, null);
 
-async function handleMessageEvent(ev: SlackMessageEvent) {
-  const ctx = await slackContext();
-  const m = slackToMessage(ev, ctx);
+  const m = slackToMessage(ev, { teamId, homeTeamId: home, clients, senderIsStaff, intakeChannelId: intakeId, workspaceUrl });
   const isIntake = m.channel === "intake";
 
   let threadRootIsRequest = false;
@@ -78,15 +75,15 @@ async function handleMessageEvent(ev: SlackMessageEvent) {
 }
 
 async function handleSlashCommand(form: URLSearchParams) {
-  // /task <text>  → treated as a staff-submitted intake message. The bot asks which client if it can't tell.
+  // /task <text>  → a staff-submitted intake message. Client from the workspace, or from the client name in the text.
   const text = (form.get("text") ?? "").trim();
   const user = form.get("user_id") ?? "unknown";
-  const channel = form.get("channel_id") ?? "";
-  if (!text) return NextResponse.json({ response_type: "ephemeral", text: "Usage: /task <what the client asked for>. Add the client name if the channel isn't theirs." });
-  const ctx = await slackContext();
-  const client = ctx.clients.find((c) => c.slackChannels.includes(channel)) ?? ctx.clients.find((c) => text.toLowerCase().includes(c.name.toLowerCase())) ?? null;
+  const teamId = form.get("team_id");
+  if (!text) return NextResponse.json({ response_type: "ephemeral", text: "Usage: /task <what the client asked for>. Add the client name if this isn't their workspace." });
+  const clients = await allClients();
+  const client = clients.find((c) => c.slackTeamId === teamId) ?? clients.find((c) => text.toLowerCase().includes(c.name.toLowerCase())) ?? null;
   const m = {
-    channel: "task_cmd" as const, externalId: `${user}:${Date.now()}`, clientId: client?.id ?? null,
+    channel: "task_cmd" as const, externalId: `${user}:${Date.now()}`, teamId, clientId: client?.id ?? null,
     scope: client ? client.scope : ("unknown" as const), sender: user, senderIsStaff: true, sentAt: new Date(),
     text, permalink: null, threadRef: null, raw: Object.fromEntries(form.entries()),
   };
@@ -94,7 +91,7 @@ async function handleSlashCommand(form: URLSearchParams) {
   return NextResponse.json({ response_type: "ephemeral", text: client ? `Got it for ${client.name}. It will appear in ${env.reviewChannel()}.` : `Got it. I couldn't tell the client, so it will appear in ${env.reviewChannel()} for you to pick.` });
 }
 
-async function handleInteraction(payload: { type: string; user?: { id: string; username?: string }; actions?: Array<{ action_id: string; value?: string }>; response_url?: string; message?: { ts: string }; channel?: { id: string } }) {
+async function handleInteraction(payload: { type: string; team?: { id: string }; user?: { id: string; username?: string }; actions?: Array<{ action_id: string; value?: string }>; message?: { ts: string }; channel?: { id: string } }) {
   const action = payload.actions?.[0];
   const who = payload.user?.username ?? payload.user?.id ?? "unknown";
   if (!action) return NextResponse.json({ ok: true });
@@ -102,7 +99,7 @@ async function handleInteraction(payload: { type: string; user?: { id: string; u
   const finish = async (line: string) => {
     if (payload.channel?.id && payload.message?.ts) {
       try {
-        await web().chat.update({ channel: payload.channel.id, ts: payload.message.ts, text: line, blocks: [{ type: "section", text: { type: "mrkdwn", text: line } }] });
+        await (await web(payload.team?.id ?? null)).chat.update({ channel: payload.channel.id, ts: payload.message.ts, text: line, blocks: [{ type: "section", text: { type: "mrkdwn", text: line } }] });
       } catch (e) { console.error("chat.update failed", e); }
     }
   };
@@ -125,12 +122,11 @@ async function handleInteraction(payload: { type: string; user?: { id: string; u
       }
       case "merge":
       case "edit":
-        // Modal flows land at hour 3; until then, tell the person what to do.
         return NextResponse.json({ response_type: "ephemeral", text: "Edit and Merge open a form in the next build. For now: Approve, or Not a task, and fix the card in Pulp." });
       case "make_task":
         await sql()`update messages set skip_reason = null where id = ${action.value!}`;
-        await finish(`↪️ Marked as a task by ${who}; it will be processed on the next tick.`);
         await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: action.value })}::jsonb)`;
+        await finish(`↪️ Marked as a task by ${who}; it will be processed on the next tick.`);
         break;
       case "dismiss_message":
         await sql()`update messages set skip_reason = 'dismissed_by_human' where id = ${action.value!}`;

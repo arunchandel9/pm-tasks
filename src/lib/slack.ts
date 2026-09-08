@@ -4,11 +4,77 @@ import { env } from "./config";
 import { sql } from "./db";
 import type { Client, Draft, Message, RouteDecision } from "./types";
 
-let _web: WebClient | null = null;
-export function web(): WebClient {
-  if (!_web) _web = new WebClient(process.env.SLACK_BOT_TOKEN);
-  return _web;
+// ---- one app, many workspaces: a token per team_id ----
+
+const tokenCache = new Map<string, { token: string; at: number }>();
+
+async function tokenFor(teamId: string | null): Promise<string> {
+  if (teamId) {
+    const hit = tokenCache.get(teamId);
+    if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.token;
+    const rows = await sql()`select bot_token from slack_workspaces where team_id = ${teamId}`;
+    if (rows.length) {
+      tokenCache.set(teamId, { token: rows[0].bot_token as string, at: Date.now() });
+      return rows[0].bot_token as string;
+    }
+  }
+  const fallback = process.env.SLACK_BOT_TOKEN;
+  if (!fallback) throw new Error(`no Slack token for workspace ${teamId ?? "(none)"}; install the app there first`);
+  return fallback;
 }
+
+/** WebClient for a workspace. Home workspace (MangoEyes) when teamId is null. */
+export async function web(teamId: string | null = null): Promise<WebClient> {
+  const id = teamId ?? (await homeTeamId());
+  return new WebClient(await tokenFor(id));
+}
+
+let homeCache: { id: string | null; at: number } | null = null;
+export async function homeTeamId(): Promise<string | null> {
+  if (homeCache && Date.now() - homeCache.at < 5 * 60 * 1000) return homeCache.id;
+  const rows = await sql()`select team_id from slack_workspaces where is_home order by installed_at limit 1`;
+  const id = rows.length ? (rows[0].team_id as string) : null;
+  homeCache = { id, at: Date.now() };
+  return id;
+}
+
+export async function saveInstallation(p: { teamId: string; teamName: string | null; botToken: string; botUserId: string | null }): Promise<{ isHome: boolean }> {
+  const existing = await sql()`select count(*)::int as n from slack_workspaces`;
+  // The first workspace installed is the home workspace (MangoEyes). Can be changed via settings/setup.
+  const isHome = Number(existing[0].n) === 0;
+  await sql()`
+    insert into slack_workspaces (team_id, team_name, bot_token, bot_user_id, is_home)
+    values (${p.teamId}, ${p.teamName}, ${p.botToken}, ${p.botUserId}, ${isHome})
+    on conflict (team_id) do update set team_name = excluded.team_name, bot_token = excluded.bot_token, bot_user_id = excluded.bot_user_id, installed_at = now()`;
+  tokenCache.delete(p.teamId);
+  homeCache = null;
+  return { isHome };
+}
+
+// ---- staff detection by email domain (user IDs differ per workspace) ----
+
+const STAFF_DOMAINS = () => (process.env.STAFF_EMAIL_DOMAINS || "mangoeyesagency.com").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean);
+
+export async function isStaffUser(teamId: string | null, userId: string): Promise<boolean> {
+  if (!teamId) return false;
+  const cached = await sql()`select is_staff, seen_at from slack_users where team_id = ${teamId} and user_id = ${userId}`;
+  if (cached.length && Date.now() - new Date(cached[0].seen_at as string).getTime() < 7 * 24 * 3600 * 1000) return cached[0].is_staff as boolean;
+  let email: string | null = null, isBot = false;
+  try {
+    const res = await (await web(teamId)).users.info({ user: userId });
+    email = res.user?.profile?.email?.toLowerCase() ?? null;
+    isBot = !!res.user?.is_bot;
+  } catch (e) {
+    console.error("users.info failed", (e as Error).message);
+  }
+  const isStaff = !!email && STAFF_DOMAINS().some((d) => email!.endsWith("@" + d));
+  await sql()`
+    insert into slack_users (team_id, user_id, email, is_staff, is_bot, seen_at) values (${teamId}, ${userId}, ${email}, ${isStaff}, ${isBot}, now())
+    on conflict (team_id, user_id) do update set email = excluded.email, is_staff = excluded.is_staff, is_bot = excluded.is_bot, seen_at = now()`;
+  return isStaff;
+}
+
+// ---- request verification ----
 
 export function verifySlackSignature(rawBody: string, timestamp: string, signature: string): boolean {
   const secret = process.env.SLACK_SIGNING_SECRET;
@@ -20,18 +86,20 @@ export function verifySlackSignature(rawBody: string, timestamp: string, signatu
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+// ---- posting ----
+
 function slackChannelAndTs(m: Message): { channel: string; ts: string } | null {
   if (m.channel !== "slack" && m.channel !== "intake") return null;
   const [channel, ts] = m.externalId.split(":");
   return channel && ts ? { channel, ts } : null;
 }
 
-/** Internal acknowledgement: a reaction on the source message. Never a client-facing reply. */
+/** Internal acknowledgement: a reaction on the source message in its own workspace. Never a client-facing reply. */
 export async function addReaction(m: Message, name: string): Promise<void> {
   const ref = slackChannelAndTs(m);
   if (!ref) return;
   try {
-    await web().reactions.add({ channel: ref.channel, timestamp: ref.ts, name });
+    await (await web(m.teamId)).reactions.add({ channel: ref.channel, timestamp: ref.ts, name });
   } catch {
     /* already reacted or no permission: not worth failing the pipeline */
   }
@@ -48,7 +116,9 @@ function sourceLine(m: Message): string {
   return m.permalink ? `From ${where} · ${m.sender} · <${m.permalink}|open message>` : `From ${where} · ${m.sender}`;
 }
 
+/** Review items always go to the home workspace's #pm-review. */
 export async function postReview(p: ReviewPost): Promise<void> {
+  const home = await web(null);
   const channel = env.reviewChannel();
   const clientName = p.client?.name ?? "Unknown client";
   const scopeTag = p.client?.scope === "internal" ? " · internal" : "";
@@ -56,7 +126,7 @@ export async function postReview(p: ReviewPost): Promise<void> {
   if (p.kind === "draft") {
     const conf = p.confidence.toFixed(2);
     const pulpLine = p.taskId ? "Card created in Staging." : "Card not created yet (Pulp not configured).";
-    await web().chat.postMessage({
+    await home.chat.postMessage({
       channel,
       text: `${clientName}: ${p.draft.title}`,
       blocks: [
@@ -78,7 +148,7 @@ export async function postReview(p: ReviewPost): Promise<void> {
   }
 
   if (p.kind === "needs_human") {
-    await web().chat.postMessage({
+    await home.chat.postMessage({
       channel,
       text: `${clientName}: needs a person (${p.why})`,
       blocks: [
@@ -98,7 +168,7 @@ export async function postReview(p: ReviewPost): Promise<void> {
   }
 
   const label = p.kind === "possible_duplicate" ? "Possible duplicate" : "Change to an existing task";
-  await web().chat.postMessage({
+  await home.chat.postMessage({
     channel,
     text: `${clientName}: ${label}`,
     blocks: [
@@ -118,7 +188,7 @@ export async function postReview(p: ReviewPost): Promise<void> {
 }
 
 export async function postP1Ping(p: { requestId: string; client: Client | null; title: string; message: Message; reason: string | null }): Promise<void> {
-  await web().chat.postMessage({
+  await (await web(null)).chat.postMessage({
     channel: env.p1Channel(),
     text: `🔴 P1 · ${p.client?.name ?? "Unknown client"} · ${p.title}`,
     blocks: [
@@ -128,7 +198,7 @@ export async function postP1Ping(p: { requestId: string; client: Client | null; 
   });
 }
 
-/** A nudge or follow-up on an existing task: comment on the card (via tasks table) and note in review thread. */
+/** A nudge or follow-up on an existing task: queue a card comment and mark the source message. */
 export async function postThreadFollowupComment(p: { taskId: string | null; requestId: string; message: Message; flag?: "client_waiting" }): Promise<void> {
   await sql()`
     insert into queue (kind, payload) values ('card_comment', ${JSON.stringify({ taskId: p.taskId, requestId: p.requestId, text: p.message.text, permalink: p.message.permalink, flag: p.flag ?? null })}::jsonb)`;

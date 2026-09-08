@@ -7,6 +7,7 @@ export type Department = "dev" | "content" | "design" | "seo" | "general" | "int
 export interface Message {
   channel: Channel;
   externalId: string;
+  teamId: string | null;      // Slack workspace the message came from
   clientId: string | null;
   scope: Scope;
   sender: string;
@@ -34,6 +35,7 @@ export interface Client {
   whatsappNumbers: string[];
   boards: Record<string, BoardTarget>;
   clientFacingAck: boolean;
+  slackTeamId?: string | null;
 }
 
 export interface RequestTypeRule {

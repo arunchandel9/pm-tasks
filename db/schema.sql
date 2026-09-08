@@ -22,7 +22,30 @@ create table if not exists clients (
   whatsapp_numbers text[] not null default '{}',
   boards           jsonb  not null default '{}',     -- {dev:{board,list,staging,assignee}, content:{...}, design:{...}, seo:{...}}
   client_facing_ack boolean not null default false,
+  slack_team_id    text,                             -- one workspace per client
   updated_at       timestamptz not null default now()
+);
+alter table clients add column if not exists slack_team_id text;
+
+-- One row per Slack workspace the app is installed in (MangoEyes' own + one per client).
+create table if not exists slack_workspaces (
+  team_id      text primary key,
+  team_name    text,
+  bot_token    text not null,
+  bot_user_id  text,
+  is_home      boolean not null default false,       -- the MangoEyes workspace (#pm-review, #intake live here)
+  installed_at timestamptz not null default now()
+);
+
+-- Cached Slack users so staff detection (by email domain) costs one API call per person.
+create table if not exists slack_users (
+  team_id   text not null,
+  user_id   text not null,
+  email     text,
+  is_staff  boolean not null default false,
+  is_bot    boolean not null default false,
+  seen_at   timestamptz not null default now(),
+  primary key (team_id, user_id)
 );
 
 -- Every inbound message, whether or not it became a request.

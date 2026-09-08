@@ -15,16 +15,30 @@ export interface SlackMessageEvent {
 }
 
 export interface SlackContext {
+  teamId: string | null;         // workspace the event came from
+  homeTeamId: string | null;     // MangoEyes workspace
   clients: Client[];
-  staffUserIds: string[];
+  senderIsStaff: boolean;
   intakeChannelId: string | null;
-  workspaceUrl: string; // e.g. https://mangoeyes.slack.com
+  workspaceUrl: string | null;   // e.g. https://clinicx.slack.com, for permalinks
 }
 
-export function resolveSlackClient(channel: string, clients: Client[]): { client: Client | null; scope: Scope } {
-  const c = clients.find((x) => x.slackChannels.includes(channel)) ?? null;
-  if (!c) return { client: null, scope: "unknown" };
-  return { client: c, scope: c.scope };
+/**
+ * One workspace per client: resolve by team first, then by explicit channel list.
+ * The home workspace resolves to the internal client if one is configured.
+ */
+export function resolveSlackClient(teamId: string | null, channel: string, clients: Client[], homeTeamId: string | null): { client: Client | null; scope: Scope } {
+  const byChannel = clients.find((x) => x.slackChannels.includes(channel));
+  if (byChannel) return { client: byChannel, scope: byChannel.scope };
+  if (teamId) {
+    const byTeam = clients.find((x) => x.slackTeamId === teamId);
+    if (byTeam) return { client: byTeam, scope: byTeam.scope };
+    if (teamId === homeTeamId) {
+      const internal = clients.find((x) => x.scope === "internal");
+      if (internal) return { client: internal, scope: "internal" };
+    }
+  }
+  return { client: null, scope: "unknown" };
 }
 
 /** A shared message into #intake carries the original as an attachment; prefer that text and link. */
@@ -35,18 +49,21 @@ function sharedContent(ev: SlackMessageEvent): { text: string; permalink: string
 }
 
 export function slackToMessage(ev: SlackMessageEvent, ctx: SlackContext): Message {
-  const isIntake = ctx.intakeChannelId !== null && ev.channel === ctx.intakeChannelId;
+  const isIntake = ctx.intakeChannelId !== null && ev.channel === ctx.intakeChannelId && ctx.teamId === ctx.homeTeamId;
   const shared = isIntake ? sharedContent(ev) : null;
-  const { client, scope } = resolveSlackClient(ev.channel, ctx.clients);
+  const { client, scope } = isIntake
+    ? { client: null as Client | null, scope: "unknown" as Scope }
+    : resolveSlackClient(ctx.teamId, ev.channel, ctx.clients, ctx.homeTeamId);
   const text = shared?.text || ev.text || "";
-  const permalink = shared?.permalink ?? `${ctx.workspaceUrl}/archives/${ev.channel}/p${ev.ts.replace(".", "")}`;
+  const permalink = shared?.permalink ?? (ctx.workspaceUrl ? `${ctx.workspaceUrl}/archives/${ev.channel}/p${ev.ts.replace(".", "")}` : null);
   return {
     channel: isIntake ? "intake" : "slack",
     externalId: `${ev.channel}:${ev.ts}`,
+    teamId: ctx.teamId,
     clientId: client?.id ?? null,
-    scope: isIntake && !client ? "unknown" : scope,
+    scope,
     sender: ev.user ?? ev.bot_id ?? "unknown",
-    senderIsStaff: !!ev.user && ctx.staffUserIds.includes(ev.user),
+    senderIsStaff: ctx.senderIsStaff,
     sentAt: new Date(parseFloat(ev.ts) * 1000),
     text,
     permalink,

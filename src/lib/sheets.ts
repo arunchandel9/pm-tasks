@@ -18,7 +18,7 @@ export const sheetsConfigured = () => !!process.env.GOOGLE_SERVICE_ACCOUNT_B64 &
 
 /**
  * Config tab → clients. Expected header row (order-insensitive, case-insensitive):
- * id | name | scope | slack_channels | email_domains | whatsapp_numbers | dev_board | dev_list | dev_staging | dev_assignee | content_board | ... | client_facing_ack
+ * id | name | scope | slack_team_id | slack_channels | email_domains | whatsapp_numbers | dev_board | dev_list | dev_staging | dev_assignee | content_board | ... | client_facing_ack
  * Lists are comma-separated. Departments: dev, content, design, seo, scope, internal.
  */
 export async function readConfigTab(): Promise<{ clients: Client[]; errors: string[] }> {
@@ -51,6 +51,7 @@ export async function readConfigTab(): Promise<{ clients: Client[]; errors: stri
       slackChannels: list(get("slack_channels")), emailDomains: list(get("email_domains")).map((d) => d.toLowerCase()),
       whatsappNumbers: list(get("whatsapp_numbers")), boards,
       clientFacingAck: /^(true|yes|1)$/i.test(get("client_facing_ack")),
+      slackTeamId: get("slack_team_id") || null,
     });
   }
   return { clients, errors };

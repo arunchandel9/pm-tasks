@@ -48,6 +48,7 @@ type ClientRow = {
   slack_channels: string[]; email_domains: string[]; whatsapp_numbers: string[];
   boards: Record<string, { board: string; list: string; staging?: string; assignee?: string }>;
   client_facing_ack: boolean;
+  slack_team_id: string | null;
 };
 
 function toClient(r: ClientRow): Client {
@@ -56,6 +57,7 @@ function toClient(r: ClientRow): Client {
     slackChannels: r.slack_channels ?? [], emailDomains: r.email_domains ?? [],
     whatsappNumbers: r.whatsapp_numbers ?? [], boards: r.boards ?? {},
     clientFacingAck: r.client_facing_ack,
+    slackTeamId: r.slack_team_id,
   };
 }
 
@@ -66,13 +68,14 @@ export async function allClients(): Promise<Client[]> {
 
 export async function upsertClient(c: Client): Promise<void> {
   await sql()`
-    insert into clients (id, name, scope, slack_channels, email_domains, whatsapp_numbers, boards, client_facing_ack)
+    insert into clients (id, name, scope, slack_channels, email_domains, whatsapp_numbers, boards, client_facing_ack, slack_team_id)
     values (${c.id}, ${c.name}, ${c.scope}, ${c.slackChannels}, ${c.emailDomains}, ${c.whatsappNumbers},
-            ${JSON.stringify(c.boards)}::jsonb, ${c.clientFacingAck})
+            ${JSON.stringify(c.boards)}::jsonb, ${c.clientFacingAck}, ${c.slackTeamId ?? null})
     on conflict (id) do update set
       name = excluded.name, scope = excluded.scope, slack_channels = excluded.slack_channels,
       email_domains = excluded.email_domains, whatsapp_numbers = excluded.whatsapp_numbers,
-      boards = excluded.boards, client_facing_ack = excluded.client_facing_ack, updated_at = now()`;
+      boards = excluded.boards, client_facing_ack = excluded.client_facing_ack,
+      slack_team_id = excluded.slack_team_id, updated_at = now()`;
 }
 
 // ---- queue ----

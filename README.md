@@ -22,17 +22,13 @@ Vercel project → import this repo → set the env vars from `.env.example` →
 
 ## Slack
 
-Create the app from `slack-manifest.yaml`, replace `YOUR-VERCEL-DOMAIN`, install to the workspace, then set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. Add the bot to each client channel, to `#pm-review`, and to `#intake`.
+One workspace per client. Create the app once from `slack-manifest.yaml`, set `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET` in Vercel, activate distribution, then open `https://pm-tasks.vercel.app/api/slack/install` while signed in to each workspace (MangoEyes first: it becomes the home workspace where `#pm-review` and `#intake` live). Tokens are stored per workspace. Invite the bot to channels with `/invite @Task Hub`.
 
-Set these once in the `settings` table (or via a small script at hour 1):
-
-- `staff_slack_user_ids`: `["U…", "U…"]`
-- `intake_channel_id`: `"C…"`
-- `workspace_url`: `"https://mangoeyes.slack.com"`
+Seed once via `/api/setup?intake_channel_id=C…` (and `home_team_id=T…` if the first install wasn't MangoEyes). Staff are recognised by email domain (`STAFF_EMAIL_DOMAINS`).
 
 ## Client map
 
-Lives in the `Config` tab of the PM sheet and is mirrored every minute. Columns: `id, name, scope, slack_channels, email_domains, whatsapp_numbers, dev_board, dev_list, dev_staging, dev_assignee, content_board, …, scope_board, scope_list, client_facing_ack`. See `config/clients.example.yaml` for the shape.
+Lives in the `Config` tab of the PM sheet and is mirrored every minute. Columns: `id, name, scope, slack_team_id, slack_channels, email_domains, whatsapp_numbers, dev_board, dev_list, dev_staging, dev_assignee, content_board, …, scope_board, scope_list, client_facing_ack`. See `config/clients.example.yaml` for the shape.
 
 ## Kill switch
 

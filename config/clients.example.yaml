@@ -7,7 +7,8 @@ clients:
   - id: clinic-x
     name: Clinic X
     scope: client
-    slack_channels: [C0123456789]
+    slack_team_id: T0CLINICX     # the client's own workspace; every channel in it belongs to this client
+    slack_channels: []           # optional explicit channel IDs (override), usually empty
     email_domains: [clinicx.co.uk]
     whatsapp_numbers: ["+447700900000"]
     client_facing_ack: false
@@ -21,12 +22,9 @@ clients:
   - id: internal
     name: MangoEyes internal
     scope: internal
-    slack_channels: [C0INTERNAL1, C0IDEAS0001]
+    slack_team_id: T0MANGOEYES   # the home workspace
     email_domains: [mangoeyesagency.com]
     boards:
       internal: { board: "board_id", list: "To Do", staging: "Staging" }
 
-staff_emails:
-  - arun@mangoeyesagency.com
-staff_slack_user_ids:
-  - U0ARUN00001
+# Staff are recognised by email domain (STAFF_EMAIL_DOMAINS), not by user ID, because IDs differ per workspace.

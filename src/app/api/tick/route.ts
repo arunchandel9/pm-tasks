@@ -90,7 +90,7 @@ async function runJob(kind: string, payload: Record<string, unknown>) {
       const r = rows[0];
       await sql()`delete from messages where id = ${r.id}`; // processMessage re-inserts idempotently
       await processMessage({
-        channel: r.channel, externalId: r.external_id, clientId: r.client_id, scope: r.scope, sender: r.sender,
+        channel: r.channel, externalId: r.external_id, teamId: (r.raw as { team?: string } | null)?.team ?? null, clientId: r.client_id, scope: r.scope, sender: r.sender,
         senderIsStaff: r.sender_is_staff, sentAt: new Date(r.sent_at), text: r.text, permalink: r.permalink, threadRef: r.thread_ref, raw: r.raw,
       }, { skip: false, reason: null });
       return;
