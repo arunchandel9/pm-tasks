@@ -16,9 +16,34 @@ export type ReviewPost =
 
 export const surface = (): "gchat" | "slack" => ((process.env.REVIEW_SURFACE ?? "gchat").toLowerCase() === "slack" ? "slack" : "gchat");
 
+/**
+ * notify (default): the Staging list in Pulp is the approval step. PM Review gets one short line per task, no buttons.
+ * approve: every draft is a card with Approve / Not a task buttons (used automatically while Pulp is not connected,
+ * because then there is no Staging list to approve from).
+ */
+export const reviewMode = (): "notify" | "approve" => ((process.env.REVIEW_MODE ?? "notify").toLowerCase() === "approve" ? "approve" : "notify");
+
 export function sourceLabel(m: Message): string {
   const where = { slack: "Slack", intake: "Intake", email: "Email", task_cmd: "/task", meet: "Meeting" }[m.channel] ?? m.channel;
   return `${where} · ${m.sender}`;
+}
+
+const DEPT: Record<string, string> = { dev: "Dev", content: "Content", design: "Graphics", seo: "SEO", general: "PM", internal: "PM" };
+const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+
+/** One feed line: `🆕 *HOH* · Fix Book Now button on mobile · Dev · P2 · Staging card · Slack, Dr Mehta`. P1 lines start with 🔴. */
+export function draftLine(p: { client: Client | null; title: string; department: string; priority: string; gated: boolean; pulpLink: string | null; message: Message }): string {
+  const icon = p.priority === "P1" ? "🔴 *P1*" : "🆕";
+  const name = `*${p.client?.name ?? "Unknown client"}*${p.client?.scope === "internal" ? " (internal)" : ""}`;
+  const where = p.pulpLink ? `<${p.pulpLink}|Staging card>` : "card pending";
+  const parts = [`${icon} ${name}`, clip(p.title, 90), DEPT[p.department] ?? p.department, p.priority === "P1" ? null : p.priority, p.gated ? "needs scope" : null, where, sourceLabel(p.message).replace(" · ", ", ")];
+  return parts.filter(Boolean).join(" · ");
+}
+
+/** One feed line for a message that belongs to an existing task: noted on that card, nothing new created. */
+export function followupLine(p: { client: Client | null; existingTitle: string; kind: "possible_duplicate" | "followup_change"; message: Message }): string {
+  const what = p.kind === "possible_duplicate" ? "same as" : "update to";
+  return `🔁 *${p.client?.name ?? "Unknown client"}* · "${clip(p.message.text.replace(/\s+/g, " "), 80)}" · ${what} *${clip(p.existingTitle, 60)}* · noted on its card`;
 }
 
 export async function postReview(p: ReviewPost): Promise<void> {

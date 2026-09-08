@@ -25,9 +25,15 @@ Last updated: 2026-09-08 (build day 1).
   PM Review with the outcome. Client-channel messages produce drafts, not ack lines. Client-facing replies: never.
 - **Unanswered client nudge.** Client posts in Slack and no MangoEyes reply → one line in PM Review at 5 min and at
   60 min (`reply_nudge_minutes: [5, 60]`), one per channel per mark, any team reply clears. No model call.
-- **Review.** Everything to PM Review first (shadow mode) + a real card in a Pulp `Staging` list; Approve in Chat or
-  drag out of Staging. Gate opens per request type after 30 approvals with ≥95% unedited, never before day 3.
-  Meetings always reviewed.
+- **Review = Staging in Pulp, not buttons in Chat** (decided 2026-09-08). Every task becomes a real card in the board's
+  `Staging` list; the PM drags it out and assigns it, and that is the approval (sheet row written then, stamp says
+  "drag in Pulp"). PM Review is a short feed, one line per task, all asks from one message in a single post
+  (`🆕 *HOH* · title · Dev · P2 · Staging card · Slack, Dr Mehta`; P1 lines start with 🔴). Messages that belong to an
+  existing task are commented onto that card and get one 🔁 line, nothing new created. Only these still need a
+  person in Chat: "needs a person" cards (unknown client, voice note too long) and the unanswered-client nudges.
+  `REVIEW_MODE=approve` brings back Approve/Not-a-task cards; that mode is used automatically while Pulp is not
+  connected (no Staging list to approve from). No automatic move from Staging to To Do yet: who to assign is
+  undecided; revisit later.
 - **PM Overview sheet** (`1NXjvbfpJB36pb0BkkG08JEcUa35AxQ3PV5Nsj95I9-8`, shared with the service account as Editor).
   Tasks are written into **each client's own tab** under its existing headers
   (S. NO. | TASK | PULP/CARD LINK | DATE ADDED | DUE DATE | PRIORITY | ASSIGNED TO | STATUS | DEPARTMENT | COMMENTS):

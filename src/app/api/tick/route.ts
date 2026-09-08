@@ -57,8 +57,14 @@ export async function GET(req: Request) {
         await sql()`update tasks set list_id = ${card.listId}, staging = false, last_moved_at = now() where id = ${t[0].id}`;
         await sql()`insert into status_events (task_id, from_list, to_list, source) values (${t[0].id}, ${t[0].list_id}, ${card.listId}, 'poll')`;
         if (wasStaging) {
-          // Dragging out of Staging counts as approval.
-          await sql()`update requests r set status = 'created', decided_by = 'pulp:drag', decided_at = now() from tasks t where t.request_id = r.id and t.id = ${t[0].id} and r.status = 'pending_review'`;
+          // Dragging out of Staging is the approval: mark the request, write the sheet row. The card stays where the PM put it.
+          try {
+            const req = await sql()`select r.id from requests r join tasks t on t.request_id = r.id where t.id = ${t[0].id} and r.status in ('pending_review','needs_scope')`;
+            if (req.length) {
+              const { approveRequest } = await import("@/lib/tasks");
+              await approveRequest(String(req[0].id), "pulp:drag", { moveCard: false });
+            }
+          } catch (e) { console.error("drag approval failed", (e as Error).message); }
         }
         // Mirror the move into the client's tab (Status and Date Completed only). Rows are located by Pulp link,
         // so PMs can rearrange rows by hand. Done tasks are moved below the DONE divider.

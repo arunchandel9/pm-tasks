@@ -52,8 +52,11 @@ export async function createStagingCard(p: { requestId: string; client: Client |
   return { id: ins[0].id as string, pulpCardId };
 }
 
-/** Approve: move the card out of Staging into the target list, write the sheet row, mark request created. */
-export async function approveRequest(requestId: string, decidedBy: string): Promise<void> {
+/**
+ * Approve: move the card out of Staging into the target list (unless the PM already dragged it somewhere:
+ * moveCard=false), write the sheet row, mark the request created.
+ */
+export async function approveRequest(requestId: string, decidedBy: string, opts: { moveCard?: boolean } = {}): Promise<void> {
   const rows = await sql()`
     select t.id as task_id, t.pulp_card_id, t.board_id, t.title, t.priority, r.department, r.request_type, r.client_id, r.decided_by,
            c.name as client_name, c.boards, c.sheet_tab, m.channel, m.permalink, m.sender
@@ -69,7 +72,7 @@ export async function approveRequest(requestId: string, decidedBy: string): Prom
   const approver = decidedBy.startsWith("system:") && x.decided_by ? String(x.decided_by) : decidedBy;
   await sql()`update requests set status = 'approved', decided_by = ${approver}, decided_at = coalesce(decided_at, now()) where id = ${requestId}`;
 
-  if (x.task_id && x.pulp_card_id && pulp.configured()) {
+  if (opts.moveCard !== false && x.task_id && x.pulp_card_id && pulp.configured()) {
     const boards = (x.boards ?? {}) as Client["boards"];
     const target = boards[x.department as string];
     const listId = target ? await pulp.findListId(x.board_id as string, target.list) : null;

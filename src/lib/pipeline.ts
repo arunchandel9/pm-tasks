@@ -1,12 +1,12 @@
 import { sql, allClients, channelPaused, enqueue } from "./db";
-import { noise } from "./config";
+import { noise, boards } from "./config";
 import { dedupe, textHash } from "./dedupe";
 import { extract } from "./llm/extract";
 import { classify } from "./llm/classify";
 import { route } from "./route";
 import type { Message, Client } from "./types";
 import { addReaction, postThreadFollowupComment } from "./slack";
-import { postReview, postP1Ping } from "./review";
+import { postReview, postP1Ping, postText, reviewMode, draftLine, followupLine } from "./review";
 import { createStagingCard } from "./tasks";
 
 export interface ProcessResult {
@@ -99,6 +99,9 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
 
   const open = await openRequests(m.clientId);
   const requestIds: string[] = [];
+  // notify mode: one short line per task, all asks from one message in a single post. No buttons; Staging is the approval.
+  const notify = reviewMode() === "notify";
+  const feed: string[] = [];
 
   for (let i = 0; i < ex.asks.length; i++) {
     const a = ex.asks[i];
@@ -135,12 +138,16 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
         await postThreadFollowupComment({ taskId: target.taskId, requestId: target.id, message: m, flag: "client_waiting" });
         continue;
       }
-      if (cl.same_as_kind === "duplicate" && dd.kind === "possible_duplicate") {
-        await postReview({ kind: "possible_duplicate", requestId, client, message: m, duplicateOf: target.id });
+      const kind = cl.same_as_kind === "duplicate" && dd.kind === "possible_duplicate" ? "possible_duplicate" : "followup_change";
+      if (notify) {
+        // Nothing new is created: the message is added as a comment on the existing card and the feed gets one line.
+        // If the PM disagrees, /task in Intake makes it a separate task.
+        await sql()`update requests set status = 'merged', merged_into = ${target.id}, decided_by = 'system:same_thread' where id = ${requestId}`;
+        await postThreadFollowupComment({ taskId: target.taskId, requestId: target.id, message: m });
+        feed.push(followupLine({ client, existingTitle: target.title, kind, message: m }));
         continue;
       }
-      // "change": falls through to review as a follow-up on the existing card.
-      await postReview({ kind: "followup_change", requestId, client, message: m, duplicateOf: target.id });
+      await postReview({ kind, requestId, client, message: m, duplicateOf: target.id });
       continue;
     }
 
@@ -149,12 +156,19 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
       continue;
     }
 
-    // Shadow mode: real card in Staging + Slack review item. Approve in either place.
+    // A real card in the Staging list. Dragging it out (or Approve, in approve mode) is the approval.
     const task = await createStagingCard({ requestId, client, route: r, draft: { title: cl.title, description: cl.description, labels: r.labels }, message: m, quote: a.quote });
+    const pulpLink = task?.pulpCardId ? `${boards().base_url}/board/${r.board}/card/${task.pulpCardId}` : null;
+    if (notify && pulpLink) {
+      feed.push(draftLine({ client, title: cl.title, department: r.department, priority: r.priority, gated: r.gated, pulpLink, message: m }));
+      continue;
+    }
+    // No Staging card exists (Pulp not connected) or approve mode: the card with buttons is the only way to approve.
     await postReview({ kind: "draft", requestId, taskId: task?.id ?? null, client, message: m, route: r, draft: { title: cl.title, description: cl.description, labels: r.labels }, confidence: cl.confidence, reason: cl.confidence_reason });
     if (r.priority === "P1") await postP1Ping({ requestId, client, title: cl.title, message: m, reason: r.priorityReason });
   }
 
+  if (feed.length) await postText(feed.join("\n"));
   await addReaction(m, "eyes");
   return { messageId, outcome: "review", requestIds };
 }
