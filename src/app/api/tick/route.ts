@@ -60,15 +60,24 @@ export async function GET(req: Request) {
           // Dragging out of Staging counts as approval.
           await sql()`update requests r set status = 'created', decided_by = 'pulp:drag', decided_at = now() from tasks t where t.request_id = r.id and t.id = ${t[0].id} and r.status = 'pending_review'`;
         }
-        // Mirror the move into the client's tab (bot-owned cells only).
+        // Mirror the move into the client's tab (Status and Date Completed only). Rows are located by Pulp link,
+        // so PMs can rearrange rows by hand. Done tasks are moved below the DONE divider.
         try {
-          const { sheetsConfigured, updateTaskCells, sheetConfig } = await import("@/lib/sheets");
-          const tabRow = await sql()`select t.sheet_row, s.value as tab from tasks t left join settings s on s.key = 'sheet_tab:' || t.id::text where t.id = ${t[0].id}`;
-          if (sheetsConfigured() && tabRow.length && tabRow[0].sheet_row && tabRow[0].tab) {
-            const listName = (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
-            const done = /done|complete|closed|live/i.test(listName);
-            if (done) await sql()`update tasks set completed_at = now() where id = ${t[0].id} and completed_at is null`;
-            await updateTaskCells(String(tabRow[0].tab), Number(tabRow[0].sheet_row), { stage: done ? sheetConfig().stage_values.done : listName, completed: done ? new Date() : undefined });
+          const { sheetsConfigured, updateTaskCells, sheetConfig, locateTaskRow, moveRowBelowDivider } = await import("@/lib/sheets");
+          const { boards } = await import("@/lib/config");
+          const tabRow = await sql()`select t.sheet_row, t.title, t.board_id, s.value as tab from tasks t left join settings s on s.key = 'sheet_tab:' || t.id::text where t.id = ${t[0].id}`;
+          if (sheetsConfigured() && tabRow.length && tabRow[0].tab) {
+            const tab = String(tabRow[0].tab);
+            const link = `${boards().base_url}/board/${tabRow[0].board_id}/card/${card.id}`;
+            const row = (await locateTaskRow(tab, { pulpLink: link, title: String(tabRow[0].title) })) ?? (tabRow[0].sheet_row ? Number(tabRow[0].sheet_row) : null);
+            if (row) {
+              const listName = (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
+              const done = /done|complete|closed|live/i.test(listName);
+              if (done) await sql()`update tasks set completed_at = now() where id = ${t[0].id} and completed_at is null`;
+              await updateTaskCells(tab, row, { stage: done ? sheetConfig().stage_values.done : listName, completed: done ? new Date() : undefined });
+              const finalRow = done ? await moveRowBelowDivider(tab, row) : row;
+              await sql()`update tasks set sheet_row = ${finalRow} where id = ${t[0].id}`;
+            }
           }
         } catch (e) { console.error("sheet stage update failed", (e as Error).message); }
         synced++;

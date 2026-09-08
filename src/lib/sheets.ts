@@ -210,6 +210,44 @@ export async function insertTaskRow(tab: string, f: TaskFields): Promise<{ row: 
   return { row: rowNumber, wrote };
 }
 
+/** Find a task's current row by its Pulp link (unique), else by title + created date. Rows may have been rearranged by hand. */
+export async function locateTaskRow(tab: string, f: { pulpLink?: string | null; title?: string | null; created?: string | null }): Promise<number | null> {
+  const cfg = sheetConfig();
+  const map = mapHeaders(await tabHeaders(tab), cfg);
+  const rows = await tabRows(tab);
+  const link = (f.pulpLink ?? "").trim();
+  if (link && map.pulp_link !== undefined) {
+    for (let i = cfg.header_row; i < rows.length; i++) if ((rows[i][map.pulp_link] ?? "").trim() === link) return i + 1;
+  }
+  const title = (f.title ?? "").trim().toLowerCase();
+  if (title && map.title !== undefined) {
+    for (let i = cfg.header_row; i < rows.length; i++) {
+      if ((rows[i][map.title] ?? "").trim().toLowerCase() !== title) continue;
+      if (!f.created || map.created === undefined || (rows[i][map.created] ?? "").trim() === f.created) return i + 1;
+    }
+  }
+  return null;
+}
+
+/** Move a row to just below the DONE divider (done tasks live under it). Returns the new row number. */
+export async function moveRowBelowDivider(tab: string, rowNumber: number): Promise<number> {
+  const cfg = sheetConfig();
+  const map = mapHeaders(await tabHeaders(tab), cfg);
+  const rows = await tabRows(tab);
+  const { insertAt } = placement(rows, map, cfg);
+  const dividerIdx = rows.findIndex((r, i) => i > cfg.header_row - 1 && (() => { const t = r.find((c) => c.trim()); return !!t && cfg.done_divider.includes(normHeader(t)) && r.filter((c) => c.trim()).length <= 2; })());
+  if (dividerIdx < 0) return rowNumber;                     // no divider on this tab: leave the row where it is
+  const src = rowNumber - 1;
+  if (src > dividerIdx) return rowNumber;                    // already below
+  void insertAt;
+  const sid = await tabNumericId(tab);
+  await sheets().spreadsheets.batchUpdate({
+    spreadsheetId: sheetId(),
+    requestBody: { requests: [{ moveDimension: { source: { sheetId: sid, dimension: "ROWS", startIndex: src, endIndex: src + 1 }, destinationIndex: dividerIdx + 1 } }] },
+  });
+  return dividerIdx + 1; // after the move the row sits right under the divider (1-based)
+}
+
 /** Update only bot-owned status cells of an existing row: Status, Date Completed, Pulp link. Never priority, assignee or comments. */
 export async function updateTaskCells(tab: string, rowNumber: number, f: { stage?: string; completed?: Date | null; pulp_link?: string }): Promise<void> {
   const cfg = sheetConfig();

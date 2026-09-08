@@ -33,7 +33,8 @@ Last updated: 2026-09-08 (build day 1).
   (S. NO. | TASK | PULP/CARD LINK | DATE ADDED | DUE DATE | PRIORITY | ASSIGNED TO | STATUS | DEPARTMENT | COMMENTS):
   next serial, `DD-MMM-YYYY` dates, department labels (Development/Content/Graphics/SEO/PM), Status "To Do",
   "Task assigned." in Comments, inserted **above the DONE divider**. After creation the hub only updates Status and
-  Date Completed. Priority/Assigned To/Comments are write-once. The **Config** tab is the client directory only
+  Date Completed, locating the row by Pulp link (PMs may rearrange rows freely); a Done task is moved below the
+  DONE divider automatically. Priority/Assigned To/Comments are write-once. The **Config** tab is the client directory only
   (id, name, scope, slack_team_id, aliases, email_domains, whatsapp_numbers, board overrides, client_facing_ack,
   sheet_tab), mirrored into the DB every minute.
 - **Pulp.** `https://pulp.mangoeyes.io`, boards per department shared by all clients: SEO `d4424c02`,
@@ -55,7 +56,7 @@ Last updated: 2026-09-08 (build day 1).
 
 ## Open items (owner: Arun)
 
-1. Config tab: insert `sheet_tab` at AB, paste the 15 client rows (prompt given), set link headers.
+1. ~~Config tab~~ done: 15 client rows, sheet_tab at AB, link headers set (Template renamed; Dr Anil, MangoEyes blank header filled).
 2. First Google Chat live test: `@Task Hub HOH: …` in Intake → drafts in PM Review → Approve → row in
    "HOH - House Of Health". Then `/task`.
 3. Install Slack app into one client workspace; put its T-id in that client's Config row (column D).
