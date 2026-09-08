@@ -20,7 +20,7 @@ what needs a decision.
 | One agent or many | **One app.** One Slack bot, one deployment, one database. The "agents" in the brief are steps inside a single pipeline, each a Claude call with a strict JSON schema. | Multiple independent agents means multiple things to deploy, monitor and debug. Nothing here needs it. |
 | Hosting | **Vercel** (you already have it). Next.js + TypeScript, Neon Postgres (free tier, integrates with Vercel in one click). | Uses what you have. Webhooks and scheduled jobs are all Vercel needs to do. |
 | Scheduling | Vercel Cron, per-minute (we are on **Pro**). | Function time limit on Pro is 800s, far more than a message needs. |
-| Hermes on a VPS | **Considered, not chosen** for the pipeline. Hermes is a conversational agent: it answers when mentioned and decides for itself which tools to call. This system is the opposite: it must silently process *every* message, produce the same structured result every time, dedupe against a database, and never create a card twice. That is a pipeline, not a chat agent. Hermes would also be a second server to keep alive. | The one thing Hermes has that Vercel cannot is a WhatsApp bridge that links to the business phone by QR code (Baileys). It is unofficial and carries account-ban risk on a client-facing number. If WhatsApp forwarding proves too annoying in Phase 1, a tiny bridge like that on a $5 VPS, posting into the Vercel intake endpoint, is the Phase 2 option to evaluate, with the risk stated. |
+| Hermes | **Not the runtime; optional client.** Intake is event-driven: a message arrives, the same fixed steps run, a card is created. Hermes is an always-on assistant that runs code only when its agent decides to, and it cannot run on Vercel, so it adds nothing to intake. The hub connects to Claude and Codex directly over MCP. Hermes is only added, on the VPS, if the team wants to chat with the hub from Slack or Telegram; then it sits beside the system as one more client, never inside it. | Cost is a wash (Hermes is free, the VPS exists, Vercel is paid). The difference is operations and coupling, not money. |
 | Board | **Pulp**, via its API. Since we own Pulp, add **one webhook** in Pulp: "card moved list". That replaces polling for status sync. | Simplest possible status sync. |
 | Source of truth | Postgres owned by the app. Pulp and the sheet are written *from* it. | Dedupe, audit trail, and "why did it do that?" need one place that remembers everything. |
 | Slack | One Slack app, added to the client channels. Free plan is fine: Events API and slash commands work on free. Assumption: those channels live in **MangoEyes's** workspace (clients as guests). If a client channel lives in the client's own workspace, their admin has to install the app, or that client's messages come via forwarding. | |
@@ -325,8 +325,17 @@ not in the room.
 
 ## Appendix A. Why a deterministic pipeline and not Hermes (shareable)
 
-Hermes is a good personal agent. It is the wrong shape for the intake pipeline and
-the hub. The reasons, in order of weight:
+**Short version.** Our app runs on Vercel because intake is event-driven: a message
+arrives, the same fixed steps run, a card is created, and no server needs to stay on.
+Hermes is an always-on assistant that cannot run on Vercel and only executes code
+when its agent decides to, so it adds nothing to intake. The hub connects directly to
+Claude and Codex over MCP, which covers every PM's questions, drafts, and charts. We
+would only add Hermes, on the VPS, if the team wants to chat with the hub from Slack
+or Telegram, and even then it sits beside the system as one more client, never
+inside it. Cost is not the reason: Hermes is free and the VPS exists.
+
+**Longer version.** Hermes is a good personal agent. It is the wrong shape for the
+intake pipeline and the hub. The reasons, in order of weight:
 
 1. **Hermes's memory is notes; this needs a ledger.** Hermes remembers things about
    its operator: preferences, context, learned skills. That memory is unstructured,
@@ -355,9 +364,10 @@ the hub. The reasons, in order of weight:
 6. **Cost and failure are bounded.** Two model calls per message, known in advance.
    On Vercel a failed step stays queued and retries. A Hermes process that dies on a
    VPS at 2am stops intake silently.
-7. **Operations.** Vercel is already ours and needs no babysitting. Hermes needs a
-   server kept alive and updated, and its unofficial WhatsApp bridge carries an
-   account-ban risk on a client-facing number.
+7. **Operations, not money.** Vercel is already ours and needs no babysitting. Our
+   app could run on the VPS too, in an hour; Hermes must, because it is always on.
+   Sharing a box couples intake to Hermes updates. Its unofficial WhatsApp bridge
+   also carries an account-ban risk on a client-facing number.
 
 What Hermes genuinely has over this: a faster first demo, model choice out of the box,
 and the WhatsApp QR bridge. The first is worth a couple of days; the second is a

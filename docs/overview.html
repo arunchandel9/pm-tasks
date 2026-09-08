@@ -501,8 +501,8 @@ Client owes us (1)
   <h2>Why these choices</h2>
   <div class="decisions">
     <div><b>One app, not many agents</b><p>The six "agents" in the brief are steps in one pipeline. Separate agents would mean separate things to deploy, watch, and debug, for no gain.</p></div>
-    <div><b>Vercel, not a VPS</b><p>Already ours, already on Pro. Webhooks and cron are exactly what it does. No server to patch or restart at 2am.</p></div>
-    <div><b>A pipeline, not Hermes</b><p>Hermes is a conversational agent with personal memory. This needs a shared, exact ledger and the same result every time. Hermes stays useful as a client of the hub, with its loop and memory intact.</p></div>
+    <div><b>Vercel, not a VPS</b><p>Intake is event-driven: a message arrives, the same fixed steps run, a card is created. Nothing needs to stay on, so Vercel fits, is already paid for, and has no server to patch at 2am. The same code would run on a VPS in an hour if ever needed.</p></div>
+    <div><b>Why not Hermes</b><p>Hermes is an always-on assistant that runs code only when its agent decides to, and it cannot run on Vercel. That adds nothing to intake. The hub connects to Claude and Codex directly over MCP, which covers every PM's questions, drafts, and charts. Hermes is only added, on the VPS, if the team wants to chat with the hub from Slack or Telegram, and then it sits beside the system as one more client, never inside it.</p></div>
     <div><b>Claude with strict JSON</b><p>Both AI steps return a fixed schema, so outputs can be stored, compared, and scored. Swapping the model later is a two-prompt change.</p></div>
     <div><b>Postgres is the truth</b><p>Pulp and the sheet are views. Dedupe, the audit trail, and "why did it do that" all need one place that remembers everything.</p></div>
     <div><b>Review everything first</b><p>Every draft goes to #pm-review and a Staging list in Pulp (internal-only, so drafts never leak). Approve in either place. The gate opens per request type on evidence: 30 approvals, 95% unedited, never before day 3.</p></div>
