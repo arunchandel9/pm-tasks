@@ -71,9 +71,11 @@ Database (four tables, that's all):
 1. **Normalise.** Any channel → one `Message` shape. Resolve client from a config
    table (Slack channel → client, email domain → client). The model never guesses
    the client.
-2. **Dedupe.** Same client, same text hash → merge silently. Same client, high
-   similarity to an open request → merge and reply "already tracked as TASK-123".
-   Middle band → review queue as "possible duplicate".
+2. **Dedupe.** Same client, same text hash → merge silently. Same client, high text
+   similarity (Postgres `pg_trgm`, no embeddings service) to an open request → merge
+   and reply "already tracked as TASK-123". Grey zone → the classify call is given the
+   open request titles for that client and answers "same as one of these?" in its JSON;
+   a yes goes to review as "possible duplicate".
 3. **Extract.** One Claude call, strict JSON: bullet summary, list of distinct asks
    (a message can contain three), a quote for each, any deadline or URL.
 4. **Classify.** Per ask: department, request type, priority hint, **confidence and
@@ -105,6 +107,37 @@ window for anyone with an assistant.
 Consequence: the schema and the audit trail *are* the product. A hub with one
 duplicate card gives every PM's assistant a confidently wrong answer, which is the
 main reason the intake pipeline must be deterministic rather than an agent loop.
+
+## 4c. Running cost
+
+Only two steps call a model (extract, classify + draft). Everything else is code. The
+hub serves data; a PM's questions to it are answered by *their* assistant on *their*
+subscription, so conversational cost never lands on the API bill.
+
+Per message, about 5,000 input tokens (≈4,000 of them a cached prefix) and ≈700 output
+tokens. First-party Anthropic prices, cache reads at 0.1× input:
+
+| Model | Per message | 500 msgs / month | 20 meetings / month | Monthly |
+|---|---|---|---|---|
+| Haiku 4.5 | ~$0.005 | ~$2.50 | ~$0.40 | ~$3 |
+| **Sonnet 5 (default)** | ~$0.01 | ~$5 | ~$0.70 | ~$6 |
+| Opus 5 | ~$0.025 | ~$12.50 | ~$1.70 | ~$14 |
+
+Rules that keep it there:
+
+- **Code before model.** Staff replies, acknowledgements, bot posts and very short
+  messages never reach a model call. Only client-authored messages above a minimum
+  length enter the pipeline.
+- **No embeddings service.** Dedupe is hash + `pg_trgm` + the classify call.
+- **Prompt caching** on the fixed instructions and routing config.
+- **Tight JSON outputs** with a low output cap; output tokens cost 5× input.
+- **Batch API for meetings** (50% off): they go to review as a batch anyway.
+- **Spend limit** in the Anthropic console; per-call token usage logged to the
+  database and shown in the EOD summary.
+- Model is one config line; switch to Opus if review data shows misclassification.
+
+Everything else is already paid for or free at this volume: Vercel Pro, Neon Postgres
+free tier, Slack free plan, Google APIs.
 
 ## 5. PM sheet contract
 
