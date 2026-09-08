@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cronAuthorized } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { web } from "@/lib/slack";
 import { env } from "@/lib/config";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /** Once a day (Vercel Cron). Created / Moved / Completed / Overdue / Needs a decision / Waiting on client / Updates, no task / Spend. */
 export async function GET(req: Request) {
-  if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) return new NextResponse("unauthorized", { status: 401 });
+  if (!cronAuthorized(req)) return new NextResponse("unauthorized", { status: 401 });
 
   const created = await sql()`
     select coalesce(c.name,'Internal') as client, left(t.id::text,8) as id, r.department, t.title, m.channel, t.priority

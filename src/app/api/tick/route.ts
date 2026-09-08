@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cronAuthorized } from "@/lib/auth";
 import { sql, upsertClient } from "@/lib/db";
 import { readConfigTab, sheetsConfigured } from "@/lib/sheets";
 import { pulp } from "@/lib/pulp";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
  *  3. Poll Pulp for moved cards (until Pulp's own webhook exists).
  */
 export async function GET(req: Request) {
-  if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) return new NextResponse("unauthorized", { status: 401 });
+  if (!cronAuthorized(req)) return new NextResponse("unauthorized", { status: 401 });
   const report: Record<string, unknown> = {};
 
   // 1. Client map

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cronAuthorized } from "@/lib/auth";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { sql } from "@/lib/db";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
  * Applies db/schema.sql and seeds settings passed as query params, e.g. ?intake_channel_id=C0..&workspace_url=https://x.slack.com
  */
 export async function GET(req: Request) {
-  if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) return new NextResponse("unauthorized", { status: 401 });
+  if (!cronAuthorized(req)) return new NextResponse("unauthorized", { status: 401 });
 
   const schema = readFileSync(path.join(process.cwd(), "db", "schema.sql"), "utf8");
   const statements = schema.split(/;\s*\n/).map((s) => s.trim()).filter((s) => s.length > 0 && !s.startsWith("--"));
