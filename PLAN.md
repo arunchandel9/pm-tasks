@@ -26,6 +26,8 @@ what needs a decision.
 | Slack | One Slack app, added to the client channels. Free plan is fine: Events API and slash commands work on free. Assumption: those channels live in **Mangowise's** workspace (clients as guests). If a client channel lives in the client's own workspace, their admin has to install the app, or that client's messages come via forwarding. | |
 | Email | One Gmail inbox (Google Workspace), e.g. `pm@…`. Anything sent or forwarded there is intake. Ad-platform notifications already come by email, so they need no separate integration. | |
 | WhatsApp | **Phase 1: forward.** Staff forward the WhatsApp message to the intake email, or paste it with `/task` in Slack. The WhatsApp Business *app* has no API, so there is no clean way to read it. **Phase 2, optional:** move the business number to WhatsApp Business Platform (Cloud API). Messages then arrive by webhook like Slack, but the phone app stops working for that number and replies go through an inbox tool. Decide after Phase 1 is live. | Forwarding costs 5 seconds per message and needs nothing built. Migrating the number is a real change to how you talk to clients. |
+| Google Meet | **Yes, same pipeline.** After a call, Gemini's notes doc lands in Drive and the transcript is available via the Meet API; the Workspace Events API tells us when. Client is resolved from the calendar invite's attendees. Extraction separates **our tasks** (become cards), **client to-dos** (stored, shown in hub and EOD as "client owes us…"), and **decisions** (decision log). Meetings *always* go to `#pm-review` as **one batch** ("8 tasks from the call with X: approve all / edit"), even after the gate opens for Slack and email. | Transcripts are less certain than written asks, and a bad batch on a client board is expensive. |
+| Internal corner | Every item has a **scope: client or internal**. Internal meetings (no external attendees) and internal channels are scope=internal. Internal **tasks** → internal Pulp board, owner = whoever was named. **Ideas** → an ideas backlog, never a board, resurfaced in a weekly summary. **Decisions** → decision log linked to the meeting. | One extra field and two extra item types cover the whole internal case. Ideas on a task board get ignored; ideas in a backlog with a weekly reminder don't get lost. |
 | Review queue | One Slack channel, `#pm-review`, with buttons. No separate UI. | People already live in Slack. |
 | PM sheet | Written by the app. Bot-owned columns vs human-owned columns (§5). | A hand edit must never get overwritten. |
 | Phase 1 gate | **Everything goes to `#pm-review` first**, even confident cases, for the first ~2 weeks. | The approve/edit clicks give us real data to set thresholds. Then we open the gate. |
@@ -141,7 +143,7 @@ Updates, no task (N) …
 |---|---|---|
 | 1 | Slack + email + `/task` intake, dedupe, extract, classify, `#pm-review` with buttons, Pulp card + sheet row + ack | Nobody watches channels. PM approves drafted tasks instead of writing them. |
 | 2 | Confidence gate opens, Pulp webhook → sheet, EOD summary, **MCP hub** (§4b) | PM approves only unsure ones. Sheet updates itself. PMs query and draft from their own Claude/Codex. |
-| 3 | New-page chain, graphic→dev follow-up, WhatsApp Cloud API if wanted | Full routing rules live. |
+| 3 | Google Meet intake (client + internal), ideas backlog, decision log, new-page chain, graphic→dev follow-up, WhatsApp Cloud API if wanted | Meeting actions never get lost. Full routing rules live. |
 
 ## 9. Needed to start Phase 1
 
@@ -151,3 +153,47 @@ Updates, no task (N) …
 3. **Client map:** client name → Slack channel(s), email domain(s). A short list is fine.
 4. **Vercel plan:** Hobby or Pro (only affects how the tick is scheduled).
 5. **Slack:** confirm the client channels are in Mangowise's workspace.
+
+## Appendix A. Why a deterministic pipeline and not Hermes (shareable)
+
+Hermes is a good personal agent. It is the wrong shape for the intake pipeline and
+the hub. The reasons, in order of weight:
+
+1. **Hermes's memory is notes; this needs a ledger.** Hermes remembers things about
+   its operator: preferences, context, learned skills. That memory is unstructured,
+   per-user, and approximate by design. The hub must answer "which open dev tasks
+   exist for Clinic X, which message did each come from, when did each move stage"
+   correctly, for every PM, every time. That is a database with a schema. Using an
+   agent's memory as a shared team ledger is where duplicates and wrong answers come
+   from.
+2. **The agent loop is for unknown steps. Intake has known steps.** A loop earns its
+   cost when the model must work out what to do next. Intake is the same six steps
+   every time. Running them in a loop adds variance, latency and cost and adds no
+   capability. Concrete case: the same request arrives on Slack, then by email an hour
+   later. The pipeline checks the database in a transaction before creating anything
+   and merges. A loop in a fresh session may or may not check, and may create a second
+   card. "Usually remembers" is not a property a hub can be built on.
+3. **We keep the loop, at the human's end.** Open-ended reasoning is useful when a PM
+   asks questions, drafts a client update, or makes a chart. They get exactly that
+   from their own Claude / Codex / Hermes, connected to the hub over MCP. The loop
+   sits with the person who can correct it. The plumbing stays deterministic.
+4. **Many users, not one operator.** Hermes is one operator per gateway. The hub has
+   several PMs with their own keys, and the audit trail records who created or moved
+   what, from a Slack button, an assistant, or the pipeline.
+5. **Tuning needs fixed outputs.** The review-everything phase compares the model's
+   structured classification with the human's approve / edit click. That only works if
+   every message yields the same JSON shape. Free-form loop output cannot be scored.
+6. **Cost and failure are bounded.** Two model calls per message, known in advance.
+   On Vercel a failed step stays queued and retries. A Hermes process that dies on a
+   VPS at 2am stops intake silently.
+7. **Operations.** Vercel is already ours and needs no babysitting. Hermes needs a
+   server kept alive and updated, and its unofficial WhatsApp bridge carries an
+   account-ban risk on a client-facing number.
+
+What Hermes genuinely has over this: a faster first demo, model choice out of the box,
+and the WhatsApp QR bridge. The first is worth a couple of days; the second is a
+two-prompt swap in our code; the third is a risk we should not take on a client number.
+
+**Resolution:** nobody gives up Hermes. Hermes speaks MCP, so it becomes a client of
+the hub with its loop and memory intact, on top of data that is guaranteed correct.
+That is the same position every other PM's Claude or Codex will be in.
