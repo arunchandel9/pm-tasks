@@ -67,7 +67,8 @@ export async function isStaffUser(teamId: string | null, userId: string): Promis
   } catch (e) {
     console.error("users.info failed", (e as Error).message);
   }
-  const isStaff = !!email && STAFF_DOMAINS().some((d) => email!.endsWith("@" + d));
+  const extra = (process.env.STAFF_EMAILS || "").toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
+  const isStaff = !!email && (STAFF_DOMAINS().some((d) => email!.endsWith("@" + d)) || extra.includes(email));
   await sql()`
     insert into slack_users (team_id, user_id, email, is_staff, is_bot, seen_at) values (${teamId}, ${userId}, ${email}, ${isStaff}, ${isBot}, now())
     on conflict (team_id, user_id) do update set email = excluded.email, is_staff = excluded.is_staff, is_bot = excluded.is_bot, seen_at = now()`;

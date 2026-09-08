@@ -95,6 +95,23 @@ async function runJob(kind: string, payload: Record<string, unknown>) {
       }, { skip: false, reason: null });
       return;
     }
+    case "reply_check": {
+      // Has a MangoEyes person replied in the same channel (or thread) since the client's message? If not, one nudge.
+      const rows = await sql()`select m.*, c.name as client_name from messages m left join clients c on c.id = m.client_id where m.id = ${payload.messageId as string}`;
+      if (!rows.length) return;
+      const m = rows[0];
+      const channelId = String(m.external_id).split(":")[0];
+      const replied = await sql()`
+        select 1 from messages r where r.channel = 'slack' and r.sender_is_staff and r.sent_at > ${m.sent_at}
+          and split_part(r.external_id, ':', 1) = ${channelId} limit 1`;
+      if (replied.length) return;
+      const { postText } = await import("@/lib/review");
+      const { noise } = await import("@/lib/config");
+      const mins = noise().reply_nudge_minutes;
+      const quote = String(m.text).replace(/\s+/g, " ").slice(0, 160);
+      await postText(`⏰ *${m.client_name ?? "A client"}* wrote ${mins} min ago in their Slack and nobody from the team has replied yet: "${quote}${String(m.text).length > 160 ? "…" : ""}"${m.permalink ? `\n${m.permalink}` : ""}`);
+      return;
+    }
     case "create_card":
     case "sync_sheet":
       // Both are re-driven by approveRequest; a retry simply re-approves.

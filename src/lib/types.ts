@@ -61,6 +61,7 @@ export interface NoiseConfig {
   thread_reply_followup_min_chars: number;
   duplicate_window_days: number;
   per_client_daily_llm_cap: number;
+  reply_nudge_minutes: number;
   similarity: { merge_at: number; review_at: number };
   acknowledgements: string[];
   ack_words: string[];
