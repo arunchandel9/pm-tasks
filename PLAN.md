@@ -31,7 +31,7 @@ what needs a decision.
 | Internal corner | Every item has a **scope: client or internal**. Internal meetings (no external attendees) and internal channels are scope=internal. Internal **tasks** → internal Pulp board, owner = whoever was named. **Ideas** → an ideas backlog, never a board, resurfaced in a weekly summary. **Decisions** → decision log linked to the meeting. | One extra field and two extra item types cover the whole internal case. Ideas on a task board get ignored; ideas in a backlog with a weekly reminder don't get lost. |
 | Review queue | One Slack channel, `#pm-review`, with buttons. No separate UI. | People already live in Slack. |
 | PM sheet | Written by the app. Bot-owned columns vs human-owned columns (§5). | A hand edit must never get overwritten. |
-| Phase 1 gate | **Everything goes to `#pm-review` first**, even confident cases, for the first ~2 weeks. | The approve/edit clicks give us real data to set thresholds. Then we open the gate. |
+| Review gate | **Everything goes to `#pm-review` first**, even confident cases. The gate opens per request type on evidence: 30 approvals with ≥95% unedited, never sooner than 3 days. Meetings always stay reviewed. | The approve/edit clicks are the only honest source for thresholds. |
 
 ## 3. Architecture
 
@@ -249,15 +249,40 @@ Needs a decision (N) Possible duplicate: TASK-129 vs email from …  [review]
 Updates, no task (N) …
 ```
 
-## 8. Build order
+## 8. Build order: 24 working hours, two people
 
-| Phase | Ships | Manual work removed |
-|---|---|---|
-| 1 | Slack + email + `/task` intake, dedupe, extract, classify, `#pm-review` with buttons, Pulp card + sheet row + ack | Nobody watches channels. PM approves drafted tasks instead of writing them. |
-| 2 | Confidence gate opens, Pulp webhook → sheet, EOD summary, **MCP hub** (§4b) | PM approves only unsure ones. Sheet updates itself. PMs query and draft from their own Claude/Codex. |
-| 3 | Google Meet intake (client + internal), ideas backlog, decision log, new-page chain, graphic→dev follow-up, WhatsApp Cloud API if wanted | Meeting actions never get lost. Full routing rules live. |
+Not a calendar. Twenty-four hours of build with both of us on it (two long days or
+three focused sessions). Admin steps run in parallel and each blocks the build if it
+waits.
 
-## 9. Needed to start Phase 1
+| Hours | Built | Arun, in parallel | Milestone |
+|---|---|---|---|
+| 0–1 | Scaffold, schema, config | Slack app (manifest provided), Vercel project, Neon, API key, Pulp access, client list | |
+| 1–4 | Slack intake, noise filter, extract + classify prompts, `#pm-review` buttons | App into a test channel, real messages | Drafts in review |
+| 4–6 | Pulp create card, sheet writer, thread reply | Board/list names, sheet layout | **A.** Slack → card, row, reply |
+| 6–8 | Gmail intake, email filter, `#intake` share, `/task` | Mailbox access, CC a real thread | All channels feeding |
+| 8–10 | Status sync (poll Pulp every minute until the webhook exists), EOD summary | Move a card, read the summary | **B.** Sheet self-updates |
+| 10–13 | MCP hub, per-PM keys, internal scope | Connect own Claude, ask questions | **C.** Ask the hub |
+| 13–16 | Meet notes from the Drive folder, batch review, client to-dos, decisions, ideas | Share the notes folder, one real call with notes on | Meeting actions → drafts |
+| 16–19 | New-page chain, graphic → dev follow-up, weekly ideas resurface | Walk through a real new-page ask | Full routing live |
+| 19–22 | Soak on live traffic, fixes, filter tuning, spend limit, monitoring | Watch `#pm-review` | |
+| 22–24 | Handover, team habits, review-everything on | Brief the team | **D.** Live |
+
+**Cannot be compressed by effort:**
+
+- *Google's side of meetings.* Full transcripts via the Meet + Workspace Events APIs
+  need a Cloud project, consent screens and a Workspace admin. Day one uses the
+  Gemini notes doc in the Drive "Meet Recordings" folder, polled every few minutes.
+  Transcripts are a later upgrade.
+- *The review gate.* Opens on evidence: per request type, once 30 approvals have gone
+  through with ≥95% unedited, and never sooner than 3 days. Meetings always reviewed.
+
+**Removed so they cannot block:** the Pulp webhook (polled until added) and any
+embeddings service. **Could add hours:** a client channel in the client's own Slack
+workspace, a Pulp corner that differs from Trello, Google access held by someone
+not in the room.
+
+## 9. Needed at hour 0
 
 1. **Pulp API:** base URL, auth method, and the endpoints for boards, lists, cards
    (create, move, get). A link to the code or a Postman collection is ideal.

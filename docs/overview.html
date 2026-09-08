@@ -112,7 +112,7 @@
 
   /* timeline */
   .timeline { margin-top: 20px; font-family: var(--mono); font-size: 12px; }
-  .tl-row { display: grid; grid-template-columns: 210px repeat(20, 1fr); align-items: center; gap: 0; height: 40px; }
+  .tl-row { display: grid; grid-template-columns: 210px repeat(24, 1fr); align-items: center; gap: 0; height: 40px; }
   .tl-row.head { height: 28px; color: var(--muted); border-bottom: 1px solid var(--line); }
   .tl-row.head > span { text-align: center; font-size: 11px; }
   .tl-row > .name { font-family: var(--body); font-size: 14px; font-weight: 600; padding-right: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -127,7 +127,7 @@
   .phase ul { margin: 4px 0 0; padding-left: 18px; }
   .phase li { margin: 3px 0; font-size: 15px; }
   .phase .out { margin-top: 8px; font-size: 14.5px; color: var(--muted); }
-  @media (max-width: 640px) { .phase { grid-template-columns: 1fr; } .tl-row { grid-template-columns: 120px repeat(20, 1fr); } }
+  @media (max-width: 640px) { .phase { grid-template-columns: 1fr; } .tl-row { grid-template-columns: 120px repeat(24, 1fr); } }
 
   .checklist { list-style: none; padding: 0; margin-top: 16px; }
   .checklist li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
@@ -510,82 +510,45 @@ Client owes us (1)
   </div>
 
   <!-- ============ PHASES ============ -->
-  <h2>Phases and timeline</h2>
-  <p>Working days of build, counted from the day the phase 0 inputs arrive. Each phase ships something people use. The green band is calendar time, not build time.</p>
+  <h2>Timeline: 24 working hours, two people</h2>
+  <p>Not a calendar. Twenty-four hours of build with both of us on it, as two long days or three focused sessions. Your admin steps run in parallel with the build; each is 5 to 30 minutes, and each blocks the build if it waits. Milestones are where you can stop and have something real.</p>
 
   <div class="timeline scroll">
-    <div class="tl-row head"><span class="name" style="font-family:var(--mono);font-weight:400;font-size:11px">Working day</span>
-      <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span>
-    </div>
-    <div class="tl-row"><span class="name">0 · Inputs from you</span><div class="bar you" style="grid-column: 2 / span 1">you</div></div>
-    <div class="tl-row"><span class="name">1 · Intake and review</span><div class="bar" style="grid-column: 3 / span 5">live day 5</div></div>
-    <div class="tl-row"><span class="name">2 · Sync, summary, hub</span><div class="bar" style="grid-column: 8 / span 4">day 9</div></div>
-    <div class="tl-row"><span class="name">3 · Meetings and chains</span><div class="bar" style="grid-column: 12 / span 5">day 14</div></div>
-    <div class="tl-row"><span class="name">Review data collected</span><div class="bar data" style="grid-column: 8 / span 13">two weeks of Approve / Edit clicks</div></div>
-    <div class="tl-row"><span class="name">Gate opens</span><div class="bar gate" style="grid-column: 21 / span 1">✓</div></div>
+    <div class="tl-row head"><span class="name" style="font-family:var(--mono);font-weight:400;font-size:11px">Hour</span><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span><span>22</span><span>23</span></div>
+    <div class="tl-row"><span class="name">Setup</span><div class="bar you" style="grid-column: 2 / span 1"></div></div>
+    <div class="tl-row"><span class="name">Slack intake + review</span><div class="bar" style="grid-column: 3 / span 3">A</div></div>
+    <div class="tl-row"><span class="name">Pulp + sheet + reply</span><div class="bar" style="grid-column: 6 / span 2"></div></div>
+    <div class="tl-row"><span class="name">Email, #intake, /task</span><div class="bar" style="grid-column: 8 / span 2"></div></div>
+    <div class="tl-row"><span class="name">Sync + daily summary</span><div class="bar" style="grid-column: 10 / span 2">B</div></div>
+    <div class="tl-row"><span class="name">Hub for assistants</span><div class="bar" style="grid-column: 12 / span 3">C</div></div>
+    <div class="tl-row"><span class="name">Meetings, to-dos, ideas</span><div class="bar" style="grid-column: 15 / span 3"></div></div>
+    <div class="tl-row"><span class="name">Chains + follow-ups</span><div class="bar" style="grid-column: 18 / span 3"></div></div>
+    <div class="tl-row"><span class="name">Soak on live traffic</span><div class="bar data" style="grid-column: 21 / span 3">fix, tune</div></div>
+    <div class="tl-row"><span class="name">Live</span><div class="bar gate" style="grid-column: 24 / span 2">D</div></div>
   </div>
 
-  <div class="phases">
-    <div class="phase">
-      <div class="when"><b>Phase 0</b>Day 0 · you</div>
-      <div>
-        <ul>
-          <li>Pulp API: base URL, auth, endpoints for boards, lists, cards.</li>
-          <li>PM sheet access, and the real tab and column layout.</li>
-          <li>Client map: client → Slack channel(s), email domain(s).</li>
-          <li>Intake mailbox address. Confirm client channels are in MangoEyes's Slack workspace.</li>
-          <li>Fifteen-minute admin actions when asked: create the Slack app, Google Cloud OAuth, Vercel environment variables.</li>
-        </ul>
-      </div>
-    </div>
-    <div class="phase">
-      <div class="when"><b>Phase 1</b>Days 1–5 · intake and review</div>
-      <div>
-        <ul>
-          <li>Slack, email, and <code>/task</code> intake. Client resolution from config.</li>
-          <li>Database, dedupe, extract, classify, route. Routing table in config.</li>
-          <li><code>#pm-review</code> with Approve, Edit, Merge, Not a task.</li>
-          <li>Pulp card, sheet row, and thread reply on approval.</li>
-        </ul>
-        <div class="out">Outcome: nobody watches channels. The PM approves drafted tasks instead of writing them.</div>
-      </div>
-    </div>
-    <div class="phase">
-      <div class="when"><b>Phase 2</b>Days 6–9 · sync, summary, hub</div>
-      <div>
-        <ul>
-          <li>Pulp "card moved" webhook → sheet updates itself.</li>
-          <li>End-of-day summary to Slack and email.</li>
-          <li>MCP hub with per-PM keys: read, draft, gated write.</li>
-          <li>Internal scope: internal channels route to the internal board.</li>
-        </ul>
-        <div class="out">Outcome: the sheet is always right. Every PM can ask the hub from their own assistant.</div>
-      </div>
-    </div>
-    <div class="phase">
-      <div class="when"><b>Phase 3</b>Days 10–14 · meetings and chains</div>
-      <div>
-        <ul>
-          <li>Google Meet intake: notes and transcript, client resolved from the invite, reviewed as one batch.</li>
-          <li>Client to-dos, decision log, ideas backlog with a weekly resurface.</li>
-          <li>New-page chain of sub-cards. Graphic fix → automatic dev follow-up.</li>
-        </ul>
-        <div class="out">Outcome: nothing said in a meeting gets lost. Full routing rules live.</div>
-      </div>
-    </div>
-    <div class="phase">
-      <div class="when"><b>Gate opens</b>About day 19 · evidence</div>
-      <div>
-        <p style="margin:0">Two weeks after phase 1 goes live, we compare the model's classifications with the human clicks and set the confidence thresholds. Confident cases start skipping review. Meetings always stay reviewed.</p>
-      </div>
-    </div>
-    <div class="phase">
-      <div class="when"><b>Later, optional</b>only if forwarding hurts</div>
-      <div>
-        <p style="margin:0">Move the business WhatsApp number to the WhatsApp Business Platform so messages arrive by webhook. A real change to how you talk to clients, so it gets its own decision.</p>
-      </div>
-    </div>
-  </div>
+  <table>
+    <thead><tr><th>Hours</th><th>Built</th><th>You, in parallel</th><th>Milestone</th></tr></thead>
+    <tbody>
+      <tr><td>0–1</td><td>Project scaffold, database, config files</td><td>Slack app from the manifest, Vercel project, database, API key, Pulp access, client list</td><td></td></tr>
+      <tr><td>1–4</td><td>Slack intake, noise filter, the two reading steps, #pm-review with buttons</td><td>Add the app to a test channel, send real messages</td><td>Drafts appear in review</td></tr>
+      <tr><td>4–6</td><td>Pulp card creation, sheet rows, thread reply</td><td>Confirm board and list names, sheet layout</td><td><b>A.</b> Slack message → card, row, reply</td></tr>
+      <tr><td>6–8</td><td>Mailbox intake, email filter, #intake share, /task</td><td>Mailbox access, CC a real client thread</td><td>Every channel feeding the hub</td></tr>
+      <tr><td>8–10</td><td>Status sync (Pulp polled every minute until the webhook exists), daily summary</td><td>Move a card in Pulp, read the summary</td><td><b>B.</b> Sheet updates itself</td></tr>
+      <tr><td>10–13</td><td>MCP hub, per-PM keys, internal scope</td><td>Connect your own Claude, ask it questions</td><td><b>C.</b> Ask the hub</td></tr>
+      <tr><td>13–16</td><td>Meeting notes read from the Drive folder, batch review, client to-dos, decisions, ideas</td><td>Share the Meet notes folder, run one real call with notes on</td><td>Meeting actions become drafts</td></tr>
+      <tr><td>16–19</td><td>New-page chain, graphic → dev follow-up, weekly ideas resurface</td><td>Walk through a real new-page request</td><td>Full routing rules live</td></tr>
+      <tr><td>19–22</td><td>Soak on live traffic, fix, tune the filter, spend limit, monitoring</td><td>Watch #pm-review, say what looks wrong</td><td></td></tr>
+      <tr><td>22–24</td><td>Handover, team habits, review-everything mode on</td><td>Brief the team</td><td><b>D.</b> Live</td></tr>
+    </tbody>
+  </table>
+
+  <h3>What effort cannot compress</h3>
+  <ul>
+    <li><strong>Google's side of meetings.</strong> Reading full transcripts through Google's event system needs a Cloud project, consent screens, and a Workspace admin, which can take an afternoon or a week. So day one uses the simpler path: the Gemini notes doc lands in a Drive folder after every call and the hub reads that folder every few minutes. Full transcripts are a later upgrade if notes are not enough.</li>
+    <li><strong>The review gate.</strong> It opens on evidence, not a date: per request type, once 30 approvals have gone through with at least 95% unedited, and never sooner than 3 days. With real volume that is about a week. Meetings always stay reviewed.</li>
+  </ul>
+  <p><strong>Removed so they cannot block:</strong> Pulp's card-moved webhook (polled every minute until your developer adds it) and any embeddings service (dedupe is done in the database). <strong>Could still add hours:</strong> a client channel in the client's own Slack workspace, a Pulp corner that differs from Trello, or Google access held by someone not in the room.</p>
 
   <h2>What we need to start</h2>
   <ul class="checklist">
