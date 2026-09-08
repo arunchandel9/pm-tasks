@@ -1,5 +1,6 @@
 import { sql, allClients, channelPaused, enqueue } from "./db";
-import { noise, boards } from "./config";
+import { noise } from "./config";
+import { pulp } from "./pulp";
 import { dedupe, textHash } from "./dedupe";
 import { extract } from "./llm/extract";
 import { classify } from "./llm/classify";
@@ -158,7 +159,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
 
     // A real card in the Staging list. Dragging it out (or Approve, in approve mode) is the approval.
     const task = await createStagingCard({ requestId, client, route: r, draft: { title: cl.title, description: cl.description, labels: r.labels }, message: m, quote: a.quote });
-    const pulpLink = task?.pulpCardId ? `${boards().base_url}/board/${r.board}/card/${task.pulpCardId}` : null;
+    const pulpLink = task?.pulpCardId ? pulp.cardUrl(task.boardId ?? r.board ?? "", task.pulpCardId) : null;
     if (notify && pulpLink) {
       feed.push(draftLine({ client, title: cl.title, department: r.department, priority: r.priority, gated: r.gated, pulpLink, message: m }));
       continue;

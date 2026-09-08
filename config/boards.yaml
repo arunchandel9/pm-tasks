@@ -1,12 +1,15 @@
 # Pulp boards are per department, shared by all clients (from the links in the PM Overview sheet).
 # A client row in the Config tab can override any of these; blank means use the default.
-# Board IDs are the first 8 characters seen in https://pulp.mangoeyes.io/board/<id>; confirmed at hour 4 against the API.
+# `board` may be the full UUID, the first 8 characters seen in https://pulp.mangoeyes.io/board/<id>, or the board's
+# exact name; the hub resolves it against GET /boards at run time. Lists are created if they do not exist.
 base_url: https://pulp.mangoeyes.io
+# What a card link looks like in the browser. Placeholders: {base} {board} {card}. Change here if Pulp uses another shape.
+card_url: "{base}/board/{board}/card/{card}"
 departments:
   seo:     { board: d4424c02, list: "To Do", staging: "Staging" }
   content: { board: 54d3e767, list: "To Do", staging: "Staging" }
   dev:     { board: 0fac54b7, list: "To Do", staging: "Staging" }
-  design:  { board: "", list: "To Do", staging: "Staging" }          # fill in the Graphics board id
-  general: { board: "", list: "To Do", staging: "Staging" }          # PM board, if there is one
-  internal: { board: "", list: "To Do", staging: "Staging" }
+  design:  { board: "Graphics", list: "To Do", staging: "Staging" }   # resolved by board name until the id is known
+  general: { board: 0fac54b7, list: "To Do", staging: "Staging" }     # PM / general asks land on the Development board
+  internal: { board: 0fac54b7, list: "To Do", staging: "Staging" }
   scope:   { board: 0fac54b7, list: "Needs scope" }

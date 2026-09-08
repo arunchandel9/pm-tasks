@@ -43,17 +43,22 @@ export async function GET(req: Request) {
   }
   report.queue = { ok, failed };
 
-  // 3. Pulp poll
+  // 3. Pulp poll: one GET per board that has open hub cards; a card whose list differs from ours has been moved.
   if (pulp.configured()) {
     try {
-      const last = await sql()`select value from settings where key = 'pulp_poll_since'`;
-      const since = last.length ? new Date(last[0].value as string) : new Date(Date.now() - 5 * 60 * 1000);
-      const moved = await pulp.cardsUpdatedSince(since);
-      let synced = 0;
-      for (const card of moved) {
-        const t = await sql()`select id, list_id, staging from tasks where pulp_card_id = ${card.id}`;
-        if (!t.length || t[0].list_id === card.listId) continue;
-        const wasStaging = t[0].staging as boolean;
+      const openBoards = await sql()`select distinct board_id from tasks where pulp_card_id is not null and completed_at is null and board_id is not null`;
+      let synced = 0, boardsPolled = 0;
+      for (const b of openBoards) {
+        const boardId = await pulp.resolveBoardId(String(b.board_id));
+        if (!boardId) continue;
+        boardsPolled++;
+        const cards = await pulp.openCards(boardId);
+        const ours = await sql()`select id, pulp_card_id, list_id, staging from tasks where board_id = ${String(b.board_id)} and pulp_card_id is not null and completed_at is null`;
+        for (const t0 of ours) {
+          const card = cards.find((c) => c.id === t0.pulp_card_id);
+          if (!card || card.listId === t0.list_id) continue;
+          const t = [t0];
+          const wasStaging = t[0].staging as boolean;
         await sql()`update tasks set list_id = ${card.listId}, staging = false, last_moved_at = now() where id = ${t[0].id}`;
         await sql()`insert into status_events (task_id, from_list, to_list, source) values (${t[0].id}, ${t[0].list_id}, ${card.listId}, 'poll')`;
         if (wasStaging) {
@@ -70,11 +75,10 @@ export async function GET(req: Request) {
         // so PMs can rearrange rows by hand. Done tasks are moved below the DONE divider.
         try {
           const { sheetsConfigured, updateTaskCells, sheetConfig, locateTaskRow, moveRowBelowDivider } = await import("@/lib/sheets");
-          const { boards } = await import("@/lib/config");
           const tabRow = await sql()`select t.sheet_row, t.title, t.board_id, s.value as tab from tasks t left join settings s on s.key = 'sheet_tab:' || t.id::text where t.id = ${t[0].id}`;
           if (sheetsConfigured() && tabRow.length && tabRow[0].tab) {
             const tab = String(tabRow[0].tab);
-            const link = `${boards().base_url}/board/${tabRow[0].board_id}/card/${card.id}`;
+            const link = pulp.cardUrl(String(tabRow[0].board_id), card.id);
             const row = (await locateTaskRow(tab, { pulpLink: link, title: String(tabRow[0].title) })) ?? (tabRow[0].sheet_row ? Number(tabRow[0].sheet_row) : null);
             if (row) {
               const listName = (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
@@ -87,9 +91,9 @@ export async function GET(req: Request) {
           }
         } catch (e) { console.error("sheet stage update failed", (e as Error).message); }
         synced++;
+        }
       }
-      await sql()`insert into settings (key, value) values ('pulp_poll_since', ${JSON.stringify(new Date().toISOString())}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
-      report.pulp = { synced };
+      report.pulp = { boardsPolled, synced };
     } catch (e) { report.pulp = { error: (e as Error).message }; }
   }
 

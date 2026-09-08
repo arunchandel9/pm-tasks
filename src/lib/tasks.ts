@@ -1,10 +1,9 @@
 import { sql, enqueue } from "./db";
 import { pulp } from "./pulp";
 import { insertTaskRow, sheetsConfigured, findClientTab } from "./sheets";
-import { boards as boardDefaults } from "./config";
 import type { Client, Draft, Message, RouteDecision } from "./types";
 
-export interface TaskRow { id: string; pulpCardId: string | null }
+export interface TaskRow { id: string; pulpCardId: string | null; boardId: string | null }
 
 /** "Slack, Dr Mehta" / "Intake, Priya" / "/task, Priya" — the origin stamped into the sheet's Comments cell. */
 export function sourceText(channel: string, sender: string): string {
@@ -29,12 +28,14 @@ export async function createStagingCard(p: { requestId: string; client: Client |
 
   let pulpCardId: string | null = null;
   let listId: string | null = null;
+  let boardId: string | null = p.route.board;
   if (pulp.configured() && p.route.board) {
     try {
-      listId = await pulp.findListId(p.route.board, p.route.staging ?? "Staging");
-      if (!listId) throw new Error(`no list "${p.route.staging ?? "Staging"}" on board ${p.route.board}`);
+      boardId = await pulp.resolveBoardId(p.route.board);
+      if (!boardId) throw new Error(`board "${p.route.board}" not found in Pulp (is the API key's user a member?)`);
+      listId = await pulp.ensureList(boardId, p.route.staging ?? "Staging");
       const card = await pulp.createCard({
-        boardId: p.route.board, listId, title: p.draft.title, description, labels: p.draft.labels,
+        boardId, listId, title: p.draft.title, description, labels: p.draft.labels,
         assignee: p.route.assignee, dueAt: p.route.dueAt,
       });
       pulpCardId = card.id;
@@ -46,10 +47,10 @@ export async function createStagingCard(p: { requestId: string; client: Client |
 
   const ins = await sql()`
     insert into tasks (request_id, client_id, pulp_card_id, board_id, list_id, title, priority, assignee, due_at, staging)
-    values (${p.requestId}, ${p.client?.id ?? null}, ${pulpCardId}, ${p.route.board}, ${listId}, ${p.draft.title}, ${p.route.priority},
+    values (${p.requestId}, ${p.client?.id ?? null}, ${pulpCardId}, ${boardId}, ${listId}, ${p.draft.title}, ${p.route.priority},
             ${p.route.assignee}, ${p.route.dueAt?.toISOString() ?? null}, true)
     returning id`;
-  return { id: ins[0].id as string, pulpCardId };
+  return { id: ins[0].id as string, pulpCardId, boardId };
 }
 
 /**
@@ -75,7 +76,7 @@ export async function approveRequest(requestId: string, decidedBy: string, opts:
   if (opts.moveCard !== false && x.task_id && x.pulp_card_id && pulp.configured()) {
     const boards = (x.boards ?? {}) as Client["boards"];
     const target = boards[x.department as string];
-    const listId = target ? await pulp.findListId(x.board_id as string, target.list) : null;
+    const listId = target ? await pulp.ensureList(x.board_id as string, target.list) : null;
     if (listId) {
       await pulp.moveCard(x.pulp_card_id as string, listId);
       await sql()`update tasks set staging = false, list_id = ${listId}, last_moved_at = now() where id = ${x.task_id}`;
@@ -91,7 +92,7 @@ export async function approveRequest(requestId: string, decidedBy: string, opts:
       const t = (await sql()`select due_at, assignee, priority from tasks where id = ${x.task_id}`)[0];
       const r = await insertTaskRow(tab, {
         title: String(x.title), department: String(x.department), priority: String(t?.priority ?? "P3"), assignee: String(t?.assignee ?? ""),
-        pulp_link: x.pulp_card_id ? `${boardDefaults().base_url}/board/${x.board_id}/card/${x.pulp_card_id}` : "",
+        pulp_link: x.pulp_card_id ? pulp.cardUrl(String(x.board_id), String(x.pulp_card_id)) : "",
         source_link: String(x.permalink ?? ""), created: new Date(), due: t?.due_at ? new Date(t.due_at as string) : null,
         addedBy: approver, source: sourceText(String(x.channel), String(x.sender ?? "")),
       });

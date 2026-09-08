@@ -46,9 +46,16 @@ Last updated: 2026-09-08 (build day 1).
   original approver). No extra column. The **Config** tab is the client directory only
   (id, name, scope, slack_team_id, aliases, email_domains, whatsapp_numbers, board overrides, client_facing_ack,
   sheet_tab), mirrored into the DB every minute.
-- **Pulp.** `https://pulp.mangoeyes.io`, boards per department shared by all clients: SEO `d4424c02`,
-  Content `54d3e767`, Development `0fac54b7`, Graphics unknown (config/boards.yaml). API endpoints are a
-  Trello-style guess in `src/lib/pulp.ts` until confirmed. Status sync polls every minute until Pulp has a webhook.
+- **Pulp.** API v1 at `https://pulp.mangoeyes.io/api/v1`, Bearer `PULP_TOKEN` (`pulp_sk_…`, acts as one Pulp user who
+  must be a member of every board; created in Pulp → Settings → API Keys). `src/lib/pulp.ts` is written against the
+  real brief: `{data}` envelope, UUID ids, `POST /boards/{id}/cards {list_id,name}` then `PATCH /cards/{id}`
+  (description, due_date), labels and members attached by name, `POST /cards/{id}/move {list_id}`,
+  `POST /cards/{id}/comments {content}`. No updated-since endpoint, so the minute poll does one
+  `GET /boards/{id}/cards` per board with open hub cards and diffs `list_id`. Boards in config/boards.yaml may be a
+  UUID, the 8-char URL prefix, or the board name (Graphics is by name); lists (`Staging`, `To Do`, `Needs scope`)
+  are created by the hub if missing. Card link shape is `card_url` in boards.yaml, unconfirmed. Boards per
+  department shared by all clients: SEO `d4424c02…`, Content `54d3e767…`, Development `0fac54b7…`, Graphics by name.
+  `/api/pulp-check` proves the connection (add `?create=1` to create missing lists).
 - **Data retention.** Keep everything forever. `RAW_RETENTION_DAYS` exists but is off (0).
 - **Cost.** Only two model calls per message; ~$6/month at 500 messages on Sonnet 5. Hub questions run on each PM's
   own assistant over MCP (phase 3), never on the API bill.
@@ -69,7 +76,8 @@ Last updated: 2026-09-08 (build day 1).
 2. First Google Chat live test: `@Task Hub HOH: …` in Intake → drafts in PM Review → Approve → row in
    "HOH - House Of Health". Then `/task`.
 3. Install Slack app into one client workspace; put its T-id in that client's Config row (column D).
-4. Pulp: API auth + endpoints (boards, lists, cards, comments), Graphics board id, `Staging` list on each board.
+4. ~~Pulp API details~~ received 2026-09-08 and built. Left: add `PULP_TOKEN` in Vercel, run `/api/pulp-check?create=1`,
+   confirm the card URL shape (open any card in the browser and compare with `card_url`).
 
 ## Next build steps (owner: hub)
 
@@ -85,12 +93,13 @@ Last updated: 2026-09-08 (build day 1).
 `storage_DATABASE_URL` (Neon), `ANTHROPIC_API_KEY`, `LLM_MODEL` (optional), `CRON_SECRET`, `SLACK_CLIENT_ID`,
 `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`, `GOOGLE_SERVICE_ACCOUNT_B64`, `GOOGLE_PROJECT_NUMBER`, `PM_SHEET_ID`,
 `GCHAT_REVIEW_SPACE`, `GCHAT_INTAKE_SPACE`, `REVIEW_SURFACE=gchat`. Optional: `STAFF_EMAILS`, `RAW_RETENTION_DAYS`,
-`INTAKE_PAUSED`, `PULP_BASE_URL`, `PULP_TOKEN`.
+`INTAKE_PAUSED`, `PULP_TOKEN` (required for cards), `PULP_BASE_URL` (only if not `<base_url>/api/v1`), `REVIEW_MODE`.
 
 ## Useful commands (replace the secret with the real CRON_SECRET)
 
 ```
 curl -H "Authorization: Bearer <CRON_SECRET>" "https://pm-tasks.vercel.app/api/setup"          # apply schema, seed
 curl -H "Authorization: Bearer <CRON_SECRET>" "https://pm-tasks.vercel.app/api/sheet-check"    # tabs + header mapping
+curl -H "Authorization: Bearer <CRON_SECRET>" "https://pm-tasks.vercel.app/api/pulp-check?create=1"  # Pulp key, boards, lists
 https://pm-tasks.vercel.app/api/health                                                          # what is configured
 ```
