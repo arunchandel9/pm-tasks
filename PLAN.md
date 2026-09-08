@@ -24,6 +24,7 @@ what needs a decision.
 | Board | **Pulp**, via its API. Since we own Pulp, add **one webhook** in Pulp: "card moved list". That replaces polling for status sync. | Simplest possible status sync. |
 | Source of truth | Postgres owned by the app. Pulp and the sheet are written *from* it. | Dedupe, audit trail, and "why did it do that?" need one place that remembers everything. |
 | Slack | One Slack app, added to the client channels. Free plan is fine: Events API and slash commands work on free. Assumption: those channels live in **Mangowise's** workspace (clients as guests). If a client channel lives in the client's own workspace, their admin has to install the app, or that client's messages come via forwarding. | |
+| Slack, forwarded instead of a bot? | **Both, same intake.** Automatic where the bot can live (channels in our workspace). A `#intake` channel in our workspace is the universal manual path: anyone uses Slack's "Share message" to send a message there from any channel, or pastes a WhatsApp / phone-call ask there. The bot reads `#intake` like any channel; a shared message carries the original text and permalink, so the audit link survives. | Manual forwarding brings back the one step this project exists to remove ("someone has to notice"), so it is the fallback, not the default. It is the right answer when a client channel lives in the client's own workspace and their admin won't install the bot. |
 | Email | One Gmail inbox (Google Workspace), e.g. `pm@…`. Anything sent or forwarded there is intake. Ad-platform notifications already come by email, so they need no separate integration. | |
 | WhatsApp | **Phase 1: forward.** Staff forward the WhatsApp message to the intake email, or paste it with `/task` in Slack. The WhatsApp Business *app* has no API, so there is no clean way to read it. **Phase 2, optional:** move the business number to WhatsApp Business Platform (Cloud API). Messages then arrive by webhook like Slack, but the phone app stops working for that number and replies go through an inbox tool. Decide after Phase 1 is live. | Forwarding costs 5 seconds per message and needs nothing built. Migrating the number is a real change to how you talk to clients. |
 | Google Meet | **Yes, same pipeline.** After a call, Gemini's notes doc lands in Drive and the transcript is available via the Meet API; the Workspace Events API tells us when. Client is resolved from the calendar invite's attendees. Extraction separates **our tasks** (become cards), **client to-dos** (stored, shown in hub and EOD as "client owes us…"), and **decisions** (decision log). Meetings *always* go to `#pm-review` as **one batch** ("8 tasks from the call with X: approve all / edit"), even after the gate opens for Slack and email. | Transcripts are less certain than written asks, and a bad batch on a client board is expensive. |
@@ -59,18 +60,33 @@ Endpoints:
 - `GET  /api/tick` — every 1–5 min: poll Gmail, retry failed steps
 - `GET  /api/eod` — once a day: post summary
 
-Database (four tables, that's all):
+Database (five tables, that's all):
 
 - `messages` — raw inbound, channel, sender, resolved client, permalink, hash
 - `requests` — one per distinct ask: summary, classification, confidence, review state
 - `tasks` — one per Pulp card: pulp id, list, sheet row, linked request. This is the audit trail.
 - `status_events` — every list change, timestamped. Feeds the sheet and the EOD summary.
+- `llm_calls` — one row per model call: which step, model, input / cached / output
+  tokens, cost, latency. Feeds the EOD spend line and the cache check.
 
 ## 4. Pipeline
 
-1. **Normalise.** Any channel → one `Message` shape. Resolve client from a config
-   table (Slack channel → client, email domain → client). The model never guesses
-   the client.
+1. **Normalise.** Any channel → one `Message` shape. Resolve **scope** (client or
+   internal) and **client** from config, in code. The model never guesses either.
+
+   | Source | Client work | Internal work |
+   |---|---|---|
+   | Slack channel | Channel is in the client map → that client | Channel is in the internal list (e.g. `#team`, `#ideas`) → internal |
+   | `#intake` share / `/task` | Origin channel of the shared message decides; otherwise the bot asks one question: "Which client, or internal?" | Same |
+   | Email | Sender domain (or the quoted original's sender, on a forward) matches a client | Sender is a Mangowise address and nothing client-related is quoted |
+   | Google Meet | Any attendee domain matches a client → that client | All attendees are Mangowise → internal |
+   | Unknown | → `#pm-review` tagged "unknown client", no model call | |
+
+   Everything downstream is the same pipeline with `scope` as a field: internal
+   tasks route to the internal board, client tasks to client boards; ideas and
+   decisions exist for both scopes; `#pm-review` is one channel with a scope tag;
+   the EOD summary has a client section and an internal section; the sheet has an
+   Internal tab; the hub takes `scope` as a filter. One system, one field, two views.
 2. **Dedupe.** Same client, same text hash → merge silently. Same client, high text
    similarity (Postgres `pg_trgm`, no embeddings service) to an open request → merge
    and reply "already tracked as TASK-123". Grey zone → the classify call is given the
@@ -123,21 +139,84 @@ tokens. First-party Anthropic prices, cache reads at 0.1× input:
 | **Sonnet 5 (default)** | ~$0.01 | ~$5 | ~$0.70 | ~$6 |
 | Opus 5 | ~$0.025 | ~$12.50 | ~$1.70 | ~$14 |
 
-Rules that keep it there:
-
-- **Code before model.** Staff replies, acknowledgements, bot posts and very short
-  messages never reach a model call. Only client-authored messages above a minimum
-  length enter the pipeline.
-- **No embeddings service.** Dedupe is hash + `pg_trgm` + the classify call.
-- **Prompt caching** on the fixed instructions and routing config.
-- **Tight JSON outputs** with a low output cap; output tokens cost 5× input.
-- **Batch API for meetings** (50% off): they go to review as a batch anyway.
-- **Spend limit** in the Anthropic console; per-call token usage logged to the
-  database and shown in the EOD summary.
-- Model is one config line; switch to Opus if review data shows misclassification.
+How it stays there is specified in §4d (noise filter) and §4e (caching). Also:
+Batch API for meetings (50% off, they are reviewed as a batch anyway); a spend limit
+in the Anthropic console; per-call token usage logged to the database and shown in
+the EOD summary; model is one config line.
 
 Everything else is already paid for or free at this volume: Vercel Pro, Neon Postgres
 free tier, Slack free plan, Google APIs.
+
+## 4d. Noise filter: what never reaches a model
+
+Every rule below runs in code, before any model call, and is logged with the reason
+so "why was this ignored?" is always answerable. Anything skipped is still stored
+as a `message` row; it just never becomes a `request`.
+
+**Slack**
+
+| Rule | Action |
+|---|---|
+| Author is Mangowise staff (from the client map) and channel is not `#intake` | Skip. Staff talk is not client requests. `/task` and `#intake` are the staff paths in. |
+| Bot messages, joins/leaves, edits, deletions, pins, reactions | Skip. Only `message` events with text from a human. |
+| Text under 15 characters, or matches the acknowledgement list (`thanks`, `ok`, `great`, `noted`, `sure`, `👍`, `done`, and their variants) | Skip. |
+| Reply inside a thread whose root already became a request | Attach to that request as context, no model call. Exception: the reply is over 200 characters, then it runs the pipeline as a follow-up ask. |
+| Only an attachment, no text | No model call. Goes to `#pm-review` as "attachment only, from Clinic X" so a person decides. |
+| Same client, same text hash as a message in the last 14 days | Skip as exact duplicate, reply "already tracked as TASK-n" if a task exists. |
+| Per-client cap of 100 model calls a day | Above the cap, messages queue for review instead of the model. A safety valve, expected never to trigger. |
+
+**Email**
+
+| Rule | Action |
+|---|---|
+| Sent by Mangowise (our own outgoing, or a staff address) and not a forward | Skip. |
+| `Auto-Submitted`, `Precedence: bulk/list`, unsubscribe headers, known no-reply senders | Skip. Ad-platform senders on an allowlist are the exception and go through. |
+| Quoted history in a reply or forward | Stripped. Only the newest part is sent to the model. Cuts tokens by 60–90% on long threads. |
+| Attachments | Names and types are passed as text; contents are not sent to the model in phase 1. |
+| Same subject thread already linked to a request | Attach as context, no model call, unless the new part is over 200 characters. |
+
+**Meetings**
+
+| Rule | Action |
+|---|---|
+| Calendar event with no external attendees and not tagged internal | Skip. |
+| Transcript under 150 words | Skip, logged as "too short". |
+| Notes doc exists | Send the Gemini notes doc first (short). Send the transcript only if the notes have no action items section. |
+
+Expected effect: well over half of raw Slack traffic and most of the mailbox never
+costs anything. What reaches the model is client-authored, non-trivial, and new.
+
+## 4e. Prompt caching, exactly how
+
+Both model calls use the same request layout so the cached prefix is shared:
+
+```
+system:
+  [1] static instructions for this call      ← cache_control: ephemeral, ttl: 1h
+  [2] routing table + client list (from config)  ← cache_control: ephemeral, ttl: 1h
+messages:
+  user: { client, channel, open request titles for this client, the message text }
+```
+
+- **Why 1-hour, not 5-minute.** Messages arrive 5 to 60 minutes apart during the
+  day. A 5-minute cache would miss most of the time. The 1-hour cache costs 2× on
+  the first write and 0.1× on every read after, and each read renews it, so during
+  working hours it stays warm on its own. Sonnet 5 caches any prefix over 1,024
+  tokens; ours is about 4,000.
+- **Nothing volatile in the prefix.** No timestamps, no message IDs, no per-client
+  data in `system`. Client-specific context goes in the user turn, after the
+  breakpoint. Config is rendered in a fixed key order so the bytes never drift.
+- **Config changes invalidate the cache once.** Editing `routing.yaml` costs one
+  re-write. That is fine and expected.
+- **Verified, not assumed.** Every call logs `cache_read_input_tokens` and
+  `cache_creation_input_tokens` to the `llm_calls` table. If reads are zero across
+  a day, the EOD summary says so.
+- **Outputs are schema-bound.** `output_config.format` with a JSON schema for both
+  calls, `max_tokens` capped around 800 for extract and 1,000 for classify + draft.
+  No prose, no markdown, no explanations beyond the one-line `reason` field.
+- **Honest scale note.** At 4,000 prefix tokens the cache saves fractions of a
+  cent per message. It is done because it is the correct layout and it costs nothing
+  to do right, not because it changes the bill at this volume.
 
 ## 5. PM sheet contract
 

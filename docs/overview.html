@@ -191,13 +191,13 @@
         <rect class="box" x="20" y="100" width="230" height="40" rx="3"/>
         <text class="lbl" x="32" y="117">Email</text><text class="sub" x="32" y="131">one intake mailbox</text>
         <rect class="box" x="20" y="152" width="230" height="40" rx="3"/>
-        <text class="lbl" x="32" y="169">WhatsApp</text><text class="sub" x="32" y="183">forwarded to the mailbox or /task</text>
+        <text class="lbl" x="32" y="169">WhatsApp</text><text class="sub" x="32" y="183">forwarded to the mailbox or #intake</text>
         <rect class="box" x="20" y="204" width="230" height="40" rx="3"/>
         <text class="lbl" x="32" y="221">Ad platform notices</text><text class="sub" x="32" y="235">already arrive by email</text>
         <rect class="box" x="20" y="256" width="230" height="40" rx="3"/>
         <text class="lbl" x="32" y="273">Google Meet</text><text class="sub" x="32" y="287">notes + transcript after the call</text>
         <rect class="box" x="20" y="308" width="230" height="40" rx="3"/>
-        <text class="lbl" x="32" y="325">/task in Slack</text><text class="sub" x="32" y="339">anything else, e.g. a phone call</text>
+        <text class="lbl" x="32" y="325">#intake or /task in Slack</text><text class="sub" x="32" y="339">share any message there, or paste a call</text>
       </g>
       <g class="arrow" marker-end="url(#a)">
         <line x1="250" y1="68" x2="330" y2="68"/>
@@ -480,6 +480,21 @@ Client owes us (1)
   </table>
   <p>Two AI calls, both with a fixed output shape. That is deliberate: it keeps cost predictable, makes every decision auditable, and lets us score the model against the human clicks.</p>
 
+  <h3>What never reaches a model</h3>
+  <p>Code filters first, and logs the reason for every skip. Staff messages outside <code>#intake</code>, bot posts, edits, reactions, one-word acknowledgements, exact repeats within 14 days, and short replies inside a thread that already became a task all stop here. Email drops auto-replies and newsletters, keeps ad-platform senders on an allowlist, and strips quoted history so only the new part is read. The result: well over half of raw traffic costs nothing, and what reaches the model is client-authored, non-trivial, and new.</p>
+
+  <h3>What it costs to run</h3>
+  <p>Only the two AI steps cost money. Everything else is code, and a PM's questions to the hub run on their own assistant's subscription. At a generous 500 messages and 20 meetings a month, with the fixed instructions cached for an hour at a time:</p>
+  <table>
+    <thead><tr><th>Model</th><th>Per message</th><th>Per month</th></tr></thead>
+    <tbody>
+      <tr><td>Haiku 4.5</td><td style="font-weight:400">about $0.005</td><td style="font-weight:400">about $3</td></tr>
+      <tr><td>Sonnet 5, recommended</td><td style="font-weight:400">about $0.01</td><td style="font-weight:400">about $6</td></tr>
+      <tr><td>Opus 5</td><td style="font-weight:400">about $0.025</td><td style="font-weight:400">about $14</td></tr>
+    </tbody>
+  </table>
+  <p>Vercel Pro is already paid for. Neon Postgres, the Slack plan, and Google's APIs are free at this volume. A spend limit in the Anthropic console and a daily spend line in the summary mean a surprise is impossible.</p>
+
   <!-- ============ DECISIONS ============ -->
   <h2>Why these choices</h2>
   <div class="decisions">
@@ -491,6 +506,7 @@ Client owes us (1)
     <div><b>Review everything first</b><p>Two weeks of Approve and Edit clicks tell us where the system is reliable. Then the gate opens on evidence, not guesswork.</p></div>
     <div><b>WhatsApp by forwarding</b><p>The WhatsApp Business app has no API. Forwarding costs five seconds and nothing to build. Moving the number to the Cloud API is a later, separate decision.</p></div>
     <div><b>Pulp sends one webhook</b><p>We own Pulp, so "card moved" is one small addition. It replaces polling and makes status sync instant.</p></div>
+    <div><b>Bot where it can live, #intake everywhere else</b><p>Automatic intake in channels in our workspace. Sharing a message to #intake is the manual path for a client's own workspace, WhatsApp, or a phone call. Same pipeline, same audit link.</p></div>
   </div>
 
   <!-- ============ PHASES ============ -->
