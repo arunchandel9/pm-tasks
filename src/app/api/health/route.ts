@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const out: Record<string, unknown> = { model: env.model(), pulp: pulp.configured(), sheets: sheetsConfigured(), slack: !!process.env.SLACK_BOT_TOKEN, intakePaused: env.intakePaused() };
+  const out: Record<string, unknown> = { model: env.model(), pulp: pulp.configured(), sheets: sheetsConfigured(), slack: !!process.env.SLACK_BOT_TOKEN, intakePaused: env.intakePaused(), cronSecretSet: !!process.env.CRON_SECRET, dbUrlSet: !!process.env.DATABASE_URL, anthropicKeySet: !!process.env.ANTHROPIC_API_KEY };
   try {
     const r = await sql()`select count(*)::int as clients from clients`;
     out.db = { ok: true, clients: r[0].clients };
