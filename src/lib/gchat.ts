@@ -34,9 +34,11 @@ function normSpace(s: string): string {
 export async function verifyChatRequest(authHeader: string | null): Promise<boolean> {
   const projectNumber = process.env.GOOGLE_PROJECT_NUMBER;
   if (!projectNumber || !authHeader?.startsWith("Bearer ")) return false;
+  // Audience is the project number (classic apps) or the endpoint URL (add-on style apps). Accept either.
+  const audiences = [projectNumber, process.env.GCHAT_ENDPOINT_URL || "https://pm-tasks.vercel.app/api/gchat"];
   try {
     const client = new OAuth2Client();
-    const ticket = await client.verifyIdToken({ idToken: authHeader.slice(7), audience: projectNumber });
+    const ticket = await client.verifyIdToken({ idToken: authHeader.slice(7), audience: audiences });
     const p = ticket.getPayload();
     return p?.email === "chat@system.gserviceaccount.com" && p.email_verified === true;
   } catch (e) {
@@ -155,14 +157,9 @@ export function duplicateCard(p: { requestId: string; duplicateOf: string; clien
   };
 }
 
-/** The /task dialog: client dropdown, request text, notes, priority. */
-export function taskDialog(clients: Array<{ id: string; name: string }>) {
+/** The /task dialog body: client dropdown, request text, notes, priority. Wrapped per event format by the route. */
+export function taskDialogBody(clients: Array<{ id: string; name: string }>) {
   return {
-    actionResponse: {
-      type: "DIALOG",
-      dialogAction: {
-        dialog: {
-          body: {
             sections: [{
               header: "Add a request",
               widgets: [
@@ -176,17 +173,5 @@ export function taskDialog(clients: Array<{ id: string; name: string }>) {
                 { buttonList: { buttons: [{ text: "Add request", onClick: { action: { function: "submit_task" } } }] } },
               ],
             }],
-          },
-        },
-      },
-    },
   };
-}
-
-export function dialogOk(message: string) {
-  return { actionResponse: { type: "DIALOG", dialogAction: { actionStatus: { statusCode: "OK", userFacingMessage: message } } } };
-}
-
-export function updateCardResponse(text: string) {
-  return { actionResponse: { type: "UPDATE_MESSAGE" }, text, cardsV2: [] };
 }
