@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { cronAuthorized } from "@/lib/auth";
 import { sql } from "@/lib/db";
-import { web } from "@/lib/slack";
-import { env } from "@/lib/config";
+import { postText } from "@/lib/review";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +53,6 @@ export async function GET(req: Request) {
     `Spend today: ${spend[0].calls} model calls, $${spend[0].usd}${Number(spend[0].cached) === 0 && Number(spend[0].calls) > 3 ? "  ⚠️ cache reads were zero" : ""}`,
   ].join("\n");
 
-  await (await web(null)).chat.postMessage({ channel: env.reviewChannel(), text: "```" + text + "```" });
+  await postText("```\n" + text + "\n```");
   return NextResponse.json({ ok: true, created: created.length, moved: moved.length, overdue: overdue.length });
 }

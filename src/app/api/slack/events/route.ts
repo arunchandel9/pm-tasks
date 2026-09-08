@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { verifySlackSignature, web, isStaffUser, homeTeamId } from "@/lib/slack";
 import { slackToMessage, type SlackMessageEvent } from "@/lib/normalize/slack";
 import { slackNoise } from "@/lib/filter/noise";
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
   const teamId: string | null = body.team_id ?? ev.team ?? null;
 
   // Slack retries on slow responses; (channel, ts) is unique so a retry is harmless.
-  void handleMessageEvent(ev, teamId).catch((e) => console.error("slack event failed", e));
+  waitUntil(handleMessageEvent(ev, teamId).catch((e) => console.error("slack event failed", e)));
   return NextResponse.json({ ok: true });
 }
 
@@ -92,7 +93,7 @@ async function handleSlashCommand(form: URLSearchParams) {
     scope: client ? client.scope : ("unknown" as const), sender: user, senderIsStaff: true, sentAt: new Date(),
     text: client ? stripClientPrefix(text, client) : text, permalink: null, threadRef: null, raw: Object.fromEntries(form.entries()),
   };
-  void processMessage(m, { skip: false, reason: null }).catch((e) => console.error("/task failed", e));
+  waitUntil(processMessage(m, { skip: false, reason: null }).catch((e) => console.error("/task failed", e)));
   return NextResponse.json({ response_type: "ephemeral", text: client ? `Got it for ${client.name}. It will appear in ${env.reviewChannel()}.` : `Got it. I couldn't tell the client, so it will appear in ${env.reviewChannel()} for you to pick.` });
 }
 

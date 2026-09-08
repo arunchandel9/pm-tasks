@@ -5,7 +5,8 @@ import { extract } from "./llm/extract";
 import { classify } from "./llm/classify";
 import { route } from "./route";
 import type { Message, Client } from "./types";
-import { postReview, postP1Ping, addReaction, postThreadFollowupComment } from "./slack";
+import { addReaction, postThreadFollowupComment } from "./slack";
+import { postReview, postP1Ping } from "./review";
 import { createStagingCard } from "./tasks";
 
 export interface ProcessResult {
