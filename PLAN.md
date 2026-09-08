@@ -82,6 +82,28 @@ Database (four tables, that's all):
 7. **Sync.** Pulp webhook → `status_events` → sheet row updated.
 8. **EOD.** Summary to Slack + email (§7).
 
+## 4b. The hub: PMs connect their own assistant
+
+The database is the hub. It is exposed over **MCP** (the protocol Claude and Codex
+both use) as one more route in the same Next.js app, with a per-PM key. Any PM adds
+one connection to their own Claude or Codex and can then ask questions, draft, and
+visualise against live data, using their own assistant.
+
+Tools the hub exposes (small on purpose):
+
+- **Read:** tasks by client / stage / department, the original message behind a task,
+  status history, the review queue.
+- **Draft:** a task, a client status update, an EOD or weekly summary. Text the PM edits.
+- **Write, gated:** create or move a task, resolve a review item. Same code path as
+  the Slack buttons, so the audit trail is identical whoever triggered it.
+
+The PM sheet stays as the zero-setup, shareable view. The MCP hub is the primary
+window for anyone with an assistant.
+
+Consequence: the schema and the audit trail *are* the product. A hub with one
+duplicate card gives every PM's assistant a confidently wrong answer, which is the
+main reason the intake pipeline must be deterministic rather than an agent loop.
+
 ## 5. PM sheet contract
 
 Still to be reconciled with the real sheet (Drive connector needs re-authorising).
@@ -118,7 +140,7 @@ Updates, no task (N) …
 | Phase | Ships | Manual work removed |
 |---|---|---|
 | 1 | Slack + email + `/task` intake, dedupe, extract, classify, `#pm-review` with buttons, Pulp card + sheet row + ack | Nobody watches channels. PM approves drafted tasks instead of writing them. |
-| 2 | Confidence gate opens, Pulp webhook → sheet, EOD summary | PM approves only unsure ones. Sheet updates itself. |
+| 2 | Confidence gate opens, Pulp webhook → sheet, EOD summary, **MCP hub** (§4b) | PM approves only unsure ones. Sheet updates itself. PMs query and draft from their own Claude/Codex. |
 | 3 | New-page chain, graphic→dev follow-up, WhatsApp Cloud API if wanted | Full routing rules live. |
 
 ## 9. Needed to start Phase 1
