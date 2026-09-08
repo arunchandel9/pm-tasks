@@ -6,6 +6,12 @@ import type { Client, Draft, Message, RouteDecision } from "./types";
 
 export interface TaskRow { id: string; pulpCardId: string | null }
 
+/** "Slack, Dr Mehta" / "Intake, Priya" / "/task, Priya" — the origin stamped into the sheet's Comments cell. */
+export function sourceText(channel: string, sender: string): string {
+  const where = { slack: "Slack", intake: "Intake", email: "Email", task_cmd: "/task", meet: "Meeting" }[channel] ?? channel;
+  return sender ? `${where}, ${sender}` : where;
+}
+
 /**
  * Shadow mode: a real card in the Staging list of the right board, plus the tasks row.
  * Approval (Slack button or drag out of Staging) moves it to the target list.
@@ -49,8 +55,8 @@ export async function createStagingCard(p: { requestId: string; client: Client |
 /** Approve: move the card out of Staging into the target list, write the sheet row, mark request created. */
 export async function approveRequest(requestId: string, decidedBy: string): Promise<void> {
   const rows = await sql()`
-    select t.id as task_id, t.pulp_card_id, t.board_id, t.title, t.priority, r.department, r.request_type, r.client_id,
-           c.name as client_name, c.boards, c.sheet_tab, m.channel, m.permalink
+    select t.id as task_id, t.pulp_card_id, t.board_id, t.title, t.priority, r.department, r.request_type, r.client_id, r.decided_by,
+           c.name as client_name, c.boards, c.sheet_tab, m.channel, m.permalink, m.sender
     from requests r
     left join tasks t on t.request_id = r.id
     left join clients c on c.id = r.client_id
@@ -59,7 +65,9 @@ export async function approveRequest(requestId: string, decidedBy: string): Prom
   if (!rows.length) throw new Error("request not found");
   const x = rows[0];
 
-  await sql()`update requests set status = 'approved', decided_by = ${decidedBy}, decided_at = now() where id = ${requestId}`;
+  // A retry keeps the original approver; only a real decision overwrites decided_by.
+  const approver = decidedBy.startsWith("system:") && x.decided_by ? String(x.decided_by) : decidedBy;
+  await sql()`update requests set status = 'approved', decided_by = ${approver}, decided_at = coalesce(decided_at, now()) where id = ${requestId}`;
 
   if (x.task_id && x.pulp_card_id && pulp.configured()) {
     const boards = (x.boards ?? {}) as Client["boards"];
@@ -82,6 +90,7 @@ export async function approveRequest(requestId: string, decidedBy: string): Prom
         title: String(x.title), department: String(x.department), priority: String(t?.priority ?? "P3"), assignee: String(t?.assignee ?? ""),
         pulp_link: x.pulp_card_id ? `${boardDefaults().base_url}/board/${x.board_id}/card/${x.pulp_card_id}` : "",
         source_link: String(x.permalink ?? ""), created: new Date(), due: t?.due_at ? new Date(t.due_at as string) : null,
+        addedBy: approver, source: sourceText(String(x.channel), String(x.sender ?? "")),
       });
       await sql()`update tasks set sheet_row = ${r.row} where id = ${x.task_id}`;
       await sql()`insert into settings (key, value) values (${"sheet_tab:" + x.task_id}, ${JSON.stringify(tab)}::jsonb) on conflict (key) do update set value = excluded.value`;

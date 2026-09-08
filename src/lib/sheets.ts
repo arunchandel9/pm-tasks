@@ -24,7 +24,7 @@ const sheetId = () => process.env.PM_SHEET_ID!;
 
 interface SheetConfig {
   header_row: number; date_format: string; done_divider: string[]; columns: Record<string, string[]>;
-  initial_note: string; department_labels: Record<string, string>; stage_values: Record<string, string>;
+  initial_note: string; stamp_timezone?: string; department_labels: Record<string, string>; stage_values: Record<string, string>;
 }
 let _cfg: SheetConfig | null = null;
 export function sheetConfig(): SheetConfig {
@@ -59,6 +59,30 @@ export function formatDate(d: Date | null | undefined, fmt = sheetConfig().date_
 }
 
 export const departmentLabel = (dep: string) => sheetConfig().department_labels[dep] ?? dep;
+
+/** "08-Sep-2026 14:32 IST" in the sheet's stamp timezone. */
+export function formatStamp(d: Date, tz = sheetConfig().stamp_timezone ?? "Asia/Kolkata"): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, day: "2-digit", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(d);
+  const g = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const label = TZ_LABELS[tz] ?? tz;
+  return `${g("day")}-${MONTHS[Number(g("month")) - 1]}-${g("year")} ${g("hour")}:${g("minute")} ${label}`;
+}
+const TZ_LABELS: Record<string, string> = { "Asia/Kolkata": "IST", "Asia/Dubai": "GST", "Europe/London": "UK", "UTC": "UTC" };
+
+/** Turn a decided_by value into a name for the sheet: "pulp:drag" → "drag in Pulp", "system:…" → "Task Hub", else the name. */
+export function approverLabel(decidedBy: string | null | undefined): string {
+  if (!decidedBy) return "Task Hub";
+  if (decidedBy === "pulp:drag") return "drag in Pulp";
+  if (decidedBy.startsWith("system:")) return "Task Hub";
+  return decidedBy;
+}
+
+/** Fill the Comments template from sheet.yaml. Unknown placeholders are left blank; separators around blanks collapse. */
+export function renderNote(template: string, vars: { who?: string; when?: string; source?: string }): string {
+  const filled = template.replace(/\{(\w+)\}/g, (_, k: string) => (vars as Record<string, string | undefined>)[k] ?? "");
+  // Segments are separated by " · "; drop any that ended up empty or as a dangling label ("from", "approved by").
+  return filled.split(" · ").map((s) => s.trim()).filter((s) => s && !/^(from|approved by|by|on)$/i.test(s)).join(" · ");
+}
 
 // ---- tabs, headers, rows ----
 
@@ -169,6 +193,8 @@ export async function readConfigTab(): Promise<{ clients: Client[]; errors: stri
 export interface TaskFields {
   title: string; department: string; priority: string; assignee: string; pulp_link: string; source_link: string;
   created: Date; due: Date | null;
+  /** Who approved (a name, "pulp:drag", or "system:…") and where the request came from; both go into the Comments stamp. */
+  addedBy?: string | null; source?: string | null;
 }
 
 /**
@@ -187,7 +213,8 @@ export async function insertTaskRow(tab: string, f: TaskFields): Promise<{ row: 
   const values: Record<string, string> = {
     serial: String(nextSerial), title: f.title, pulp_link: f.pulp_link, created: formatDate(f.created, cfg.date_format),
     due: formatDate(f.due, cfg.date_format), priority: f.priority, assignee: f.assignee, stage: cfg.stage_values.created,
-    department: departmentLabel(f.department), notes: cfg.initial_note, source_link: f.source_link,
+    department: departmentLabel(f.department), source_link: f.source_link,
+    notes: renderNote(cfg.initial_note, { who: approverLabel(f.addedBy), when: formatStamp(f.created), source: f.source ?? "" }),
   };
   const row: string[] = new Array(headers.length).fill("");
   const wrote: string[] = [];

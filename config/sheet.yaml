@@ -23,7 +23,10 @@ columns:
   source_link: ["source link", "message link", "source"]
   trello_link: ["trello link"]                                           # recognised so it is never mistaken for the pulp link
 
-initial_note: "Task assigned."
+# Written once into Comments when the row is created. Placeholders: {who} = the person who approved (or "drag in Pulp"),
+# {when} = date and time in stamp_timezone, {source} = where the request came from (Slack · sender, Intake · name, /task · name).
+initial_note: "Task assigned. Added by Task Hub · approved by {who} · {when} · from {source}"
+stamp_timezone: "Asia/Kolkata"
 
 # Our department keys → the labels the sheet uses
 department_labels:

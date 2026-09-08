@@ -34,7 +34,10 @@ Last updated: 2026-09-08 (build day 1).
   next serial, `DD-MMM-YYYY` dates, department labels (Development/Content/Graphics/SEO/PM), Status "To Do",
   "Task assigned." in Comments, inserted **above the DONE divider**. After creation the hub only updates Status and
   Date Completed, locating the row by Pulp link (PMs may rearrange rows freely); a Done task is moved below the
-  DONE divider automatically. Priority/Assigned To/Comments are write-once. The **Config** tab is the client directory only
+  DONE divider automatically. Priority/Assigned To/Comments are write-once. Comments carries the audit stamp on creation:
+  `Task assigned. Added by Task Hub · approved by <PM name> · 08-Sep-2026 14:32 IST · from Slack, <sender>` (template
+  `initial_note` and `stamp_timezone` in config/sheet.yaml; "drag in Pulp" when approved by dragging; retries keep the
+  original approver). No extra column. The **Config** tab is the client directory only
   (id, name, scope, slack_team_id, aliases, email_domains, whatsapp_numbers, board overrides, client_facing_ack,
   sheet_tab), mirrored into the DB every minute.
 - **Pulp.** `https://pulp.mangoeyes.io`, boards per department shared by all clients: SEO `d4424c02`,

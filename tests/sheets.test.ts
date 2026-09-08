@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapHeaders, colLetter, placement, formatDate, departmentLabel } from "../src/lib/sheets";
+import { mapHeaders, colLetter, placement, formatDate, departmentLabel, formatStamp, approverLabel, renderNote, sheetConfig } from "../src/lib/sheets";
 
 const H = ["S. NO.", "TASK", "CARD LINK", "DATE ADDED", "DUE DATE", "PRIORITY", "ASSIGNED TO", "STATUS", "DEPARTMENT", "COMMENTS"];
 
@@ -23,6 +23,25 @@ describe("PM Overview header mapping", () => {
   it("dates and department labels", () => {
     expect(formatDate(new Date(2026, 8, 8))).toBe("08-Sep-2026");
     expect(departmentLabel("dev")).toBe("Development"); expect(departmentLabel("design")).toBe("Graphics"); expect(departmentLabel("seo")).toBe("SEO");
+  });
+});
+
+describe("comments stamp", () => {
+  const t = sheetConfig().initial_note;
+  it("stamps who, when and where", () => {
+    expect(formatStamp(new Date(Date.UTC(2026, 8, 8, 9, 2)), "Asia/Kolkata")).toBe("08-Sep-2026 14:32 IST");
+    expect(renderNote(t, { who: "Priya", when: "08-Sep-2026 14:32 IST", source: "Slack, Dr Mehta" }))
+      .toBe("Task assigned. Added by Task Hub · approved by Priya · 08-Sep-2026 14:32 IST · from Slack, Dr Mehta");
+  });
+  it("names the approver sensibly", () => {
+    expect(approverLabel("Priya Sharma")).toBe("Priya Sharma");
+    expect(approverLabel("pulp:drag")).toBe("drag in Pulp");
+    expect(approverLabel("system:retry")).toBe("Task Hub");
+    expect(approverLabel(null)).toBe("Task Hub");
+  });
+  it("drops dangling labels when a value is missing", () => {
+    expect(renderNote(t, { who: "Priya", when: "08-Sep-2026 14:32 IST", source: "" }))
+      .toBe("Task assigned. Added by Task Hub · approved by Priya · 08-Sep-2026 14:32 IST");
   });
 });
 
