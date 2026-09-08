@@ -1,4 +1,4 @@
-# Mangowise PM Automation — Plan (v0.2)
+# MangoEyes PM Automation — Plan (v0.2)
 
 Guiding rule: **this exists to remove work, not add it.** Every piece below has to
 earn its place by deleting a manual step. If it doesn't, it's out.
@@ -23,7 +23,7 @@ what needs a decision.
 | Hermes on a VPS | **Considered, not chosen** for the pipeline. Hermes is a conversational agent: it answers when mentioned and decides for itself which tools to call. This system is the opposite: it must silently process *every* message, produce the same structured result every time, dedupe against a database, and never create a card twice. That is a pipeline, not a chat agent. Hermes would also be a second server to keep alive. | The one thing Hermes has that Vercel cannot is a WhatsApp bridge that links to the business phone by QR code (Baileys). It is unofficial and carries account-ban risk on a client-facing number. If WhatsApp forwarding proves too annoying in Phase 1, a tiny bridge like that on a $5 VPS, posting into the Vercel intake endpoint, is the Phase 2 option to evaluate, with the risk stated. |
 | Board | **Pulp**, via its API. Since we own Pulp, add **one webhook** in Pulp: "card moved list". That replaces polling for status sync. | Simplest possible status sync. |
 | Source of truth | Postgres owned by the app. Pulp and the sheet are written *from* it. | Dedupe, audit trail, and "why did it do that?" need one place that remembers everything. |
-| Slack | One Slack app, added to the client channels. Free plan is fine: Events API and slash commands work on free. Assumption: those channels live in **Mangowise's** workspace (clients as guests). If a client channel lives in the client's own workspace, their admin has to install the app, or that client's messages come via forwarding. | |
+| Slack | One Slack app, added to the client channels. Free plan is fine: Events API and slash commands work on free. Assumption: those channels live in **MangoEyes's** workspace (clients as guests). If a client channel lives in the client's own workspace, their admin has to install the app, or that client's messages come via forwarding. | |
 | Slack, forwarded instead of a bot? | **Both, same intake.** Automatic where the bot can live (channels in our workspace). A `#intake` channel in our workspace is the universal manual path: anyone uses Slack's "Share message" to send a message there from any channel, or pastes a WhatsApp / phone-call ask there. The bot reads `#intake` like any channel; a shared message carries the original text and permalink, so the audit link survives. | Manual forwarding brings back the one step this project exists to remove ("someone has to notice"), so it is the fallback, not the default. It is the right answer when a client channel lives in the client's own workspace and their admin won't install the bot. |
 | Email | One Gmail inbox (Google Workspace), e.g. `pm@…`. Anything sent or forwarded there is intake. Ad-platform notifications already come by email, so they need no separate integration. | |
 | WhatsApp | **Phase 1: forward.** Staff forward the WhatsApp message to the intake email, or paste it with `/task` in Slack. The WhatsApp Business *app* has no API, so there is no clean way to read it. **Phase 2, optional:** move the business number to WhatsApp Business Platform (Cloud API). Messages then arrive by webhook like Slack, but the phone app stops working for that number and replies go through an inbox tool. Decide after Phase 1 is live. | Forwarding costs 5 seconds per message and needs nothing built. Migrating the number is a real change to how you talk to clients. |
@@ -78,8 +78,8 @@ Database (five tables, that's all):
    |---|---|---|
    | Slack channel | Channel is in the client map → that client | Channel is in the internal list (e.g. `#team`, `#ideas`) → internal |
    | `#intake` share / `/task` | Origin channel of the shared message decides; otherwise the bot asks one question: "Which client, or internal?" | Same |
-   | Email | Sender domain (or the quoted original's sender, on a forward) matches a client | Sender is a Mangowise address and nothing client-related is quoted |
-   | Google Meet | Any attendee domain matches a client → that client | All attendees are Mangowise → internal |
+   | Email | Sender domain (or the quoted original's sender, on a forward) matches a client | Sender is a MangoEyes address and nothing client-related is quoted |
+   | Google Meet | Any attendee domain matches a client → that client | All attendees are MangoEyes → internal |
    | Unknown | → `#pm-review` tagged "unknown client", no model call | |
 
    Everything downstream is the same pipeline with `scope` as a field: internal
@@ -157,7 +157,7 @@ as a `message` row; it just never becomes a `request`.
 
 | Rule | Action |
 |---|---|
-| Author is Mangowise staff (from the client map) and channel is not `#intake` | Skip. Staff talk is not client requests. `/task` and `#intake` are the staff paths in. |
+| Author is MangoEyes staff (from the client map) and channel is not `#intake` | Skip. Staff talk is not client requests. `/task` and `#intake` are the staff paths in. |
 | Bot messages, joins/leaves, edits, deletions, pins, reactions | Skip. Only `message` events with text from a human. |
 | Text under 15 characters, or matches the acknowledgement list (`thanks`, `ok`, `great`, `noted`, `sure`, `👍`, `done`, and their variants) | Skip. |
 | Reply inside a thread whose root already became a request | Attach to that request as context, no model call. Exception: the reply is over 200 characters, then it runs the pipeline as a follow-up ask. |
@@ -169,7 +169,7 @@ as a `message` row; it just never becomes a `request`.
 
 | Rule | Action |
 |---|---|
-| Sent by Mangowise (our own outgoing, or a staff address) and not a forward | Skip. |
+| Sent by MangoEyes (our own outgoing, or a staff address) and not a forward | Skip. |
 | `Auto-Submitted`, `Precedence: bulk/list`, unsubscribe headers, known no-reply senders | Skip. Ad-platform senders on an allowlist are the exception and go through. |
 | Quoted history in a reply or forward | Stripped. Only the newest part is sent to the model. Cuts tokens by 60–90% on long threads. |
 | Attachments | Names and types are passed as text; contents are not sent to the model in phase 1. |
@@ -240,7 +240,7 @@ Still to be reconciled with the real sheet (Drive connector needs re-authorising
 ## 7. End-of-day summary
 
 ```
-Mangowise PM summary — Mon 7 Sep
+MangoEyes PM summary — Mon 7 Sep
 
 Created (N)          [Client] TASK-131  Dev — Fix booking button on /contact  (Slack)
 Moved (N)            [Client] TASK-118  Content → Web development
@@ -264,7 +264,7 @@ Updates, no task (N) …
 2. **PM sheet:** re-authorise the Google Drive connector, or paste tab names + headers.
 3. **Client map:** client name → Slack channel(s), email domain(s). A short list is fine.
 4. **Vercel plan:** Hobby or Pro (only affects how the tick is scheduled).
-5. **Slack:** confirm the client channels are in Mangowise's workspace.
+5. **Slack:** confirm the client channels are in MangoEyes's workspace.
 
 ## Appendix A. Why a deterministic pipeline and not Hermes (shareable)
 
