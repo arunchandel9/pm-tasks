@@ -1,0 +1,107 @@
+# What never reaches a model. All rules run in code; every skip is stored with its reason.
+
+min_chars: 15
+thread_reply_followup_min_chars: 200
+duplicate_window_days: 14
+per_client_daily_llm_cap: 100
+
+# Similarity (pg_trgm) thresholds against open requests for the same client.
+similarity:
+  merge_at: 0.90
+  review_at: 0.75
+
+# Lower-cased, trimmed message equal to one of these, or one of these followed only by punctuation/emoji.
+acknowledgements:
+  - thanks
+  - thank you
+  - thx
+  - ty
+  - ok
+  - okay
+  - great
+  - perfect
+  - noted
+  - sure
+  - done
+  - cool
+  - nice
+  - got it
+  - will do
+  - sounds good
+  - "👍"
+  - "🙏"
+  - "✅"
+
+# Words that can appear in a pure acknowledgement. A message of ≤6 words made only of these is skipped.
+ack_words:
+  - thanks
+  - thank
+  - you
+  - so
+  - much
+  - very
+  - ok
+  - okay
+  - great
+  - perfect
+  - noted
+  - sure
+  - done
+  - cool
+  - nice
+  - got
+  - it
+  - will
+  - do
+  - sounds
+  - good
+  - cheers
+  - brilliant
+  - lovely
+  - awesome
+  - super
+  - yes
+  - yep
+  - yeah
+  - no
+  - problem
+  - np
+  - all
+  - fine
+  - ta
+  - many
+  - a
+  - lot
+  - that
+  - this
+  - is
+  - works
+  - looks
+  - amazing
+  - fab
+
+# Slack subtypes that are never requests.
+slack_skip_subtypes:
+  - bot_message
+  - channel_join
+  - channel_leave
+  - message_changed
+  - message_deleted
+  - pinned_item
+  - unpinned_item
+  - channel_topic
+  - channel_purpose
+  - thread_broadcast
+
+# Email senders skipped unless allowlisted.
+email_skip_senders:
+  - noreply@
+  - no-reply@
+  - donotreply@
+  - mailer-daemon@
+  - notifications@
+email_allow_senders:
+  - facebookmail.com
+  - google.com
+  - googleads
+  - ads-noreply@google.com

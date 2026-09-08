@@ -1,0 +1,93 @@
+# Routing table. Deterministic. Edit here, not in prompts.
+# department: which board family on the client (dev | content | design | seo | general)
+# gated: true → card goes to the "Needs scope" list first; a person moves it on.
+# sla_days: working days from creation to due date. P1 overrides with p1_sla_hours.
+# chain: ordered sub-cards created under a parent (new page).
+
+p1_sla_hours: 4
+p1_keywords:
+  - site is down
+  - site down
+  - website down
+  - broken form
+  - form not working
+  - leads not coming
+  - no leads
+  - ad disapproved
+  - ads disapproved
+  - account disabled
+  - payment failed
+  - checkout not working
+  - booking not working
+  - "500 error"
+  - hacked
+
+request_types:
+  dev_issue:
+    department: dev
+    sla_days: 2
+    labels: [dev, bug]
+  dev_feedback:
+    department: dev
+    sla_days: 3
+    labels: [dev]
+  content_feedback:
+    department: content
+    sla_days: 3
+    labels: [content]
+  content_update:
+    department: content
+    sla_days: 3
+    labels: [content]
+  graphic_issue:
+    department: design
+    sla_days: 2
+    labels: [design]
+    follow_up:
+      request_type: dev_update_asset
+      department: dev
+      title_prefix: "Update live asset: "
+  dev_update_asset:
+    department: dev
+    sla_days: 1
+    labels: [dev, asset]
+  seo_request:
+    department: seo
+    sla_days: 5
+    labels: [seo]
+  new_page:
+    department: seo
+    gated: true
+    sla_days: 10
+    labels: [new-page]
+    chain:
+      - { step: seo_research,     department: seo,     title: "SEO research" }
+      - { step: content_creation, department: content, title: "Content creation" }
+      - { step: web_development,  department: dev,     title: "Web development" }
+      - { step: graphic_design,   department: design,  title: "Graphic design (page assets)" }
+      - { step: client_approval,  department: general, title: "Client approval", waiting_on_client: true }
+      - { step: build,            department: dev,     title: "Build" }
+      - { step: menu_linking,     department: dev,     title: "Menu linking" }
+  new_feature:
+    department: dev
+    gated: true
+    sla_days: 10
+    labels: [feature]
+  general_update:
+    department: general
+    no_card: true
+  question:
+    department: general
+    no_card: true
+  internal_task:
+    department: internal
+    sla_days: 3
+    labels: [internal]
+  idea:
+    department: internal
+    no_card: true
+    backlog: ideas
+  decision:
+    department: internal
+    no_card: true
+    backlog: decisions

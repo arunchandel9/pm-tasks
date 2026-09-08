@@ -1,0 +1,40 @@
+# Paste at https://api.slack.com/apps → Create New App → From a manifest.
+# Replace YOUR-VERCEL-DOMAIN after the first deploy, then reinstall to the workspace.
+display_information:
+  name: Task Hub
+  description: Turns client requests into tasks. Internal use.
+  background_color: "#E28F05"
+features:
+  bot_user:
+    display_name: Task Hub
+    always_online: true
+  slash_commands:
+    - command: /task
+      url: https://YOUR-VERCEL-DOMAIN/api/slack/events
+      description: Log a request the hub couldn't see (a call, a WhatsApp, a message elsewhere)
+      usage_hint: "[client name] what was asked"
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - channels:history
+      - channels:read
+      - groups:history
+      - groups:read
+      - chat:write
+      - reactions:write
+      - reactions:read
+      - users:read
+      - commands
+settings:
+  event_subscriptions:
+    request_url: https://YOUR-VERCEL-DOMAIN/api/slack/events
+    bot_events:
+      - message.channels
+      - message.groups
+  interactivity:
+    is_enabled: true
+    request_url: https://YOUR-VERCEL-DOMAIN/api/slack/events
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

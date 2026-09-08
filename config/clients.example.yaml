@@ -1,0 +1,32 @@
+# The real client map lives in the "Config" tab of the PM sheet and is mirrored into the
+# clients table every minute. This file is the local-dev fallback and documents the shape.
+#
+# One row per client. Boards per department: board, list (target), staging, assignee.
+
+clients:
+  - id: clinic-x
+    name: Clinic X
+    scope: client
+    slack_channels: [C0123456789]
+    email_domains: [clinicx.co.uk]
+    whatsapp_numbers: ["+447700900000"]
+    client_facing_ack: false
+    boards:
+      dev:     { board: "board_id", list: "To Do", staging: "Staging", assignee: "dev@mangoeyesagency.com" }
+      content: { board: "board_id", list: "To Do", staging: "Staging", assignee: "content@mangoeyesagency.com" }
+      design:  { board: "board_id", list: "To Do", staging: "Staging", assignee: "design@mangoeyesagency.com" }
+      seo:     { board: "board_id", list: "To Do", staging: "Staging", assignee: "seo@mangoeyesagency.com" }
+      scope:   { board: "board_id", list: "Needs scope" }
+
+  - id: internal
+    name: MangoEyes internal
+    scope: internal
+    slack_channels: [C0INTERNAL1, C0IDEAS0001]
+    email_domains: [mangoeyesagency.com]
+    boards:
+      internal: { board: "board_id", list: "To Do", staging: "Staging" }
+
+staff_emails:
+  - arun@mangoeyesagency.com
+staff_slack_user_ids:
+  - U0ARUN00001
