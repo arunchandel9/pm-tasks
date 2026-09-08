@@ -1,0 +1,30 @@
+# How the hub writes into each client's tab in the PM sheet.
+# It reads the tab's own header row and places each value under the first header that matches an alias below
+# (case-insensitive, ignoring punctuation). Headers it doesn't know are never touched. Human-owned columns
+# (priority, owner, notes, ETA) are never written, except assignee when the cell is empty on creation.
+
+# Row 1 is the header by default; set per-tab overrides if a tab has a title row above the headers.
+header_row: 1
+
+columns:
+  task_id:     ["task id", "id", "ref", "task ref", "#", "sr no", "s no", "sl no"]
+  title:       ["task", "title", "task name", "task title", "description", "task description", "request", "work"]
+  department:  ["department", "team", "dept"]
+  type:        ["type", "category", "request type", "task type"]
+  stage:       ["status", "stage", "state", "progress"]
+  created:     ["date", "created", "created on", "added on", "date added", "start date", "received"]
+  due:         ["due", "due date", "deadline", "eta", "target date"]
+  last_moved:  ["last moved", "last updated", "updated", "last update"]
+  completed:   ["completed", "completed on", "done on", "closed", "finished"]
+  source:      ["source", "channel", "came from", "via"]
+  source_link: ["source link", "link", "message link", "reference"]
+  pulp_link:   ["pulp", "pulp link", "card", "card link", "board link"]
+  assignee:    ["assigned to", "assignee", "owner", "responsible", "who"]   # written only when empty
+  priority:    ["priority", "urgency"]                                       # human-owned: read, never written
+  notes:       ["notes", "pm notes", "comments", "remarks"]                  # human-owned: never written
+
+# Value written to the stage column at each point.
+stage_values:
+  created: "To Do"
+  staging: "Draft"
+  done: "Done"

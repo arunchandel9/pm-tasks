@@ -60,6 +60,18 @@ export async function GET(req: Request) {
           // Dragging out of Staging counts as approval.
           await sql()`update requests r set status = 'created', decided_by = 'pulp:drag', decided_at = now() from tasks t where t.request_id = r.id and t.id = ${t[0].id} and r.status = 'pending_review'`;
         }
+        // Mirror the move into the client's tab (bot-owned cells only).
+        try {
+          const { sheetsConfigured, updateTaskCells, sheetConfig } = await import("@/lib/sheets");
+          const tabRow = await sql()`select t.sheet_row, s.value as tab from tasks t left join settings s on s.key = 'sheet_tab:' || t.id::text where t.id = ${t[0].id}`;
+          if (sheetsConfigured() && tabRow.length && tabRow[0].sheet_row && tabRow[0].tab) {
+            const listName = (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
+            const done = /done|complete|closed|live/i.test(listName);
+            if (done) await sql()`update tasks set completed_at = now() where id = ${t[0].id} and completed_at is null`;
+            const today = new Date().toISOString().slice(0, 10);
+            await updateTaskCells(String(tabRow[0].tab), Number(tabRow[0].sheet_row), { stage: done ? sheetConfig().stage_values.done : listName, last_moved: today, completed: done ? today : undefined });
+          }
+        } catch (e) { console.error("sheet stage update failed", (e as Error).message); }
         synced++;
       }
       await sql()`insert into settings (key, value) values ('pulp_poll_since', ${JSON.stringify(new Date().toISOString())}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
@@ -105,16 +117,16 @@ async function runJob(kind: string, payload: Record<string, unknown>) {
         select 1 from messages r where r.channel = 'slack' and r.sender_is_staff and r.sent_at > ${m.sent_at}
           and split_part(r.external_id, ':', 1) = ${channelId} limit 1`;
       if (replied.length) return;
-      // One nudge per channel per window, however many messages the client sent.
-      const last = await sql()`select value from settings where key = ${"reply_nudged:" + channelId}`;
-      const { noise: noiseCfg } = await import("@/lib/config");
-      if (last.length && Date.now() - new Date(last[0].value as string).getTime() < noiseCfg().reply_nudge_minutes * 60 * 1000) return;
-      await sql()`insert into settings (key, value) values (${"reply_nudged:" + channelId}, ${JSON.stringify(new Date().toISOString())}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+      // One line per channel per mark, however many messages the client sent.
+      const mins = Number(payload.mins ?? 60);
+      const key = `reply_nudged:${channelId}:${mins}`;
+      const last = await sql()`select value from settings where key = ${key}`;
+      if (last.length && Date.now() - new Date(last[0].value as string).getTime() < mins * 60 * 1000) return;
+      await sql()`insert into settings (key, value) values (${key}, ${JSON.stringify(new Date().toISOString())}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
       const { postText } = await import("@/lib/review");
-      const { noise } = await import("@/lib/config");
-      const mins = noise().reply_nudge_minutes;
       const quote = String(m.text).replace(/\s+/g, " ").slice(0, 160);
-      await postText(`⏰ *${m.client_name ?? "A client"}* wrote ${mins} min ago in their Slack and nobody from the team has replied yet: "${quote}${String(m.text).length > 160 ? "…" : ""}"${m.permalink ? `\n${m.permalink}` : ""}`);
+      const label = mins >= 60 ? `${Math.round(mins / 60)} hour${mins >= 120 ? "s" : ""}` : `${mins} min`;
+      await postText(`${mins >= 60 ? "⏰" : "💬"} *${m.client_name ?? "A client"}* wrote ${label} ago in their Slack and nobody from the team has replied yet: "${quote}${String(m.text).length > 160 ? "…" : ""}"${m.permalink ? `\n${m.permalink}` : ""}`);
       return;
     }
     case "create_card":

@@ -5,8 +5,9 @@ thread_reply_followup_min_chars: 200
 duplicate_window_days: 14
 per_client_daily_llm_cap: 100
 
-# If a client posts in their Slack workspace and no MangoEyes person replies within this window, one line goes to PM Review.
-reply_nudge_minutes: 60
+# If a client posts in their Slack workspace and no MangoEyes person has replied, one line goes to PM Review at each of
+# these marks (minutes after the message). Any team reply clears them. One line per channel per mark, however many messages.
+reply_nudge_minutes: [5, 60]
 
 # Similarity (pg_trgm) thresholds against open requests for the same client.
 similarity:

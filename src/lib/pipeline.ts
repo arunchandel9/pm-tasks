@@ -36,7 +36,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
 
   // Unanswered-client-message nudge: any client-authored Slack message starts a timer, request or not.
   if (m.channel === "slack" && !m.senderIsStaff && m.scope === "client" && !noiseVerdict.skip) {
-    await enqueue("reply_check", { messageId }, noise().reply_nudge_minutes * 60);
+    for (const mins of noise().reply_nudge_minutes) await enqueue("reply_check", { messageId, mins }, mins * 60);
   }
 
   if (noiseVerdict.skip) return { messageId, outcome: "skipped", reason: noiseVerdict.reason ?? "noise" };

@@ -1,6 +1,6 @@
 import { sql, enqueue } from "./db";
 import { pulp } from "./pulp";
-import { appendTaskRow, sheetsConfigured } from "./sheets";
+import { appendTaskRow, sheetsConfigured, findClientTab, sheetConfig } from "./sheets";
 import type { Client, Draft, Message, RouteDecision } from "./types";
 
 export interface TaskRow { id: string; pulpCardId: string | null }
@@ -72,15 +72,21 @@ export async function approveRequest(requestId: string, decidedBy: string): Prom
   }
 
   if (x.task_id && sheetsConfigured()) {
-    const tab = x.client_name ? String(x.client_name) : "Internal";
     const now = new Date().toISOString().slice(0, 10);
     try {
-      const rowNum = await appendTaskRow(tab, {
-        taskId: String(x.task_id).slice(0, 8), client: String(x.client_name ?? "Internal"), department: String(x.department),
-        type: String(x.request_type), title: String(x.title), pulpLink: x.pulp_card_id ? `${process.env.PULP_BASE_URL?.replace(/\/api$/, "")}/cards/${x.pulp_card_id}` : "",
-        source: String(x.channel), sourceLink: String(x.permalink ?? ""), created: now, stage: "To Do", lastMoved: now, completed: "",
+      const client = x.client_id ? { id: String(x.client_id), name: String(x.client_name ?? x.client_id) } as Client : null;
+      const tab = await findClientTab(client);
+      if (!tab) throw new Error(`no tab for ${client?.name ?? "Internal"} in the PM sheet`);
+      const due = (await sql()`select to_char(due_at, 'YYYY-MM-DD') as d, assignee from tasks where id = ${x.task_id}`)[0];
+      const r = await appendTaskRow(tab, {
+        task_id: String(x.task_id).slice(0, 8), title: String(x.title), department: String(x.department), type: String(x.request_type),
+        stage: sheetConfig().stage_values.created, created: now, due: String(due?.d ?? ""), last_moved: now, completed: "",
+        source: String(x.channel), source_link: String(x.permalink ?? ""),
+        pulp_link: x.pulp_card_id ? `${process.env.PULP_BASE_URL?.replace(/\/api$/, "")}/cards/${x.pulp_card_id}` : "",
+        assignee: String(due?.assignee ?? ""),
       });
-      await sql()`update tasks set sheet_row = ${rowNum} where id = ${x.task_id}`;
+      await sql()`update tasks set sheet_row = ${r.row} where id = ${x.task_id}`;
+      await sql()`insert into settings (key, value) values (${"sheet_tab:" + x.task_id}, ${JSON.stringify(tab)}::jsonb) on conflict (key) do update set value = excluded.value`;
     } catch (e) {
       await enqueue("sync_sheet", { taskId: x.task_id }, 120);
       console.error("sheet append failed, queued:", (e as Error).message);
