@@ -148,6 +148,8 @@ export async function postReview(p: ReviewPost): Promise<void> {
   }
 
   if (p.kind === "needs_human") {
+    const clientRows = await sql()`select id, name from clients where scope = 'client' order by name limit 100`;
+    const options = clientRows.map((c) => ({ text: { type: "plain_text" as const, text: String(c.name).slice(0, 75) }, value: String(c.id) }));
     await home.chat.postMessage({
       channel,
       text: `${clientName}: needs a person (${p.why})`,
@@ -158,6 +160,7 @@ export async function postReview(p: ReviewPost): Promise<void> {
           type: "actions",
           block_id: `human:${p.messageId}`,
           elements: [
+            ...(options.length ? [{ type: "static_select" as const, action_id: "pick_client", placeholder: { type: "plain_text" as const, text: "Pick the client…" }, options }] : []),
             { type: "button", style: "primary", text: { type: "plain_text", text: "Make it a task" }, action_id: "make_task", value: p.messageId },
             { type: "button", text: { type: "plain_text", text: "Not a task" }, action_id: "dismiss_message", value: p.messageId },
           ],

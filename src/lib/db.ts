@@ -49,6 +49,7 @@ type ClientRow = {
   boards: Record<string, { board: string; list: string; staging?: string; assignee?: string }>;
   client_facing_ack: boolean;
   slack_team_id: string | null;
+  aliases: string[] | null;
 };
 
 function toClient(r: ClientRow): Client {
@@ -58,6 +59,7 @@ function toClient(r: ClientRow): Client {
     whatsappNumbers: r.whatsapp_numbers ?? [], boards: r.boards ?? {},
     clientFacingAck: r.client_facing_ack,
     slackTeamId: r.slack_team_id,
+    aliases: r.aliases ?? [],
   };
 }
 
@@ -68,14 +70,14 @@ export async function allClients(): Promise<Client[]> {
 
 export async function upsertClient(c: Client): Promise<void> {
   await sql()`
-    insert into clients (id, name, scope, slack_channels, email_domains, whatsapp_numbers, boards, client_facing_ack, slack_team_id)
+    insert into clients (id, name, scope, slack_channels, email_domains, whatsapp_numbers, boards, client_facing_ack, slack_team_id, aliases)
     values (${c.id}, ${c.name}, ${c.scope}, ${c.slackChannels}, ${c.emailDomains}, ${c.whatsappNumbers},
-            ${JSON.stringify(c.boards)}::jsonb, ${c.clientFacingAck}, ${c.slackTeamId ?? null})
+            ${JSON.stringify(c.boards)}::jsonb, ${c.clientFacingAck}, ${c.slackTeamId ?? null}, ${c.aliases ?? []})
     on conflict (id) do update set
       name = excluded.name, scope = excluded.scope, slack_channels = excluded.slack_channels,
       email_domains = excluded.email_domains, whatsapp_numbers = excluded.whatsapp_numbers,
       boards = excluded.boards, client_facing_ack = excluded.client_facing_ack,
-      slack_team_id = excluded.slack_team_id, updated_at = now()`;
+      slack_team_id = excluded.slack_team_id, aliases = excluded.aliases, updated_at = now()`;
 }
 
 // ---- queue ----

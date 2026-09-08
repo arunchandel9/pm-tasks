@@ -35,11 +35,12 @@ export async function GET(req: Request) {
       continue;
     }
     if (k === "client") {
-      // Quick client registration before the sheet exists: client=<id>|<name>|<slack_team_id>|<scope>
-      const [id, name, teamId, scope] = v.split("|");
+      // Quick client registration before the sheet exists: client=<id>|<name>|<slack_team_id>|<scope>|<alias1,alias2>
+      const [id, name, teamId, scope, aliases] = v.split("|");
       if (id) {
-        await sql()`insert into clients (id, name, scope, slack_team_id) values (${id}, ${name || id}, ${scope === "internal" ? "internal" : "client"}, ${teamId || null})
-                    on conflict (id) do update set name = excluded.name, scope = excluded.scope, slack_team_id = excluded.slack_team_id, updated_at = now()`;
+        const al = (aliases ?? "").split(",").map((a) => a.trim()).filter(Boolean);
+        await sql()`insert into clients (id, name, scope, slack_team_id, aliases) values (${id}, ${name || id}, ${scope === "internal" ? "internal" : "client"}, ${teamId || null}, ${al})
+                    on conflict (id) do update set name = excluded.name, scope = excluded.scope, slack_team_id = excluded.slack_team_id, aliases = excluded.aliases, updated_at = now()`;
         seeded.push(`client:${id}`);
       }
       continue;

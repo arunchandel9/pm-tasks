@@ -6,6 +6,7 @@ import { noise, env } from "@/lib/config";
 import { allClients, sql, getSetting } from "@/lib/db";
 import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
+import { resolveClientFromText, stripClientPrefix } from "@/lib/resolve";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,10 @@ async function handleMessageEvent(ev: SlackMessageEvent, teamId: string | null) 
 
   const m = slackToMessage(ev, { teamId, homeTeamId: home, clients, senderIsStaff, intakeChannelId: intakeId, workspaceUrl });
   const isIntake = m.channel === "intake";
+  if (isIntake && !m.clientId) {
+    const hit = resolveClientFromText(m.text, clients);
+    if (hit) { m.clientId = hit.client.id; m.scope = hit.client.scope; m.text = stripClientPrefix(m.text, hit.client); }
+  }
 
   let threadRootIsRequest = false;
   if (m.threadRef) {
@@ -81,17 +86,17 @@ async function handleSlashCommand(form: URLSearchParams) {
   const teamId = form.get("team_id");
   if (!text) return NextResponse.json({ response_type: "ephemeral", text: "Usage: /task <what the client asked for>. Add the client name if this isn't their workspace." });
   const clients = await allClients();
-  const client = clients.find((c) => c.slackTeamId === teamId) ?? clients.find((c) => text.toLowerCase().includes(c.name.toLowerCase())) ?? null;
+  const client = clients.find((c) => c.slackTeamId === teamId && c.scope === "client") ?? resolveClientFromText(text, clients)?.client ?? null;
   const m = {
     channel: "task_cmd" as const, externalId: `${user}:${Date.now()}`, teamId, clientId: client?.id ?? null,
     scope: client ? client.scope : ("unknown" as const), sender: user, senderIsStaff: true, sentAt: new Date(),
-    text, permalink: null, threadRef: null, raw: Object.fromEntries(form.entries()),
+    text: client ? stripClientPrefix(text, client) : text, permalink: null, threadRef: null, raw: Object.fromEntries(form.entries()),
   };
   void processMessage(m, { skip: false, reason: null }).catch((e) => console.error("/task failed", e));
   return NextResponse.json({ response_type: "ephemeral", text: client ? `Got it for ${client.name}. It will appear in ${env.reviewChannel()}.` : `Got it. I couldn't tell the client, so it will appear in ${env.reviewChannel()} for you to pick.` });
 }
 
-async function handleInteraction(payload: { type: string; team?: { id: string }; user?: { id: string; username?: string }; actions?: Array<{ action_id: string; value?: string }>; message?: { ts: string }; channel?: { id: string } }) {
+async function handleInteraction(payload: { type: string; team?: { id: string }; user?: { id: string; username?: string }; actions?: Array<{ action_id: string; value?: string; block_id?: string; selected_option?: { value: string } }>; message?: { ts: string }; channel?: { id: string } }) {
   const action = payload.actions?.[0];
   const who = payload.user?.username ?? payload.user?.id ?? "unknown";
   if (!action) return NextResponse.json({ ok: true });
@@ -128,6 +133,17 @@ async function handleInteraction(payload: { type: string; team?: { id: string };
         await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: action.value })}::jsonb)`;
         await finish(`↪️ Marked as a task by ${who}; it will be processed on the next tick.`);
         break;
+      case "pick_client": {
+        // Dropdown on a "needs a person" card: value = messageId, selected_option = client id. Picking = processing.
+        const messageId = action.value ?? (action.block_id ?? "").replace(/^human:/, "");
+        const clientId = action.selected_option?.value;
+        if (!messageId || !clientId) break;
+        const c = (await allClients()).find((x) => x.id === clientId);
+        await sql()`update messages set client_id = ${clientId}, scope = ${c?.scope ?? "client"}, skip_reason = null where id = ${messageId}`;
+        await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId })}::jsonb)`;
+        await finish(`👤 Client set to *${c?.name ?? clientId}* by ${who}; processing on the next tick.`);
+        break;
+      }
       case "dismiss_message":
         await sql()`update messages set skip_reason = 'dismissed_by_human' where id = ${action.value!}`;
         await finish(`🗑️ Not a task · by ${who}`);

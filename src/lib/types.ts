@@ -36,6 +36,7 @@ export interface Client {
   boards: Record<string, BoardTarget>;
   clientFacingAck: boolean;
   slackTeamId?: string | null;
+  aliases?: string[];
 }
 
 export interface RequestTypeRule {

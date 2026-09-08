@@ -52,6 +52,7 @@ export async function readConfigTab(): Promise<{ clients: Client[]; errors: stri
       whatsappNumbers: list(get("whatsapp_numbers")), boards,
       clientFacingAck: /^(true|yes|1)$/i.test(get("client_facing_ack")),
       slackTeamId: get("slack_team_id") || null,
+      aliases: list(get("aliases")),
     });
   }
   return { clients, errors };

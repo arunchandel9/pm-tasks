@@ -23,9 +23,11 @@ create table if not exists clients (
   boards           jsonb  not null default '{}',     -- {dev:{board,list,staging,assignee}, content:{...}, design:{...}, seo:{...}}
   client_facing_ack boolean not null default false,
   slack_team_id    text,                             -- one workspace per client
+  aliases          text[] not null default '{}',     -- other names people use: "Dr Patel", "the clinic"
   updated_at       timestamptz not null default now()
 );
 alter table clients add column if not exists slack_team_id text;
+alter table clients add column if not exists aliases text[] not null default '{}';
 
 -- One row per Slack workspace the app is installed in (MangoEyes' own + one per client).
 create table if not exists slack_workspaces (
