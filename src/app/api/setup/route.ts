@@ -34,6 +34,16 @@ export async function GET(req: Request) {
       seeded.push(k);
       continue;
     }
+    if (k === "client") {
+      // Quick client registration before the sheet exists: client=<id>|<name>|<slack_team_id>|<scope>
+      const [id, name, teamId, scope] = v.split("|");
+      if (id) {
+        await sql()`insert into clients (id, name, scope, slack_team_id) values (${id}, ${name || id}, ${scope === "internal" ? "internal" : "client"}, ${teamId || null})
+                    on conflict (id) do update set name = excluded.name, scope = excluded.scope, slack_team_id = excluded.slack_team_id, updated_at = now()`;
+        seeded.push(`client:${id}`);
+      }
+      continue;
+    }
     if (k !== "intake_channel_id" && !k.startsWith("workspace_url:")) continue;
     await sql()`insert into settings (key, value) values (${k}, ${JSON.stringify(v)}::jsonb)
                 on conflict (key) do update set value = excluded.value, updated_at = now()`;
