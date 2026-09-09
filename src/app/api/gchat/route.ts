@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { verifyChatRequest, intakeSpace, reviewSpace, taskDialogBody, downloadAttachment } from "@/lib/gchat";
-import { normaliseChatEvent, replyText, replyUpdateMessage, replyDialog, replyDialogOk, type NormalisedEvent, type ChatMessage } from "@/lib/gchat-events";
+import { normaliseChatEvent, replyText, replyUpdateMessage, replyDialog, replyDialogOk, replyDialogError, type NormalisedEvent, type ChatMessage } from "@/lib/gchat-events";
 import { allClients, sql } from "@/lib/db";
 import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
@@ -118,7 +118,7 @@ async function storeOnly(m: Message): Promise<{ id: string }> {
 async function handleDialogSubmit(ev: NormalisedEvent) {
   const get = (k: string) => ev.formInputs[k]?.stringInputs?.value?.[0]?.trim() ?? "";
   const clientId = get("client"), request = get("request"), notes = get("notes"), priority = get("priority") || "P3", source = get("source");
-  if (!request) return NextResponse.json(replyDialogOk(ev.format, "Please write what was asked."));
+  if (!request) return NextResponse.json(replyDialogError(ev.format, "Please write what was asked."));
   const clients = await allClients();
   const client = clients.find((c) => c.id === clientId) ?? null;
   const body = [request, notes ? `\nNotes from ${ev.user.displayName ?? "team"}: ${notes}` : "", source ? `\nCame via: ${source}` : "", priority === "P1" ? "\nMarked urgent (P1) by the team." : priority === "P2" ? "\nMarked important by the team." : ""].join("");

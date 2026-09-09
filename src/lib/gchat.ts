@@ -166,8 +166,8 @@ export function duplicateCard(p: { requestId: string; duplicateOf: string; clien
 /** The /task dialog body: client dropdown, request text, notes, priority. Wrapped per event format by the route. */
 export function taskDialogBody(clients: Array<{ id: string; name: string }>) {
   return {
+            header: { title: "Add a request" },
             sections: [{
-              header: "Add a request",
               widgets: [
                 { selectionInput: { name: "client", label: "Client", type: "DROPDOWN", items: clients.map((c, i) => ({ text: c.name, value: c.id, selected: i === 0 })) } },
                 { textInput: { name: "request", label: "What was asked (the client's words, as close as possible)", type: "MULTIPLE_LINE" } },

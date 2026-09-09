@@ -71,14 +71,23 @@ export function replyUpdateMessage(format: "classic" | "addon", text: string) {
     : { actionResponse: { type: "UPDATE_MESSAGE" }, text, cardsV2: [] };
 }
 
+/** Open a dialog. Add-on style apps open dialogs by pushing a card (RenderActions); classic apps use a DIALOG action response. */
 export function replyDialog(format: "classic" | "addon", body: unknown) {
   return format === "addon"
-    ? { hostAppDataAction: { chatDataAction: { dialogAction: { dialog: { body } } } } }
+    ? { action: { navigations: [{ pushCard: body }] } }
     : { actionResponse: { type: "DIALOG", dialogAction: { dialog: { body } } } };
 }
 
+/** Close the dialog after a submit and show a short confirmation. */
 export function replyDialogOk(format: "classic" | "addon", message: string) {
   return format === "addon"
-    ? { hostAppDataAction: { chatDataAction: { dialogAction: { actionStatus: { statusCode: "OK", userFacingMessage: message } } } } }
+    ? { action: { notification: { text: message }, navigations: [{ endNavigation: { action: "CLOSE_DIALOG" } }] } }
     : { actionResponse: { type: "DIALOG", dialogAction: { actionStatus: { statusCode: "OK", userFacingMessage: message } } } };
+}
+
+/** Keep the dialog open and show a validation message. */
+export function replyDialogError(format: "classic" | "addon", message: string) {
+  return format === "addon"
+    ? { action: { notification: { text: message } } }
+    : { actionResponse: { type: "DIALOG", dialogAction: { actionStatus: { statusCode: "INVALID_ARGUMENT", userFacingMessage: message } } } };
 }
