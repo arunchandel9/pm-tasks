@@ -44,6 +44,9 @@ async function cached<T>(key: string, fn: () => Promise<T>, force = false): Prom
   cache.set(key, { at: Date.now(), v });
   return v;
 }
+export const normList = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+/** A list that means the work is finished: "Done", "Done (Final Delivery)", "Completed". Not "Ready to Use / Go Live" or "QA Testing Done". */
+export const isDoneList = (name: string) => /^(done|completed?|closed)\b/i.test(name.trim());
 const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
 export const pulp = {
@@ -83,9 +86,10 @@ export const pulp = {
     }, force);
   },
 
+  /** List names are matched ignoring case, spaces and punctuation: "To Do" = "To-Do" = "To-do" = "TODO". */
   async findListId(boardId: string, listName: string): Promise<string | null> {
-    const want = listName.trim().toLowerCase();
-    const pick = (ls: PulpList[]) => ls.find((l) => l.name.trim().toLowerCase() === want)?.id ?? null;
+    const want = normList(listName);
+    const pick = (ls: PulpList[]) => ls.find((l) => normList(l.name) === want)?.id ?? null;
     return pick(await this.listsOnBoard(boardId)) ?? pick(await this.listsOnBoard(boardId, true));
   },
 

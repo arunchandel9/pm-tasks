@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cronAuthorized } from "@/lib/auth";
 import { sql, upsertClient } from "@/lib/db";
 import { readConfigTab, sheetsConfigured } from "@/lib/sheets";
-import { pulp } from "@/lib/pulp";
+import { pulp, isDoneList } from "@/lib/pulp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,7 +82,7 @@ export async function GET(req: Request) {
             const row = (await locateTaskRow(tab, { pulpLink: link, title: String(tabRow[0].title) })) ?? (tabRow[0].sheet_row ? Number(tabRow[0].sheet_row) : null);
             if (row) {
               const listName = (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
-              const done = /done|complete|closed|live/i.test(listName);
+              const done = isDoneList(listName);
               if (done) await sql()`update tasks set completed_at = now() where id = ${t[0].id} and completed_at is null`;
               await updateTaskCells(tab, row, { stage: done ? sheetConfig().stage_values.done : listName, completed: done ? new Date() : undefined });
               const finalRow = done ? await moveRowBelowDivider(tab, row) : row;
