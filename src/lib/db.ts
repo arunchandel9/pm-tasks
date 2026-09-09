@@ -66,7 +66,7 @@ function toClient(r: ClientRow): Client {
 }
 
 export async function allClients(): Promise<Client[]> {
-  const rows = (await sql()`select * from clients`) as ClientRow[];
+  const rows = (await sql()`select * from clients order by name`) as ClientRow[];
   return rows.map(toClient);
 }
 

@@ -45,6 +45,12 @@ export async function GET(req: Request) {
       }
       continue;
     }
+    if (k === "remove_client") {
+      // Remove a client that is not in the Config tab (e.g. the setup-time test client). Messages/requests keep their rows.
+      const r = await sql()`delete from clients where id = ${v} returning id`;
+      seeded.push(r.length ? `removed:${v}` : `not_found:${v}`);
+      continue;
+    }
     if (k !== "intake_channel_id" && !k.startsWith("workspace_url:")) continue;
     await sql()`insert into settings (key, value) values (${k}, ${JSON.stringify(v)}::jsonb)
                 on conflict (key) do update set value = excluded.value, updated_at = now()`;
