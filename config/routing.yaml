@@ -1,5 +1,5 @@
 # Routing table. Deterministic. Edit here, not in prompts.
-# department: which board family on the client (dev | content | design | seo | general)
+# department: which board family (dev | content | design | seo | automation | video | general | internal)
 # gated: true → card goes to the "Needs scope" list first; a person moves it on.
 # sla_days: working days from creation to due date. P1 overrides with p1_sla_hours.
 # chain: ordered sub-cards created under a parent (new page).
@@ -55,6 +55,14 @@ request_types:
     department: seo
     sla_days: 5
     labels: [seo]
+  automation_request:          # CRM / GoHighLevel / email-SMS flows / integrations / onboarding steps
+    department: automation
+    sla_days: 3
+    labels: [automation]
+  video_request:               # edits, reels, shoot planning, captions, thumbnails
+    department: video
+    sla_days: 5
+    labels: [video]
   new_page:
     department: seo
     gated: true

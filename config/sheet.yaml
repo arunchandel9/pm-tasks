@@ -34,6 +34,8 @@ department_labels:
   content: Content
   design: Graphics
   seo: SEO
+  automation: Automation
+  video: Video
   general: PM
   internal: PM
 

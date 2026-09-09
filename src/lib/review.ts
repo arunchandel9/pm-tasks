@@ -28,7 +28,7 @@ export function sourceLabel(m: Message): string {
   return `${where} · ${m.sender}`;
 }
 
-const DEPT: Record<string, string> = { dev: "Dev", content: "Content", design: "Graphics", seo: "SEO", general: "PM", internal: "PM" };
+const DEPT: Record<string, string> = { dev: "Dev", content: "Content", design: "Graphics", seo: "SEO", automation: "Automation", video: "Video", general: "PM", internal: "PM" };
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
 /** One feed line: `🆕 *HOH* · Fix Book Now button on mobile · Dev · P2 · Staging card · Slack, Dr Mehta`. P1 lines start with 🔴. */

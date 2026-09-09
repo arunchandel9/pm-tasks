@@ -3,7 +3,7 @@ import { structuredCall } from "./client";
 
 export const ClassifySchema = z.object({
   request_type: z.string().describe("One of the request type keys given in the system prompt"),
-  department: z.enum(["dev", "content", "design", "seo", "general", "internal"]),
+  department: z.enum(["dev", "content", "design", "seo", "automation", "video", "general", "internal"]),
   priority_hint: z.enum(["P1", "P2", "P3"]).describe("P1 only for revenue-affecting breakage; P3 default"),
   priority_reason: z.string().nullable(),
   confidence: z.number().min(0).max(1).describe("How sure you are of request_type and department"),
@@ -16,7 +16,7 @@ export const ClassifySchema = z.object({
 });
 export type Classification = z.infer<typeof ClassifySchema>;
 
-const INSTRUCTIONS = `You classify one ask from a client (or team member) of a digital marketing agency (MangoEyes: websites, content, design, SEO, paid ads for clinics).
+const INSTRUCTIONS = `You classify one ask from a client (or team member) of a digital marketing agency (MangoEyes: websites, content, design, SEO, paid ads, CRM automations and onboarding, video production for clinics).
 Pick exactly one request_type from the list in this prompt and the matching department.
 Confidence is about request_type and department only. Be honest: 0.9+ means a PM would not change it; below 0.7 means a person should look.
 If the open-requests list contains the same ask, set same_as_open to its index and say whether this is a duplicate, a nudge ("any update?"), or a change to it.

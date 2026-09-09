@@ -1,7 +1,7 @@
 export type Channel = "slack" | "email" | "intake" | "task_cmd" | "meet";
 export type Scope = "client" | "internal" | "unknown";
 export type Priority = "P1" | "P2" | "P3";
-export type Department = "dev" | "content" | "design" | "seo" | "general" | "internal";
+export type Department = "dev" | "content" | "design" | "seo" | "automation" | "video" | "general" | "internal";
 
 /** One shape for every inbound message, whatever the channel. */
 export interface Message {
