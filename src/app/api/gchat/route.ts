@@ -40,13 +40,14 @@ async function handle(ev: NormalisedEvent, raw: unknown, record: (extra: Record<
     return reply("welcome", replyText(f, `Task Hub is here. ${role}`));
   }
 
-  if (ev.kind === "command" || (ev.message && /^\/task\b/.test(ev.message.text ?? ""))) {
+  // Clicks first: a button click event also carries the original message (e.g. "/task"), which must not reopen the form.
+  if (ev.kind === "dialog_submit") { const r = await handleDialogSubmit(ev); record({ replied: "dialog_submit" }); return r; }
+  if (ev.kind === "click") { const r = await handleCardClick(ev); record({ replied: `click:${ev.invokedFunction}` }); return r; }
+
+  if (ev.kind === "command" || (ev.kind === "message" && /^\/task\b/.test(ev.message?.text ?? ""))) {
     const clients = (await allClients()).filter((c) => c.scope === "client").map((c) => ({ id: c.id, name: c.name }));
     return reply("dialog_open", replyDialog(f, taskDialogBody(clients)));
   }
-
-  if (ev.kind === "dialog_submit") { const r = await handleDialogSubmit(ev); record({ replied: "dialog_submit" }); return r; }
-  if (ev.kind === "click") { const r = await handleCardClick(ev); record({ replied: `click:${ev.invokedFunction}` }); return r; }
 
   if (ev.kind === "message" && ev.message) {
     if (ev.space !== intakeSpace()) return reply("ignored_other_space", {});
