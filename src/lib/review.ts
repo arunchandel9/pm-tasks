@@ -96,9 +96,31 @@ export async function postText(text: string): Promise<void> {
  * Acknowledgement for anything a person put in by hand (Intake space, /task, forwarded email, voice note):
  * always one line in PM Review, whatever happened, so nobody wonders whether it was seen.
  */
+/** Plain-English version of the pipeline's outcome/reason codes, for the acknowledgement line. */
+export function humanOutcome(outcome: string, reason?: string | null): string {
+  const r = reason ?? "";
+  const known: Record<string, string> = {
+    no_ask: "no task in it: nothing was asked. If it is a task, say what should be done, e.g. \"update the price list\".",
+    already_seen: "already received earlier, nothing new created.",
+    daily_cap: "today's limit for this client reached; a person should look.",
+    unknown_client: "could not tell which client; pick one on the card below.",
+    duplicate: "same as an existing task; noted on its card.",
+    nudge: "a chase on an existing task; noted on its card.",
+    change: "an update to an existing task; noted on its card.",
+    acknowledgement: "just a thank-you or OK, nothing to do.",
+    noise: "not a request, nothing to do.",
+  };
+  if (known[r]) return known[r];
+  if (outcome === "attached") return "added to an existing task's card.";
+  if (outcome === "paused") return "intake is paused; it is queued and will be processed when resumed.";
+  if (outcome === "skipped") return `nothing to do${r ? ` (${r.replace(/_/g, " ")})` : ""}.`;
+  if (outcome === "review") return r ? `needs a person: ${r.replace(/_/g, " ")}.` : "needs a person; see the card below.";
+  return r ? r.replace(/_/g, " ") : outcome;
+}
+
 export async function postAck(p: { message: Message; outcome: string; detail?: string }): Promise<void> {
   const short = p.message.text.replace(/\s+/g, " ").slice(0, 120);
   const icon = p.outcome.startsWith("draft") ? "✅" : p.outcome === "attached" ? "🔗" : p.outcome === "review" ? "❓" : p.outcome === "paused" ? "⏸️" : "ℹ️";
-  const line = `${icon} Received from ${sourceLabel(p.message)}: "${short}${p.message.text.length > 120 ? "…" : ""}" → ${p.detail ?? p.outcome}`;
+  const line = `${icon} From ${sourceLabel(p.message).replace(" · ", ", ")}: "${short}${p.message.text.length > 120 ? "…" : ""}" → ${p.detail ?? humanOutcome(p.outcome)}`;
   await postText(line);
 }

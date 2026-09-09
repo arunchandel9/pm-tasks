@@ -6,7 +6,7 @@ import { allClients, sql } from "@/lib/db";
 import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
 import { resolveClientFromText, stripClientPrefix } from "@/lib/resolve";
-import { postAck, postReview } from "@/lib/review";
+import { postAck, postReview, humanOutcome } from "@/lib/review";
 import { transcribeAudio, isAudio } from "@/lib/transcribe";
 import type { Message } from "@/lib/types";
 
@@ -106,11 +106,8 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown) {
   const n = result.requestIds?.length ?? 0;
   // When tasks were created, the feed lines are the acknowledgement; a second line would only add noise.
   if (result.outcome === "review" && n && !transcriptNote) return;
-  const detail = result.outcome === "review" && n ? `${n} draft${n > 1 ? "s" : ""} for ${hit?.client.name ?? "unknown client"} below${transcriptNote}`
-    : result.outcome === "review" ? `needs a decision below${transcriptNote}`
-    : result.outcome === "attached" ? `attached to an existing task${transcriptNote}`
-    : result.outcome === "skipped" ? `no task found (${result.reason ?? "update only"})${transcriptNote}`
-    : `${result.outcome}${transcriptNote}`;
+  const detail = result.outcome === "review" && n ? `${n} task${n > 1 ? "s" : ""} for ${hit?.client.name ?? "unknown client"} above${transcriptNote}`
+    : `${humanOutcome(result.outcome, result.reason)}${transcriptNote}`;
   await postAck({ message: m, outcome: result.outcome, detail });
 }
 
@@ -138,7 +135,7 @@ async function handleDialogSubmit(ev: NormalisedEvent) {
     const r = await processMessage(m, { skip: false, reason: null });
     const n = r.requestIds?.length ?? 0;
     if (r.outcome === "review" && n) return; // the feed lines are the acknowledgement
-    await postAck({ message: m, outcome: r.outcome, detail: r.reason ?? r.outcome });
+    await postAck({ message: m, outcome: r.outcome, detail: humanOutcome(r.outcome, r.reason) });
   })().catch((e) => console.error("dialog submit failed", e)));
   return NextResponse.json(replyDialogOk(ev.format, `Added for ${client?.name ?? "unknown client"}. Watch PM Review.`));
 }

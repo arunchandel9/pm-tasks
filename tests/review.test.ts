@@ -21,3 +21,12 @@ describe("PM Review feed lines", () => {
     expect(line).toBe("🔁 *HOH* · \"the Book Now button on the contact page isn't working on mobile\" · update to *Fix Book Now button on mobile* · noted on its card");
   });
 });
+
+describe("acknowledgement wording", () => {
+  it("turns reason codes into plain English", async () => {
+    const { humanOutcome } = await import("../src/lib/review");
+    expect(humanOutcome("skipped", "no_ask")).toMatch(/nothing was asked/);
+    expect(humanOutcome("attached", "nudge")).toMatch(/chase/);
+    expect(humanOutcome("skipped", "weird_code")).toBe("nothing to do (weird code).");
+  });
+});
