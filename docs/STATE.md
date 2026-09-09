@@ -34,6 +34,13 @@ Last updated: 2026-09-09 (build day 2).
   client name in that thread, or the next message in the DM within 30 min, sets the client and processes it; the PM
   Review card is replaced by one line. A name sent *before* the forward is kept 15 min (`client_hint:<sender>`) and
   applied to the next message without a client. Answering from PM Review (dropdown or thread reply) still works.
+- **Email intake** (built 2026-09-09, untested until delegation exists). Mailbox `intake@mangoeyesagency.com`
+  (`GMAIL_MAILBOX` must be the real Workspace user that owns the address; `GMAIL_INTAKE_ADDRESS` is the filter).
+  Service account impersonates it via domain-wide delegation (scopes gmail.readonly + gmail.modify). Every minute:
+  mails to the intake address without the Gmail label "Task Hub" (newer than 3 days) are parsed (forwards read from
+  the inside: original sender + body; quoted history dropped), noise-filtered (`emailNoise`), client resolved from
+  subject/note prefix → original sender's domain → text, run through the pipeline as channel `email`, then labelled.
+  `/api/gmail-check` proves the connection; `gmail_poll_last` on /api/health shows the last run.
 - **Acknowledgements.** Every team-side intake (Intake space, /task, forwarded email, voice note) gets one line in
   PM Review with the outcome. Client-channel messages produce drafts, not ack lines. Client-facing replies: never.
 - **Unanswered client nudge.** Client posts in Slack and no MangoEyes reply → one line in PM Review at 5 min and at
@@ -127,7 +134,6 @@ Last updated: 2026-09-09 (build day 2).
 ## Next build steps (owner: hub)
 
 - Confirm Pulp client against the real API; create Staging cards; drag-out-of-Staging = approve; stage → sheet.
-- Email intake: alias `intake@mangoeyesagency.com` on one mailbox + Gmail label, read via Gmail API.
 - Edit / Merge dialogs in PM Review cards.
 - Daily summary posting to PM Review (route exists, cron 17:30 UTC weekdays).
 - MCP hub for PMs' assistants; Google Meet notes from the Drive folder; scope gate; new-page chain; asset handoff;
