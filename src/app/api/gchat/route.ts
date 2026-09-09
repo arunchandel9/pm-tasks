@@ -24,29 +24,36 @@ export async function POST(req: Request) {
   const raw = await req.json();
   const ev = normaliseChatEvent(raw);
   const f = ev.format;
-  waitUntil(recordLastEvent({ ok: true, caller: v.caller, format: f, kind: ev.kind, space: ev.space, intakeSpace: intakeSpace(), text: (ev.message?.argumentText ?? ev.message?.text ?? "").slice(0, 80) }));
+  const record = (extra: Record<string, unknown>) => waitUntil(recordLastEvent({ ok: true, caller: v.caller, format: f, kind: ev.kind, space: ev.space, intakeSpace: intakeSpace(), invokedFunction: ev.invokedFunction, formKeys: Object.keys(ev.formInputs), text: (ev.message?.argumentText ?? ev.message?.text ?? "").slice(0, 80), ...extra }));
+  const res = await handle(ev, raw, record);
+  return res;
+}
+
+async function handle(ev: NormalisedEvent, raw: unknown, record: (extra: Record<string, unknown>) => void) {
+  const f = ev.format;
+  const reply = (label: string, body: unknown) => { record({ replied: label }); return NextResponse.json(body); };
 
   if (ev.kind === "added") {
     const role = ev.space === reviewSpace() ? "This is PM Review: drafts, questions, alerts and the daily summary land here."
       : ev.space === intakeSpace() ? "This is Intake: mention me with a pasted WhatsApp or any message, drop a voice note, or type /task for the form. Start with the client name and a colon when you can."
       : "Add me to the PM Review and Intake spaces.";
-    return NextResponse.json(replyText(f, `Task Hub is here. ${role}`));
+    return reply("welcome", replyText(f, `Task Hub is here. ${role}`));
   }
 
   if (ev.kind === "command" || (ev.message && /^\/task\b/.test(ev.message.text ?? ""))) {
     const clients = (await allClients()).filter((c) => c.scope === "client").map((c) => ({ id: c.id, name: c.name }));
-    return NextResponse.json(replyDialog(f, taskDialogBody(clients)));
+    return reply("dialog_open", replyDialog(f, taskDialogBody(clients)));
   }
 
-  if (ev.kind === "dialog_submit") return handleDialogSubmit(ev);
-  if (ev.kind === "click") return handleCardClick(ev);
+  if (ev.kind === "dialog_submit") { const r = await handleDialogSubmit(ev); record({ replied: "dialog_submit" }); return r; }
+  if (ev.kind === "click") { const r = await handleCardClick(ev); record({ replied: `click:${ev.invokedFunction}` }); return r; }
 
   if (ev.kind === "message" && ev.message) {
-    if (ev.space !== intakeSpace()) return NextResponse.json({});
+    if (ev.space !== intakeSpace()) return reply("ignored_other_space", {});
     waitUntil(handleIntakeMessage(ev.message, raw).catch((e) => console.error("gchat intake failed", e)));
-    return NextResponse.json({});
+    return reply("empty_ack", {});
   }
-  return NextResponse.json({});
+  return reply("empty_other", {});
 }
 
 /** GET is a reachability check: proves the route is deployed without any Chat involvement. */

@@ -81,7 +81,7 @@ export function replyDialog(format: "classic" | "addon", body: unknown) {
 /** Close the dialog after a submit and show a short confirmation. */
 export function replyDialogOk(format: "classic" | "addon", message: string) {
   return format === "addon"
-    ? { action: { notification: { text: message }, navigations: [{ endNavigation: { action: "CLOSE_DIALOG" } }] } }
+    ? { action: { navigations: [{ endNavigation: { action: "CLOSE_DIALOG" } }] } } // confirmation goes to PM Review; the message argument is used by the classic shape only
     : { actionResponse: { type: "DIALOG", dialogAction: { actionStatus: { statusCode: "OK", userFacingMessage: message } } } };
 }
 
