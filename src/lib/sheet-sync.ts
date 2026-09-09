@@ -80,7 +80,8 @@ export async function syncClientTab(client: { id: string; name: string; sheetTab
     const due = parseSheetDate(cell(r, "due"));
     const pr = cell(r, "priority");
     const priority = pr.toUpperCase().match(/P[123]/)?.[0] ?? (/(high|urgent)/i.test(pr) ? "P1" : /(medium|important)/i.test(pr) ? "P2" : "P3");
-    let key = cardId ? `card:${cardId}` : `row:${tab}:${serial || "-"}:${normTitle(title)}`;
+    // Keys are per tab: the same card link can appear in two clients' tabs (copied rows, shared work) and each tab is mirrored as it is.
+    let key = cardId ? `card:${tab}:${cardId}` : `row:${tab}:${serial || "-"}:${normTitle(title)}`;
     while (seenKeys.has(key)) key += "#"; // two identical hand-typed rows: keep both
     seenKeys.add(key);
     parsed.push({
@@ -102,7 +103,7 @@ export async function syncClientTab(client: { id: string; name: string; sheetTab
   });
   if (hubAssign.length) await sql()`update tasks t set assignee = v.assignee from (select unnest(${hubAssign.map((x) => x.id)}::uuid[]) as id, unnest(${hubAssign.map((x) => x.assignee)}::text[]) as assignee) v where t.id = v.id`;
 
-  const existing = new Set((await sql()`select sheet_key from tasks where origin = 'sheet' and client_id = ${client.id}`).map((x) => String(x.sheet_key)));
+  const existing = new Set((await sql()`select sheet_key from tasks where origin = 'sheet' and (client_id = ${client.id} or sheet_tab = ${tab})`).map((x) => String(x.sheet_key)));
   const ins = mine.filter((p) => !existing.has(p.key)), upd = mine.filter((p) => existing.has(p.key));
   const col = <K extends keyof Row>(list: Row[], k: K) => list.map((p) => p[k] as unknown as string | null);
   for (let i = 0; i < ins.length; i += 300) {
@@ -130,6 +131,8 @@ export async function syncSheet(onlyClientId?: string | null): Promise<SyncRepor
   const report: SyncReport = { tabs: {}, errors: [], at: new Date().toISOString() };
   if (!sheetsConfigured()) { report.errors.push("sheets not configured"); return report; }
   const clients = (await allClients()).filter((c) => !onlyClientId || c.id === onlyClientId);
+  // Rows keyed the old way (card:<id>, before keys were per tab) are re-keyed once so they are updated, not duplicated.
+  try { await sql()`update tasks set sheet_key = 'card:' || sheet_tab || ':' || substr(sheet_key, 6) where origin = 'sheet' and sheet_key like 'card:%' and sheet_key not like 'card:%:%' and sheet_tab is not null`; } catch { /* ignore */ }
   const save = async () => { try { await sql()`insert into settings (key, value) values ('sheet_sync_last', ${JSON.stringify(report)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`; } catch { /* ignore */ } };
   for (const client of clients) {
     let tab: string | null = null;
