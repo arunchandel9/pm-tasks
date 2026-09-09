@@ -125,7 +125,7 @@ export async function findClientTab(client: Client | null): Promise<string | nul
 }
 
 /** Read the whole used area of a tab (values only). */
-async function tabRows(tab: string): Promise<string[][]> {
+export async function tabRows(tab: string): Promise<string[][]> {
   const res = await sheets().spreadsheets.values.get({ spreadsheetId: sheetId(), range: `'${tab}'!A1:Z2000` });
   return (res.data.values ?? []).map((r) => r.map((v) => String(v ?? "")));
 }
@@ -256,17 +256,21 @@ export async function locateTaskRow(tab: string, f: { pulpLink?: string | null; 
   return null;
 }
 
+/** 0-based index of the DONE divider row on a tab, or -1. */
+export function dividerIndex(rows: string[][], map: Record<string, number>, cfg: SheetConfig = sheetConfig()): number {
+  void map;
+  return rows.findIndex((r, i) => i > cfg.header_row - 1 && (() => { const t = r.find((c) => c.trim()); return !!t && cfg.done_divider.includes(normHeader(t)) && r.filter((c) => c.trim()).length <= 2; })());
+}
+
 /** Move a row to just below the DONE divider (done tasks live under it). Returns the new row number. */
 export async function moveRowBelowDivider(tab: string, rowNumber: number): Promise<number> {
   const cfg = sheetConfig();
   const map = mapHeaders(await tabHeaders(tab), cfg);
   const rows = await tabRows(tab);
-  const { insertAt } = placement(rows, map, cfg);
-  const dividerIdx = rows.findIndex((r, i) => i > cfg.header_row - 1 && (() => { const t = r.find((c) => c.trim()); return !!t && cfg.done_divider.includes(normHeader(t)) && r.filter((c) => c.trim()).length <= 2; })());
+  const dividerIdx = dividerIndex(rows, map, cfg);
   if (dividerIdx < 0) return rowNumber;                     // no divider on this tab: leave the row where it is
   const src = rowNumber - 1;
   if (src > dividerIdx) return rowNumber;                    // already below
-  void insertAt;
   const sid = await tabNumericId(tab);
   await sheets().spreadsheets.batchUpdate({
     spreadsheetId: sheetId(),

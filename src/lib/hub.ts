@@ -7,6 +7,7 @@ import { pulp } from "./pulp";
  */
 
 export interface TaskRow {
+  origin: string; sheetTab: string | null; notes: string | null;
   id: string; title: string; client: string | null; department: string | null; priority: string | null; status: string;
   staging: boolean; assignee: string | null; due: string | null; created: string; completed: string | null; lastMoved: string | null;
   pulpLink: string | null; sourceChannel: string | null; sourceLink: string | null; sender: string | null; waitingOnClientSince: string | null;
@@ -47,14 +48,14 @@ export async function searchTasks(q: TaskQuery): Promise<TaskRow[]> {
   const like = q.query ? `%${q.query.trim()}%` : null;
   const days = q.days ?? null;
   const rows = await sql()`
-    select t.id, t.title, c.name as client, r.department, t.priority, t.staging, t.assignee, t.due_at, t.created_at, t.completed_at, t.last_moved_at,
-           t.board_id, t.list_id, t.pulp_card_id, t.waiting_on_client_since, m.channel, m.permalink, m.sender
+    select t.id, t.title, c.name as client, coalesce(r.department, t.department) as department, t.priority, t.staging, t.assignee, t.due_at, t.created_at, t.completed_at, t.last_moved_at,
+           t.board_id, t.list_id, t.pulp_card_id, t.waiting_on_client_since, t.origin, t.sheet_status, t.sheet_tab, t.notes, m.channel, m.permalink, m.sender
     from tasks t
     left join clients c on c.id = t.client_id
     left join requests r on r.id = t.request_id
     left join messages m on m.id = r.message_id
     where (${clientId}::text is null or t.client_id = ${clientId})
-      and (${q.department ?? null}::text is null or r.department = ${q.department ?? null})
+      and (${q.department ?? null}::text is null or coalesce(r.department, t.department) = ${q.department ?? null})
       and (${like}::text is null or t.title ilike ${like} or r.summary ilike ${like} or r.quote ilike ${like})
       and (${days}::int is null or t.created_at > now() - (${days} || ' days')::interval)
       and case ${status}
@@ -70,7 +71,9 @@ export async function searchTasks(q: TaskQuery): Promise<TaskRow[]> {
   for (const t of rows) {
     out.push({
       id: String(t.id), title: String(t.title), client: (t.client as string | null) ?? null, department: (t.department as string | null) ?? null,
-      priority: (t.priority as string | null) ?? null, status: await listName(t.board_id as string | null, t.list_id as string | null, !!t.staging),
+      priority: (t.priority as string | null) ?? null,
+      status: t.origin === "sheet" ? String(t.sheet_status ?? (t.completed_at ? "Done" : "Open")) : await listName(t.board_id as string | null, t.list_id as string | null, !!t.staging),
+      origin: String(t.origin ?? "hub"), sheetTab: (t.sheet_tab as string | null) ?? null, notes: (t.notes as string | null) ?? null,
       staging: !!t.staging, assignee: (t.assignee as string | null) ?? null, due: t.due_at ? new Date(t.due_at as string).toISOString().slice(0, 10) : null,
       created: new Date(t.created_at as string).toISOString(), completed: t.completed_at ? new Date(t.completed_at as string).toISOString() : null,
       lastMoved: t.last_moved_at ? new Date(t.last_moved_at as string).toISOString() : null,
@@ -85,7 +88,7 @@ export async function searchTasks(q: TaskQuery): Promise<TaskRow[]> {
 export async function taskDetail(ref: string): Promise<Record<string, unknown> | null> {
   const r = ref.trim();
   const rows = await sql()`
-    select t.*, c.name as client_name, r.summary, r.quote, r.request_type, r.department, r.priority_reason, r.confidence, r.status as request_status, r.decided_by, r.decided_at, r.draft,
+    select t.*, c.name as client_name, r.summary, r.quote, r.request_type, coalesce(r.department, t.department) as department, r.priority_reason, r.confidence, r.status as request_status, r.decided_by, r.decided_at, r.draft,
            m.channel, m.sender, m.text as message_text, m.permalink, m.sent_at
     from tasks t left join clients c on c.id = t.client_id left join requests r on r.id = t.request_id left join messages m on m.id = r.message_id
     where t.id::text = ${r} or t.pulp_card_id = ${r} or t.id::text like ${r + "%"} limit 1`;
@@ -93,8 +96,9 @@ export async function taskDetail(ref: string): Promise<Record<string, unknown> |
   const t = rows[0];
   const history = await sql()`select from_list, to_list, source, at from status_events where task_id = ${t.id} order by at`;
   return {
-    id: t.id, title: t.title, client: t.client_name, department: t.department, requestType: t.request_type, priority: t.priority, priorityReason: t.priority_reason,
-    status: await listName(t.board_id as string | null, t.list_id as string | null, !!t.staging), assignee: t.assignee, due: t.due_at, created: t.created_at, completed: t.completed_at,
+    id: t.id, title: t.title, client: t.client_name, origin: t.origin, department: t.department ?? t.department, requestType: t.request_type, priority: t.priority, priorityReason: t.priority_reason,
+    status: t.origin === "sheet" ? (t.sheet_status ?? (t.completed_at ? "Done" : "Open")) : await listName(t.board_id as string | null, t.list_id as string | null, !!t.staging),
+    sheetTab: t.sheet_tab, notes: t.notes, assignee: t.assignee, due: t.due_at, created: t.created_at, completed: t.completed_at,
     pulpLink: t.pulp_card_id && t.board_id ? pulp.cardUrl(String(t.board_id), String(t.pulp_card_id)) : null,
     description: (t.draft as { description?: string } | null)?.description ?? null,
     ask: t.summary, quote: t.quote, confidence: t.confidence, approval: { status: t.request_status, by: t.decided_by, at: t.decided_at },

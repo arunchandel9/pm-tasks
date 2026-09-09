@@ -118,6 +118,15 @@ create table if not exists tasks (
   completed_at  timestamptz
 );
 create index if not exists tasks_client on tasks (client_id, created_at desc);
+-- Rows imported from the PM Overview sheet (history and tasks PMs add by hand) live in the same table.
+alter table tasks alter column request_id drop not null;
+alter table tasks add column if not exists origin text not null default 'hub';       -- hub | sheet
+alter table tasks add column if not exists sheet_key text;                            -- card:<pulp id> | row:<tab>:<serial>:<title>
+alter table tasks add column if not exists sheet_tab text;
+alter table tasks add column if not exists sheet_status text;                         -- Status cell as the PM wrote it
+alter table tasks add column if not exists department text;
+alter table tasks add column if not exists notes text;                                -- Comments cell
+create unique index if not exists tasks_sheet_key on tasks (sheet_key) where sheet_key is not null;
 
 -- Every list change observed in Pulp.
 create table if not exists status_events (

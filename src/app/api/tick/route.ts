@@ -26,6 +26,15 @@ export async function GET(req: Request) {
     } catch (e) { report.clients = { error: (e as Error).message }; }
   }
 
+  // 1a. Sheet → hub mirror every 10 minutes (history and hand-added rows), so the MCP hub answers from the PMs' record.
+  if (sheetsConfigured() && new Date().getMinutes() % 10 === 0) {
+    try {
+      const { syncSheet } = await import("@/lib/sheet-sync");
+      const r = await syncSheet();
+      report.sheetSync = { tabs: Object.keys(r.tabs).length, imported: Object.values(r.tabs).reduce((a, t) => a + t.imported, 0), errors: r.errors };
+    } catch (e) { report.sheetSync = { error: (e as Error).message }; }
+  }
+
   // 1b. Mailbox
   {
     const { gmailConfigured, pollMailbox } = await import("@/lib/gmail");
@@ -63,7 +72,7 @@ export async function GET(req: Request) {
       const { sheetsConfigured, updateTaskCells, sheetConfig, locateTaskRow, moveRowBelowDivider } = await import("@/lib/sheets");
       const ours = await sql()`select t.id, t.pulp_card_id, t.list_id, t.staging, t.title, t.board_id, t.sheet_row, tab.value as tab, st.value as sheet_stage
         from tasks t left join settings tab on tab.key = 'sheet_tab:' || t.id::text left join settings st on st.key = 'sheet_stage:' || t.id::text
-        where t.pulp_card_id is not null and (t.completed_at is null or t.completed_at > now() - interval '7 days')
+        where t.pulp_card_id is not null and t.origin = 'hub' and (t.completed_at is null or t.completed_at > now() - interval '7 days')
         order by t.last_moved_at asc nulls first limit 150`;
       for (const t of ours) {
         let card: Awaited<ReturnType<typeof pulp.getCard>>;

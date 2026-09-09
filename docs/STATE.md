@@ -96,6 +96,12 @@ Last updated: 2026-09-09 (build day 2).
   "To Do" list on Development, Writers, Graphics and Onboarding & Automations because matching was exact; Arun to
   archive those four extra lists in the UI (API cannot). Matching fixed since.
 - **Data retention.** Keep everything forever. `RAW_RETENTION_DAYS` exists but is off (0).
+- **Sheet → hub mirror** (built 2026-09-09). Every client tab of the PM Overview sheet is read into `tasks` with
+  `origin='sheet'` (key `card:<pulp id>` or `row:<tab>:<serial>:<title>`): title, status text, department label,
+  priority, assignee, dates (DD-MMM-YYYY and common variants), Comments; rows below the DONE divider count as done.
+  Runs at `/api/sheet-sync` on demand and every 10 minutes from the tick. Never writes to the sheet or Pulp. Hub-made
+  rows are matched by Pulp link and only pick up a PM-typed Assigned To. The Pulp poll only follows hub-origin tasks.
+  So the MCP hub and the summary answer from the PMs' own record, history included.
 - **MCP hub** (built 2026-09-09). `https://pm-tasks.vercel.app/api/mcp/<key>` (Streamable HTTP via `mcp-handler`
   2.x / `@modelcontextprotocol/server` 2.0). Per-person keys `mh_…` minted with `/api/setup?mcp_key=<name>|<email>`,
   sha256 stored in settings `mcp_key:<hash>`, revoked with `?mcp_revoke=`. Tools: list_clients, search_tasks,
