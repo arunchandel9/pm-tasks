@@ -112,7 +112,10 @@ export async function syncClientTab(client: { id: string; name: string; sheetTab
       select null, ${client.id}, c, bd, t, pr, a, d::timestamptz, sr, false, cr::timestamptz, co::timestamptz, 'sheet', k, ${tab}, st, dp, n
       from unnest(${col(b, "cardId")}::text[], ${col(b, "boardId")}::text[], ${col(b, "title")}::text[], ${col(b, "priority")}::text[], ${col(b, "assignee")}::text[], ${col(b, "due")}::text[],
                   ${b.map((p) => p.sheetRow)}::int[], ${col(b, "created")}::text[], ${col(b, "completed")}::text[], ${col(b, "key")}::text[], ${col(b, "status")}::text[], ${col(b, "dept")}::text[], ${col(b, "notes")}::text[])
-        as v(c, bd, t, pr, a, d, sr, cr, co, k, st, dp, n)`;
+        as v(c, bd, t, pr, a, d, sr, cr, co, k, st, dp, n)
+      on conflict (sheet_key) where sheet_key is not null do update set title = excluded.title, priority = excluded.priority, assignee = excluded.assignee,
+        due_at = excluded.due_at, sheet_row = excluded.sheet_row, sheet_tab = excluded.sheet_tab, sheet_status = excluded.sheet_status,
+        department = excluded.department, notes = excluded.notes, completed_at = excluded.completed_at, client_id = excluded.client_id`;
   }
   for (let i = 0; i < upd.length; i += 300) {
     const b = upd.slice(i, i + 300);
