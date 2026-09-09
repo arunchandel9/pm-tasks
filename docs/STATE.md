@@ -82,13 +82,17 @@ Last updated: 2026-09-09 (build day 2).
 - Slack app created from manifest, distribution on, installed in MangoEyes (home).
 - Google Chat app configured and added to both spaces (welcome message will appear after the add-on-format fix).
 - Pulp: key acts as arun@mangoeyesagency.com, six department boards reachable, Staging lists present.
+- **Milestone A reached 2026-09-09:** Intake message → two requests → two Staging cards (Dev, Writers) → one two-line
+  post in PM Review with card links. Google's caller for the add-on style app is
+  `service-<project>@gcp-sa-gsuiteaddons.iam.gserviceaccount.com` (accepted since; before that every event got 401 and Chat
+  showed "Task Hub not responding").
 - Unit tests: 59 passing (`npm test`). Build clean.
 
 ## Open items (owner: Arun)
 
 1. ~~Config tab~~ done: 15 client rows, sheet_tab at AB, link headers set (Template renamed; Dr Anil, MangoEyes blank header filled).
-2. First Google Chat live test: `@Task Hub HOH: …` in Intake → drafts in PM Review → Approve → row in
-   "HOH - House Of Health". Then `/task`.
+2. ~~First Google Chat live test~~ passed to the feed stage. Left: drag the Dev card out of Staging → row in
+   "HOH - House Of Health" within a minute (milestone B). Then `/task`.
 3. Install Slack app into one client workspace; put its T-id in that client's Config row (column D).
 4. ~~Pulp API~~ connected and verified 2026-09-09. Left: archive the duplicate "To Do" lists the hub created on
    Development, Writers, Graphics, Onboarding & Automations (keep the boards' own "To-Do").

@@ -69,7 +69,7 @@ function permalinkFor(messageName: string): string | null {
 async function handleIntakeMessage(msg: ChatMessage, raw: unknown) {
   const clients = await allClients();
   let text = (msg.argumentText ?? msg.text ?? "").replace(/^@?Task Hub\s*/i, "").trim();
-  const sender = msg.sender?.email ?? msg.sender?.displayName ?? "unknown";
+  const sender = msg.sender?.displayName ?? msg.sender?.email ?? "unknown";
   let transcriptNote = "";
 
   for (const a of msg.attachment ?? []) {
@@ -96,6 +96,8 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown) {
   }
   const result = await processMessage(m, { skip: false, reason: null });
   const n = result.requestIds?.length ?? 0;
+  // When tasks were created, the feed lines are the acknowledgement; a second line would only add noise.
+  if (result.outcome === "review" && n && !transcriptNote) return;
   const detail = result.outcome === "review" && n ? `${n} draft${n > 1 ? "s" : ""} for ${hit?.client.name ?? "unknown client"} below${transcriptNote}`
     : result.outcome === "review" ? `needs a decision below${transcriptNote}`
     : result.outcome === "attached" ? `attached to an existing task${transcriptNote}`
@@ -122,12 +124,13 @@ async function handleDialogSubmit(ev: NormalisedEvent) {
   const body = [request, notes ? `\nNotes from ${ev.user.displayName ?? "team"}: ${notes}` : "", source ? `\nCame via: ${source}` : "", priority === "P1" ? "\nMarked urgent (P1) by the team." : priority === "P2" ? "\nMarked important by the team." : ""].join("");
   const m: Message = {
     channel: "task_cmd", externalId: `gchat:${ev.user.email ?? "u"}:${Date.now()}`, teamId: null, clientId: client?.id ?? null, scope: client ? client.scope : "unknown",
-    sender: ev.user.email ?? "unknown", senderIsStaff: true, sentAt: new Date(), text: body, permalink: null, threadRef: null, raw: { form: ev.formInputs },
+    sender: ev.user.displayName ?? ev.user.email ?? "unknown", senderIsStaff: true, sentAt: new Date(), text: body, permalink: null, threadRef: null, raw: { form: ev.formInputs },
   };
   waitUntil((async () => {
     const r = await processMessage(m, { skip: false, reason: null });
     const n = r.requestIds?.length ?? 0;
-    await postAck({ message: m, outcome: r.outcome, detail: n ? `${n} draft${n > 1 ? "s" : ""} for ${client?.name ?? "unknown client"} below` : r.reason ?? r.outcome });
+    if (r.outcome === "review" && n) return; // the feed lines are the acknowledgement
+    await postAck({ message: m, outcome: r.outcome, detail: r.reason ?? r.outcome });
   })().catch((e) => console.error("dialog submit failed", e)));
   return NextResponse.json(replyDialogOk(ev.format, `Added for ${client?.name ?? "unknown client"}. Watch PM Review.`));
 }
