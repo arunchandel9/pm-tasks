@@ -147,13 +147,18 @@ Last updated: 2026-09-09 (build day 2).
 4. ~~Pulp API~~ connected and verified 2026-09-09. Left: archive the duplicate "To Do" lists the hub created on
    Development, Writers, Graphics, Onboarding & Automations (keep the boards' own "To-Do").
 
-## Next build steps (owner: hub)
+## Phases (agreed 2026-09-09; six phases, timings set by Arun)
 
-- Confirm Pulp client against the real API; create Staging cards; drag-out-of-Staging = approve; stage → sheet.
-- Edit / Merge dialogs in PM Review cards.
-- Daily summary: verify the 17:30 UTC post once a day of real data exists (`/api/eod?dry=1` to preview).
-- Google Meet notes from the Drive folder; scope gate; new-page chain; asset handoff; weekly digest;
-  approval-loop nudges.
+| Phase | Covers | Status |
+|---|---|---|
+| 1. Foundation | App, DB, config, Config tab, Google Cloud, Slack app | Done |
+| 2. Intake | Slack, Chat + DMs, /task form, voice notes (short + long), email, noise filter, extract/classify, client detection | Done; email and long voice notes await their first live test |
+| 3. Cards and sheet | Pulp Staging cards, drag approval, sheet rows + stamp, Done sync, nudges, daily summary | Done |
+| 4. Hub | MCP with per-person keys, sheet history mirrored every 10 min | Done (milestone C) |
+| 5. Meetings and routing | Meet notes from the Drive folder, scope gate, new-page chain | 1 hour, in progress |
+| 6. Soak and handover | 2 hours on live traffic with filter tuning; 1 hour team brief + one-page guide | 3 hours |
+
+After go-live, one hour each when wanted: weekly per-client digest, approval-loop nudges, auto-move Staging → To Do.
 
 ## Environment variables in Vercel (names only)
 
