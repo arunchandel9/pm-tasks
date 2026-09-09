@@ -50,8 +50,11 @@ Last updated: 2026-09-09 (build day 2).
   must be a member of every board; created in Pulp → Settings → API Keys). `src/lib/pulp.ts` is written against the
   real brief: `{data}` envelope, UUID ids, `POST /boards/{id}/cards {list_id,name}` then `PATCH /cards/{id}`
   (description, due_date), labels and members attached by name, `POST /cards/{id}/move {list_id}`,
-  `POST /cards/{id}/comments {content}`. No updated-since endpoint, so the minute poll does one
-  `GET /boards/{id}/cards` per board with open hub cards and diffs `list_id`. Boards in config/boards.yaml may be a
+  `POST /cards/{id}/comments {content}`. No updated-since endpoint and `GET /boards/{id}/cards` is capped at 1000
+  (the Development board has more), so the minute poll fetches each hub card by id (`GET /cards/{id}`, open or
+  completed in the last 7 days, max 150 per tick) and diffs `list_id`; the sheet Status is reconciled against
+  `settings sheet_stage:<task>` every minute, so a failed write is retried. `pulp_poll_last` in settings (shown on
+  /api/health) carries the last run's per-task reasoning and errors. Boards in config/boards.yaml may be a
   UUID, the 8-char URL prefix, or the board name (Graphics is by name); lists (`Staging`, `To Do`, `Needs scope`)
   are created by the hub if missing. Card links are `<base>/board/<board>?card=<card>` (`card_url` in boards.yaml);
   the Pulp board page opens that card's pop-up on load (confirmed 2026-09-09). Department sprint boards (renamed weekly, ids stable),
