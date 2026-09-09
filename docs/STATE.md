@@ -4,7 +4,7 @@ Read this first when resuming. It is the operational memory of the project: what
 what is verified, what is open. `PLAN.md` holds the design rationale; this file holds the live state.
 Keep it updated with every change.
 
-Last updated: 2026-09-08 (build day 1).
+Last updated: 2026-09-09 (build day 2).
 
 ## Decisions finalised
 
@@ -53,15 +53,16 @@ Last updated: 2026-09-08 (build day 1).
   `POST /cards/{id}/comments {content}`. No updated-since endpoint, so the minute poll does one
   `GET /boards/{id}/cards` per board with open hub cards and diffs `list_id`. Boards in config/boards.yaml may be a
   UUID, the 8-char URL prefix, or the board name (Graphics is by name); lists (`Staging`, `To Do`, `Needs scope`)
-  are created by the hub if missing. Cards open in a pop-up with no URL of their own, so card links are
-  `<base>/board/<board>?card=<card>` (`card_url` in boards.yaml). Department sprint boards (renamed weekly, ids stable),
+  are created by the hub if missing. Card links are `<base>/board/<board>?card=<card>` (`card_url` in boards.yaml);
+  the Pulp board page opens that card's pop-up on load (confirmed 2026-09-09). Department sprint boards (renamed weekly, ids stable),
   all clients on each, client name as a label: SEO `d4424c02-a0ee-4bec-93be-afb4d6547a88`, Content (Writers)
   `54d3e767-8899-4875-b88f-faf45b0d82af`, Development `0fac54b7-3a47-4645-9d67-87f7d24ed32a` (also PM/general,
   internal, Needs scope), Graphics `088afc03-75da-4c0f-a7f6-a37a9208c515`, Automation = "Onboarding & Automations"
   and Video = "Video Production" (by name until their URLs are known). Other boards are never touched.
-  `/api/pulp-check` proves the connection (add `?create=1` to create missing lists). 2026-09-09: key works
-  (user arunchandel9@gmail.com) but every board answers 403 Not a member; that user must be added under Members on
-  the six boards, or the key re-created from a member account.
+  `/api/pulp-check` proves the connection (add `?create=1` to create missing lists). 2026-09-09: first key was bound to
+  Arun's personal profile (arunchandel9@gmail.com, no board memberships) because Pulp's key dropdown listed both of
+  his profiles by name only; Pulp fixed (dropdown shows workspace members with email, /me + /boards share the web
+  app's visibility). Key to be re-created for arun@mangoeyesagency.com and swapped into `PULP_TOKEN`.
 - **Data retention.** Keep everything forever. `RAW_RETENTION_DAYS` exists but is off (0).
 - **Cost.** Only two model calls per message; ~$6/month at 500 messages on Sonnet 5. Hub questions run on each PM's
   own assistant over MCP (phase 3), never on the API bill.
