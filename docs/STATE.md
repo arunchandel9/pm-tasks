@@ -57,12 +57,18 @@ Last updated: 2026-09-09 (build day 2).
   the Pulp board page opens that card's pop-up on load (confirmed 2026-09-09). Department sprint boards (renamed weekly, ids stable),
   all clients on each, client name as a label: SEO `d4424c02-a0ee-4bec-93be-afb4d6547a88`, Content (Writers)
   `54d3e767-8899-4875-b88f-faf45b0d82af`, Development `0fac54b7-3a47-4645-9d67-87f7d24ed32a` (also PM/general,
-  internal, Needs scope), Graphics `088afc03-75da-4c0f-a7f6-a37a9208c515`, Automation = "Onboarding & Automations"
-  and Video = "Video Production" (by name until their URLs are known). Other boards are never touched.
+  internal, Needs scope), Graphics `088afc03-75da-4c0f-a7f6-a37a9208c515`, Automation (Onboarding & Automations)
+  `ec7258b2-556c-4fcd-be34-21ed81b078e0`, Video `8f4eb438-d311-4e6a-8288-9b73bd64271b`. Other boards are never touched.
+  List names match ignoring case/punctuation ("To-Do" = "To Do"); only lists named Done/Completed/Closed count as
+  finished ("Ready to Use / Go Live" does not). Boards' own To Do lists are spelled "To-Do"/"To-do" on Dev, Writers,
+  Graphics, Automation; "To Do" on SEO, Video.
   `/api/pulp-check` proves the connection (add `?create=1` to create missing lists). 2026-09-09: first key was bound to
   Arun's personal profile (arunchandel9@gmail.com, no board memberships) because Pulp's key dropdown listed both of
   his profiles by name only; Pulp fixed (dropdown shows workspace members with email, /me + /boards share the web
-  app's visibility). Key to be re-created for arun@mangoeyesagency.com and swapped into `PULP_TOKEN`.
+  app's visibility). New key for arun@mangoeyesagency.com in `PULP_TOKEN`; `/api/pulp-check` all `ok` on 2026-09-09
+  (Staging lists created on all six boards). Mistake that day: the first `?create=1` run also created a duplicate
+  "To Do" list on Development, Writers, Graphics and Onboarding & Automations because matching was exact; Arun to
+  archive those four extra lists in the UI (API cannot). Matching fixed since.
 - **Data retention.** Keep everything forever. `RAW_RETENTION_DAYS` exists but is off (0).
 - **Cost.** Only two model calls per message; ~$6/month at 500 messages on Sonnet 5. Hub questions run on each PM's
   own assistant over MCP (phase 3), never on the API bill.
@@ -75,7 +81,8 @@ Last updated: 2026-09-09 (build day 2).
 - Service account reads the sheet: `/api/sheet-check` maps every active client tab completely.
 - Slack app created from manifest, distribution on, installed in MangoEyes (home).
 - Google Chat app configured and added to both spaces (welcome message will appear after the add-on-format fix).
-- Unit tests: 50 passing (`npm test`). Build clean.
+- Pulp: key acts as arun@mangoeyesagency.com, six department boards reachable, Staging lists present.
+- Unit tests: 59 passing (`npm test`). Build clean.
 
 ## Open items (owner: Arun)
 
@@ -83,8 +90,8 @@ Last updated: 2026-09-09 (build day 2).
 2. First Google Chat live test: `@Task Hub HOH: …` in Intake → drafts in PM Review → Approve → row in
    "HOH - House Of Health". Then `/task`.
 3. Install Slack app into one client workspace; put its T-id in that client's Config row (column D).
-4. ~~Pulp API details~~ received 2026-09-08 and built. Left: add `PULP_TOKEN` in Vercel, run `/api/pulp-check?create=1`,
-   confirm the card URL shape (open any card in the browser and compare with `card_url`).
+4. ~~Pulp API~~ connected and verified 2026-09-09. Left: archive the duplicate "To Do" lists the hub created on
+   Development, Writers, Graphics, Onboarding & Automations (keep the boards' own "To-Do").
 
 ## Next build steps (owner: hub)
 
