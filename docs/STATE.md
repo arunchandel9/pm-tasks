@@ -97,9 +97,14 @@ Last updated: 2026-09-09 (build day 2).
 ## Open items (owner: Arun)
 
 1. ~~Config tab~~ done: 15 client rows, sheet_tab at AB, link headers set (Template renamed; Dr Anil, MangoEyes blank header filled).
-2. ~~First Google Chat live test~~ passed end to end (feed, Staging cards, drag → sheet row, Done → row below
-   divider). Left: try `/task` in Intake; delete the two test cards and the HOH test row when done.
+2. ~~Google Chat live tests~~ all passed 2026-09-09: Intake message → feed + Staging cards; drag → sheet row; Done →
+   row below divider; `/task` form opens, submits, acks. Add-on facts learned: caller is the gsuiteaddons service
+   agent; dialogs open with `action.navigations[].pushCard` and close with `endNavigation CLOSE_DIALOG`; every
+   button/dropdown `function` must be the endpoint URL (hub uses `…/api/gchat?fn=<name>`); click events carry the
+   original message so clicks are handled before the `/task` text check. Left: delete the test cards and HOH test row.
 3. Install Slack app into one client workspace; put its T-id in that client's Config row (column D).
+5. Name the mailbox for email intake (blocking the email build's test); run `/api/setup?remove_client=test-client`;
+   archive the four duplicate "To Do" lists.
 4. ~~Pulp API~~ connected and verified 2026-09-09. Left: archive the duplicate "To Do" lists the hub created on
    Development, Writers, Graphics, Onboarding & Automations (keep the boards' own "To-Do").
 
