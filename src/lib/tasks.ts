@@ -35,7 +35,8 @@ export async function createStagingCard(p: { requestId: string; client: Client |
       if (!boardId) throw new Error(`board "${p.route.board}" not found in Pulp (is the API key's user a member?)`);
       listId = await pulp.ensureList(boardId, p.route.staging ?? "Staging");
       const card = await pulp.createCard({
-        boardId, listId, title: p.draft.title, description, labels: p.draft.labels,
+        // Department sprint boards hold every client's cards; the client label is how the team tells them apart.
+        boardId, listId, title: p.draft.title, description, labels: [...(p.client?.name ? [p.client.name] : []), ...p.draft.labels],
         assignee: p.route.assignee, dueAt: p.route.dueAt,
       });
       pulpCardId = card.id;
