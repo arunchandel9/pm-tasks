@@ -20,6 +20,9 @@ export async function GET() {
     out.recentMessages = recent;
     const errs = await sql()`select kind, attempts, left(last_error, 160) as last_error from queue where done_at is null and last_error is not null order by next_run_at limit 3`;
     out.queueErrors = errs;
+    out.recentRequests = await sql()`select r.status, r.department, r.priority, r.draft->>'title' as title, c.name as client, t.pulp_card_id, t.list_id, r.created_at
+      from requests r left join clients c on c.id = r.client_id left join tasks t on t.request_id = r.id order by r.created_at desc limit 5`;
+    out.recentLlmCalls = await sql()`select step, model, input_tokens, cache_read_tokens, output_tokens, cost_usd, latency_ms, created_at from llm_calls order by created_at desc limit 4`;
   } catch (e) {
     out.db = { ok: false, error: (e as Error).message };
   }
