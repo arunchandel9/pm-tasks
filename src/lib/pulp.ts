@@ -64,7 +64,15 @@ export const pulp = {
     if (!ref) return null;
     const r = ref.trim();
     if (isUuid(r)) return r;
-    const find = (list: PulpBoard[]) => list.find((b) => b.id.toLowerCase().startsWith(r.toLowerCase()))?.id ?? list.find((b) => b.name.toLowerCase() === r.toLowerCase())?.id ?? null;
+    // Sprint boards are renamed every week ("01-Graphics Design Sprint #52 - Week 37"), so a name in config matches
+    // by containment, preferring an exact match and the most recently created board when several contain it.
+    const lc = r.toLowerCase();
+    const find = (list: PulpBoard[]) =>
+      list.find((b) => b.id.toLowerCase().startsWith(lc))?.id
+      ?? list.find((b) => b.name.trim().toLowerCase() === lc)?.id
+      ?? list.filter((b) => b.name.toLowerCase().includes(lc) && !/imported/i.test(b.name)).at(-1)?.id
+      ?? list.find((b) => b.name.toLowerCase().includes(lc))?.id
+      ?? null;
     return find(await this.boards()) ?? find(await this.boards(true));
   },
 
