@@ -4,7 +4,7 @@
 # exact name; the hub resolves it against GET /boards at run time. Lists are created if they do not exist.
 base_url: https://pulp.mangoeyes.io
 # What a card link looks like in the browser. Placeholders: {base} {board} {card}. Change here if Pulp uses another shape.
-card_url: "{base}/board/{board}/card/{card}"
+card_url: "{base}/board/{board}?card={card}"   # cards open in a pop-up with no URL of their own; the board opens and ?card= stays unique per card
 departments:
   seo:     { board: d4424c02-a0ee-4bec-93be-afb4d6547a88, list: "To Do", staging: "Staging" }
   content: { board: 54d3e767-8899-4875-b88f-faf45b0d82af, list: "To Do", staging: "Staging" }
