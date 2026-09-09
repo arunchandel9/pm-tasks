@@ -43,58 +43,75 @@ export async function GET(req: Request) {
   }
   report.queue = { ok, failed };
 
-  // 3. Pulp poll: one GET per board that has open hub cards; a card whose list differs from ours has been moved.
+  // 3. Pulp poll: one GET per board that has hub cards; a card whose list differs from ours has been moved.
+  //    The sheet is reconciled independently: whatever status the sheet last got (settings sheet_stage:<task>) is
+  //    compared with the card's current list every minute, so a failed write is retried and nothing is lost.
   if (pulp.configured()) {
+    const errors: string[] = [];
+    let synced = 0, sheetUpdates = 0, boardsPolled = 0;
     try {
-      const openBoards = await sql()`select distinct board_id from tasks where pulp_card_id is not null and completed_at is null and board_id is not null`;
-      let synced = 0, boardsPolled = 0;
-      for (const b of openBoards) {
-        const boardId = await pulp.resolveBoardId(String(b.board_id));
-        if (!boardId) continue;
-        boardsPolled++;
-        const cards = await pulp.openCards(boardId);
-        const ours = await sql()`select id, pulp_card_id, list_id, staging from tasks where board_id = ${String(b.board_id)} and pulp_card_id is not null and completed_at is null`;
-        for (const t0 of ours) {
-          const card = cards.find((c) => c.id === t0.pulp_card_id);
-          if (!card || card.listId === t0.list_id) continue;
-          const t = [t0];
-          const wasStaging = t[0].staging as boolean;
-        await sql()`update tasks set list_id = ${card.listId}, staging = false, last_moved_at = now() where id = ${t[0].id}`;
-        await sql()`insert into status_events (task_id, from_list, to_list, source) values (${t[0].id}, ${t[0].list_id}, ${card.listId}, 'poll')`;
-        if (wasStaging) {
-          // Dragging out of Staging is the approval: mark the request, write the sheet row. The card stays where the PM put it.
-          try {
-            const req = await sql()`select r.id from requests r join tasks t on t.request_id = r.id where t.id = ${t[0].id} and r.status in ('pending_review','needs_scope')`;
-            if (req.length) {
-              const { approveRequest } = await import("@/lib/tasks");
-              await approveRequest(String(req[0].id), "pulp:drag", { moveCard: false });
-            }
-          } catch (e) { console.error("drag approval failed", (e as Error).message); }
-        }
-        // Mirror the move into the client's tab (Status and Date Completed only). Rows are located by Pulp link,
-        // so PMs can rearrange rows by hand. Done tasks are moved below the DONE divider.
+      const boards = await sql()`select distinct board_id from tasks where pulp_card_id is not null and board_id is not null
+        and (completed_at is null or completed_at > now() - interval '7 days')`;
+      const { sheetsConfigured, updateTaskCells, sheetConfig, locateTaskRow, moveRowBelowDivider } = await import("@/lib/sheets");
+      for (const b of boards) {
+        let cards: Awaited<ReturnType<typeof pulp.openCards>>;
         try {
-          const { sheetsConfigured, updateTaskCells, sheetConfig, locateTaskRow, moveRowBelowDivider } = await import("@/lib/sheets");
-          const tabRow = await sql()`select t.sheet_row, t.title, t.board_id, s.value as tab from tasks t left join settings s on s.key = 'sheet_tab:' || t.id::text where t.id = ${t[0].id}`;
-          if (sheetsConfigured() && tabRow.length && tabRow[0].tab) {
-            const tab = String(tabRow[0].tab);
-            const link = pulp.cardUrl(String(tabRow[0].board_id), card.id);
-            const row = (await locateTaskRow(tab, { pulpLink: link, title: String(tabRow[0].title) })) ?? (tabRow[0].sheet_row ? Number(tabRow[0].sheet_row) : null);
-            if (row) {
-              const listName = (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
-              const done = isDoneList(listName);
-              if (done) await sql()`update tasks set completed_at = now() where id = ${t[0].id} and completed_at is null`;
-              await updateTaskCells(tab, row, { stage: done ? sheetConfig().stage_values.done : listName, completed: done ? new Date() : undefined });
-              const finalRow = done ? await moveRowBelowDivider(tab, row) : row;
-              await sql()`update tasks set sheet_row = ${finalRow} where id = ${t[0].id}`;
+          const boardId = await pulp.resolveBoardId(String(b.board_id));
+          if (!boardId) continue;
+          cards = await pulp.openCards(boardId);
+          boardsPolled++;
+        } catch (e) { errors.push(`board ${String(b.board_id).slice(0, 8)}: ${(e as Error).message}`); continue; }
+        const ours = await sql()`select t.id, t.pulp_card_id, t.list_id, t.staging, t.title, t.board_id, t.sheet_row, tab.value as tab, st.value as sheet_stage
+          from tasks t left join settings tab on tab.key = 'sheet_tab:' || t.id::text left join settings st on st.key = 'sheet_stage:' || t.id::text
+          where t.board_id = ${String(b.board_id)} and t.pulp_card_id is not null and (t.completed_at is null or t.completed_at > now() - interval '7 days')`;
+        for (const t of ours) {
+          const card = cards.find((c) => c.id === t.pulp_card_id);
+          if (!card) continue; // archived or deleted in Pulp: leave the sheet as it is
+          const listName = (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
+          const done = isDoneList(listName);
+
+          if (card.listId !== t.list_id) {
+            const wasStaging = t.staging as boolean;
+            await sql()`update tasks set list_id = ${card.listId}, staging = false, last_moved_at = now() where id = ${t.id}`;
+            await sql()`insert into status_events (task_id, from_list, to_list, source) values (${t.id}, ${t.list_id}, ${card.listId}, 'poll')`;
+            if (done) await sql()`update tasks set completed_at = now() where id = ${t.id} and completed_at is null`;
+            else await sql()`update tasks set completed_at = null where id = ${t.id}`; // moved back out of Done
+            if (wasStaging) {
+              // Dragging out of Staging is the approval: mark the request, write the sheet row. The card stays where the PM put it.
+              try {
+                const req = await sql()`select r.id from requests r join tasks t2 on t2.request_id = r.id where t2.id = ${t.id} and r.status in ('pending_review','needs_scope')`;
+                if (req.length) {
+                  const { approveRequest } = await import("@/lib/tasks");
+                  await approveRequest(String(req[0].id), "pulp:drag", { moveCard: false });
+                  t.tab = (await sql()`select value from settings where key = ${"sheet_tab:" + t.id}`)[0]?.value ?? null;
+                  t.sheet_stage = sheetConfig().stage_values.created; // approveRequest wrote the initial status
+                }
+              } catch (e) { errors.push(`approve ${String(t.title).slice(0, 40)}: ${(e as Error).message}`); }
             }
+            synced++;
           }
-        } catch (e) { console.error("sheet stage update failed", (e as Error).message); }
-        synced++;
+
+          // Sheet reconciliation: bring Status (and Date Completed, row position) in line with the card's list.
+          const wanted = done ? sheetConfig().stage_values.done : listName;
+          if (!sheetsConfigured() || !t.tab || t.sheet_stage === wanted) continue;
+          try {
+            const tab = String(t.tab);
+            const link = pulp.cardUrl(String(t.board_id), card.id);
+            const row = (await locateTaskRow(tab, { pulpLink: link, title: String(t.title) })) ?? (t.sheet_row ? Number(t.sheet_row) : null);
+            if (!row) { errors.push(`row not found for ${String(t.title).slice(0, 40)} in ${tab}`); continue; }
+            await updateTaskCells(tab, row, { stage: wanted, completed: done ? new Date() : undefined });
+            const finalRow = done ? await moveRowBelowDivider(tab, row) : row;
+            await sql()`update tasks set sheet_row = ${finalRow} where id = ${t.id}`;
+            await sql()`insert into settings (key, value) values (${"sheet_stage:" + t.id}, ${JSON.stringify(wanted)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+            sheetUpdates++;
+          } catch (e) { errors.push(`sheet ${String(t.title).slice(0, 40)}: ${(e as Error).message.slice(0, 160)}`); }
         }
       }
-      report.pulp = { boardsPolled, synced };
-    } catch (e) { report.pulp = { error: (e as Error).message }; }
+    } catch (e) { errors.push((e as Error).message); }
+    report.pulp = { boardsPolled, synced, sheetUpdates, errors };
+    try {
+      await sql()`insert into settings (key, value) values ('pulp_poll_last', ${JSON.stringify({ at: new Date().toISOString(), boardsPolled, synced, sheetUpdates, errors })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+    } catch { /* ignore */ }
   }
 
   // 4. Housekeeping, off by default: RAW_RETENTION_DAYS=90 would drop the raw envelope of old messages.
