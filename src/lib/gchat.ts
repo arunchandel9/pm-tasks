@@ -75,12 +75,12 @@ export async function sendText(space: string, text: string, threadName?: string)
   return res.data.name ?? null;
 }
 
-export async function sendCard(space: string, card: chat_v1.Schema$GoogleAppsCardV1Card, fallbackText: string, cardId: string): Promise<string | null> {
+export async function sendCard(space: string, card: chat_v1.Schema$GoogleAppsCardV1Card, fallbackText: string, cardId: string): Promise<{ name: string | null; thread: string | null }> {
   const res = await chat().spaces.messages.create({
     parent: space,
     requestBody: { text: fallbackText, cardsV2: [{ cardId, card }] },
   });
-  return res.data.name ?? null;
+  return { name: res.data.name ?? null, thread: res.data.thread?.name ?? null };
 }
 
 export async function updateMessageText(messageName: string, text: string): Promise<void> {

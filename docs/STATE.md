@@ -31,6 +31,9 @@ Last updated: 2026-09-09 (build day 2).
   (`🆕 *HOH* · title · Dev · P2 · Staging card · Slack, Dr Mehta`; P1 lines start with 🔴). Messages that belong to an
   existing task are commented onto that card and get one 🔁 line, nothing new created. Only these still need a
   person in Chat: "needs a person" cards (unknown client, voice note too long) and the unanswered-client nudges.
+  Those cards are answered either with the dropdown/buttons or by a typed reply in the card's thread that mentions
+  @Task Hub (client name, "not a task", "make it a task", "approve", "merge"); card threads are remembered in
+  settings `gchat_thread:<thread>`.
   `REVIEW_MODE=approve` brings back Approve/Not-a-task cards; that mode is used automatically while Pulp is not
   connected (no Staging list to approve from). No automatic move from Staging to To Do yet: who to assign is
   undecided; revisit later.

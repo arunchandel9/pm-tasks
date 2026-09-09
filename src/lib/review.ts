@@ -61,7 +61,8 @@ export async function postReview(p: ReviewPost): Promise<void> {
       source: sourceLabel(p.message), permalink: p.message.permalink, reason: p.reason,
       pulpLine: p.taskId ? "Card created in Staging." : "Card not created yet (Pulp not configured).",
     });
-    await gchat.sendCard(space, card, `${clientName}: ${p.draft.title}`, `review-${p.requestId}`);
+    const sent = await gchat.sendCard(space, card, `${clientName}: ${p.draft.title}`, `review-${p.requestId}`);
+    await rememberThread(sent.thread, { kind: "request", requestId: p.requestId });
     return;
   }
   if (p.kind === "needs_human") {
@@ -70,12 +71,26 @@ export async function postReview(p: ReviewPost): Promise<void> {
       messageId: p.messageId, clientName, why: p.why, text: p.message.text, source: sourceLabel(p.message), permalink: p.message.permalink,
       clients: rows.map((r) => ({ id: String(r.id), name: String(r.name) })),
     });
-    await gchat.sendCard(space, card, `${clientName}: needs a person (${p.why})`, `human-${p.messageId}`);
+    const sent = await gchat.sendCard(space, card, `${clientName}: needs a person (${p.why})`, `human-${p.messageId}`);
+    await rememberThread(sent.thread, { kind: "needs_human", messageId: p.messageId });
     return;
   }
   const label = p.kind === "possible_duplicate" ? "Possible duplicate" : "Change to an existing task";
   const card = gchat.duplicateCard({ requestId: p.requestId, duplicateOf: p.duplicateOf, clientName, label, text: p.message.text, source: sourceLabel(p.message), permalink: p.message.permalink });
-  await gchat.sendCard(space, card, `${clientName}: ${label}`, `dup-${p.requestId}`);
+  const sent = await gchat.sendCard(space, card, `${clientName}: ${label}`, `dup-${p.requestId}`);
+  await rememberThread(sent.thread, { kind: "request", requestId: p.requestId, duplicateOf: p.duplicateOf });
+}
+
+/** What a PM Review card thread is about, so a typed reply in that thread can answer it. */
+export type ThreadTopic = { kind: "needs_human"; messageId: string } | { kind: "request"; requestId: string; duplicateOf?: string };
+async function rememberThread(thread: string | null, topic: ThreadTopic): Promise<void> {
+  if (!thread) return;
+  await sql()`insert into settings (key, value) values (${"gchat_thread:" + thread}, ${JSON.stringify(topic)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+}
+export async function threadTopic(thread: string | null | undefined): Promise<ThreadTopic | null> {
+  if (!thread) return null;
+  const r = await sql()`select value from settings where key = ${"gchat_thread:" + thread}`;
+  return r.length ? (r[0].value as ThreadTopic) : null;
 }
 
 export async function postP1Ping(p: { requestId: string; client: Client | null; title: string; message: Message; reason: string | null }): Promise<void> {

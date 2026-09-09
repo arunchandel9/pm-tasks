@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
-import { verifyChatRequest, intakeSpace, reviewSpace, taskDialogBody, downloadAttachment } from "@/lib/gchat";
+import { verifyChatRequest, intakeSpace, reviewSpace, taskDialogBody, downloadAttachment, sendText } from "@/lib/gchat";
 import { normaliseChatEvent, replyText, replyUpdateMessage, replyDialog, replyDialogOk, replyDialogError, type NormalisedEvent, type ChatMessage } from "@/lib/gchat-events";
 import { allClients, sql } from "@/lib/db";
 import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
 import { resolveClientFromText, stripClientPrefix } from "@/lib/resolve";
-import { postAck, postReview, humanOutcome } from "@/lib/review";
+import { postAck, postReview, humanOutcome, threadTopic, type ThreadTopic } from "@/lib/review";
 import { transcribeAudio, isAudio } from "@/lib/transcribe";
 import type { Message } from "@/lib/types";
 
@@ -50,11 +50,45 @@ async function handle(ev: NormalisedEvent, raw: unknown, record: (extra: Record<
   }
 
   if (ev.kind === "message" && ev.message) {
+    if (ev.space === reviewSpace()) {
+      // A typed reply (with @Task Hub) inside a card's thread answers that card: client name, "not a task", "make it a task", "approve".
+      const topic = await threadTopic(ev.message.thread?.name);
+      if (!topic) return reply("review_no_topic", replyText(f, "Reply inside the thread of the card you mean, with the client name, \"not a task\", \"make it a task\" or \"approve\"."));
+      const answer = await answerThread(topic, (ev.message.argumentText ?? ev.message.text ?? "").replace(/^@?Task Hub\s*/i, "").trim(), ev.user.displayName ?? ev.user.email ?? "unknown");
+      await sendText(reviewSpace(), answer, ev.message.thread?.name); // answer inside the same thread
+      return reply("review_thread_reply", {});
+    }
     if (ev.space !== intakeSpace()) return reply("ignored_other_space", {});
     waitUntil(handleIntakeMessage(ev.message, raw).catch((e) => console.error("gchat intake failed", e)));
     return reply("empty_ack", {});
   }
   return reply("empty_other", {});
+}
+
+/** Interpret a typed reply in a PM Review card thread. Returns the one-line answer to post back in the thread. */
+async function answerThread(topic: ThreadTopic, text: string, who: string): Promise<string> {
+  const t = text.toLowerCase();
+  const no = /\b(not a task|no task|ignore|skip|dismiss|drop it|nothing)\b/.test(t);
+  const yes = /\b(make it a task|make a task|create|approve|yes|go ahead|ok(ay)?|separate task)\b/.test(t);
+  if (topic.kind === "needs_human") {
+    if (no) { await sql()`update messages set skip_reason = 'dismissed_by_human' where id = ${topic.messageId}`; return `🗑️ Not a task · by ${who}`; }
+    const hit = resolveClientFromText(text, await allClients());
+    if (hit) {
+      await sql()`update messages set client_id = ${hit.client.id}, scope = ${hit.client.scope}, skip_reason = null where id = ${topic.messageId}`;
+      await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: topic.messageId })}::jsonb)`;
+      return `👤 Client set to ${hit.client.name} by ${who}; processing on the next tick.`;
+    }
+    if (yes) {
+      await sql()`update messages set skip_reason = null where id = ${topic.messageId}`;
+      await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: topic.messageId })}::jsonb)`;
+      return `↪️ Marked as a task by ${who}; processing on the next tick.`;
+    }
+    return "I did not catch that. Say the client name, \"not a task\", or \"make it a task\".";
+  }
+  if (no) { await dismissRequest(topic.requestId, who); return `🗑️ Not a task · by ${who}`; }
+  if (/\b(merge|same)\b/.test(t) && topic.duplicateOf) { await mergeRequest(topic.requestId, topic.duplicateOf, who); return `🔗 Merged into the existing task by ${who}`; }
+  if (yes) { await approveRequest(topic.requestId, who); return `✅ Approved by ${who}`; }
+  return "I did not catch that. Say \"approve\", \"not a task\"" + (topic.duplicateOf ? " or \"merge\"." : ".");
 }
 
 /** GET is a reachability check: proves the route is deployed without any Chat involvement. */

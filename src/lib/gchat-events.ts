@@ -6,7 +6,7 @@
  */
 
 export interface ChatAttachment { name?: string; contentName?: string; contentType?: string; attachmentDataRef?: { resourceName?: string } }
-export interface ChatMessage { name: string; text?: string; argumentText?: string; createTime?: string; sender?: { email?: string; displayName?: string }; attachment?: ChatAttachment[]; slashCommand?: { commandId?: string | number } }
+export interface ChatMessage { name: string; thread?: { name?: string }; text?: string; argumentText?: string; createTime?: string; sender?: { email?: string; displayName?: string }; attachment?: ChatAttachment[]; slashCommand?: { commandId?: string | number } }
 
 export interface NormalisedEvent {
   format: "classic" | "addon";
