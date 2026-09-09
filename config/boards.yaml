@@ -9,7 +9,7 @@ departments:
   seo:     { board: d4424c02-a0ee-4bec-93be-afb4d6547a88, list: "To Do", staging: "Staging" }
   content: { board: 54d3e767-8899-4875-b88f-faf45b0d82af, list: "To Do", staging: "Staging" }
   dev:     { board: 0fac54b7-3a47-4645-9d67-87f7d24ed32a, list: "To Do", staging: "Staging" }
-  design:  { board: "Graphics", list: "To Do", staging: "Staging" }   # resolved by board name until the id is known
+  design:  { board: 088afc03-75da-4c0f-a7f6-a37a9208c515, list: "To Do", staging: "Staging" }
   general: { board: 0fac54b7-3a47-4645-9d67-87f7d24ed32a, list: "To Do", staging: "Staging" }     # PM / general asks land on the Development board
   internal: { board: 0fac54b7-3a47-4645-9d67-87f7d24ed32a, list: "To Do", staging: "Staging" }
   scope:   { board: 0fac54b7-3a47-4645-9d67-87f7d24ed32a, list: "Needs scope" }
