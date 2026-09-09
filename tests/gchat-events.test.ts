@@ -28,3 +28,11 @@ describe("google chat event normalisation", () => {
     expect((replyUpdateMessage("classic", "x") as { actionResponse: { type: string } }).actionResponse.type).toBe("UPDATE_MESSAGE");
   });
 });
+
+describe("add-on button functions are URLs", () => {
+  it("recovers the handler name from the URL form and from the request hint", () => {
+    const ev = { chat: { buttonClickedPayload: { space: { name: "spaces/x" } }, user: { email: "a@b" } }, commonEventObject: { invokedFunction: "https://pm-tasks.vercel.app/api/gchat?fn=submit_task", formInputs: { request: { stringInputs: { value: ["hi"] } } } } };
+    expect(normaliseChatEvent(ev).kind).toBe("dialog_submit");
+    expect(normaliseChatEvent({ chat: { buttonClickedPayload: {} }, commonEventObject: {} }, "approve").invokedFunction).toBe("approve");
+  });
+});

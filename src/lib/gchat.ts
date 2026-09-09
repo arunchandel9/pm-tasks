@@ -21,6 +21,16 @@ export function chat(): chat_v1.Chat {
   return _chat;
 }
 
+/** Where Google Chat calls us. In add-on style apps a button's `function` must be this URL, with the handler name as ?fn=. */
+export const endpointUrl = () => (process.env.GCHAT_ENDPOINT_URL || "https://pm-tasks.vercel.app/api/gchat").replace(/\/$/, "");
+export const fnRef = (name: string) => `${endpointUrl()}?fn=${encodeURIComponent(name)}`;
+/** Recover the handler name from an invokedFunction that may be a bare name or our URL form. */
+export function fnName(invoked: string | null | undefined): string {
+  if (!invoked) return "";
+  const m = invoked.match(/[?&]fn=([^&]+)/);
+  return m ? decodeURIComponent(m[1]) : invoked;
+}
+
 export const gchatConfigured = () => !!process.env.GOOGLE_SERVICE_ACCOUNT_B64 && !!process.env.GCHAT_REVIEW_SPACE && !!process.env.GOOGLE_PROJECT_NUMBER;
 export const reviewSpace = () => normSpace(process.env.GCHAT_REVIEW_SPACE ?? "");
 export const intakeSpace = () => normSpace(process.env.GCHAT_INTAKE_SPACE ?? "");
@@ -35,11 +45,12 @@ function normSpace(s: string): string {
  * the endpoint URL (add-on style apps); the caller is Chat's system account or, for add-on deployments, the
  * Workspace add-ons service agent. Returns the reason on failure so /api/health can show it.
  */
-export async function verifyChatRequest(authHeader: string | null): Promise<{ ok: boolean; reason?: string; caller?: string }> {
+export async function verifyChatRequest(authHeader: string | null, calledUrl?: string): Promise<{ ok: boolean; reason?: string; caller?: string }> {
   const projectNumber = process.env.GOOGLE_PROJECT_NUMBER;
   if (!projectNumber) return { ok: false, reason: "GOOGLE_PROJECT_NUMBER not set" };
   if (!authHeader?.startsWith("Bearer ")) return { ok: false, reason: "no bearer token" };
-  const audiences = [projectNumber, process.env.GCHAT_ENDPOINT_URL || "https://pm-tasks.vercel.app/api/gchat"];
+  const audiences = [projectNumber, endpointUrl()];
+  if (calledUrl) { try { const u = new URL(calledUrl); audiences.push(calledUrl, `${u.origin}${u.pathname}`); } catch { /* ignore */ } }
   try {
     const client = new OAuth2Client();
     const ticket = await client.verifyIdToken({ idToken: authHeader.slice(7), audience: audiences });
@@ -90,7 +101,7 @@ function buttons(list: Btn[]): chat_v1.Schema$GoogleAppsCardV1Widget {
     buttonList: {
       buttons: list.map((b) => ({
         text: b.text,
-        onClick: { action: { function: b.fn, parameters: Object.entries(b.params).map(([key, value]) => ({ key, value })) } },
+        onClick: { action: { function: fnRef(b.fn), parameters: Object.entries(b.params).map(([key, value]) => ({ key, value })) } },
         color: b.primary ? { red: 0.16, green: 0.48, blue: 0.35, alpha: 1 } : b.danger ? { red: 0.7, green: 0.2, blue: 0.2, alpha: 1 } : undefined,
       })),
     },
@@ -134,7 +145,7 @@ export function needsHumanCard(p: { messageId: string; clientName: string; why: 
       selectionInput: {
         name: "client", label: "Which client?", type: "DROPDOWN",
         items: p.clients.map((c) => ({ text: c.name, value: c.id, selected: false })),
-        onChangeAction: { function: "pick_client", parameters: [{ key: "messageId", value: p.messageId }] },
+        onChangeAction: { function: fnRef("pick_client"), parameters: [{ key: "messageId", value: p.messageId }] },
       },
     });
   }
@@ -176,7 +187,7 @@ export function taskDialogBody(clients: Array<{ id: string; name: string }>) {
                   { text: "Normal", value: "P3", selected: true }, { text: "Important", value: "P2", selected: false }, { text: "Urgent (P1)", value: "P1", selected: false },
                 ] } },
                 { textInput: { name: "source", label: "Where it came from (WhatsApp, phone, email…) (optional)", type: "SINGLE_LINE" } },
-                { buttonList: { buttons: [{ text: "Add request", onClick: { action: { function: "submit_task" } } }] } },
+                { buttonList: { buttons: [{ text: "Add request", onClick: { action: { function: fnRef("submit_task") } } }] } },
               ],
             }],
   };

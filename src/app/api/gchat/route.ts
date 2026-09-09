@@ -15,14 +15,14 @@ export const dynamic = "force-dynamic";
 
 /** Google Chat interaction events, classic or add-on format: Intake messages, /task dialog, card buttons. */
 export async function POST(req: Request) {
-  const v = await verifyChatRequest(req.headers.get("authorization"));
+  const v = await verifyChatRequest(req.headers.get("authorization"), req.url);
   if (!v.ok) {
     console.error("gchat rejected:", v.reason);
     waitUntil(recordLastEvent({ ok: false, reason: v.reason }));
     return new NextResponse("unauthorized", { status: 401 });
   }
   const raw = await req.json();
-  const ev = normaliseChatEvent(raw);
+  const ev = normaliseChatEvent(raw, new URL(req.url).searchParams.get("fn"));
   const f = ev.format;
   const record = (extra: Record<string, unknown>) => waitUntil(recordLastEvent({ ok: true, caller: v.caller, format: f, kind: ev.kind, space: ev.space, intakeSpace: intakeSpace(), invokedFunction: ev.invokedFunction, formKeys: Object.keys(ev.formInputs), text: (ev.message?.argumentText ?? ev.message?.text ?? "").slice(0, 80), ...extra }));
   const res = await handle(ev, raw, record);

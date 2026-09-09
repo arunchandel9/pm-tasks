@@ -21,9 +21,12 @@ export interface NormalisedEvent {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function normaliseChatEvent(ev: any): NormalisedEvent {
+export function normaliseChatEvent(ev: any, fnHint?: string | null): NormalisedEvent {
   const formInputs = ev.commonEventObject?.formInputs ?? ev.common?.formInputs ?? {};
-  const invokedFunction: string = ev.commonEventObject?.invokedFunction ?? ev.common?.invokedFunction ?? ev.action?.actionMethodName ?? "";
+  // Add-on style apps call the handler URL (…/api/gchat?fn=name); classic apps pass the name. Normalise to the name.
+  const rawFn: string = ev.commonEventObject?.invokedFunction ?? ev.common?.invokedFunction ?? ev.action?.actionMethodName ?? "";
+  const m = rawFn.match(/[?&]fn=([^&]+)/);
+  const invokedFunction: string = fnHint || (m ? decodeURIComponent(m[1]) : rawFn);
   const parameters: Record<string, string> = { ...(ev.commonEventObject?.parameters ?? {}), ...(ev.common?.parameters ?? {}) };
   for (const p of ev.action?.parameters ?? []) parameters[p.key] = p.value;
 
