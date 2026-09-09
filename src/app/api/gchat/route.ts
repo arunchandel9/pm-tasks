@@ -15,10 +15,16 @@ export const dynamic = "force-dynamic";
 
 /** Google Chat interaction events, classic or add-on format: Intake messages, /task dialog, card buttons. */
 export async function POST(req: Request) {
-  if (!(await verifyChatRequest(req.headers.get("authorization")))) return new NextResponse("unauthorized", { status: 401 });
+  const v = await verifyChatRequest(req.headers.get("authorization"));
+  if (!v.ok) {
+    console.error("gchat rejected:", v.reason);
+    waitUntil(recordLastEvent({ ok: false, reason: v.reason }));
+    return new NextResponse("unauthorized", { status: 401 });
+  }
   const raw = await req.json();
   const ev = normaliseChatEvent(raw);
   const f = ev.format;
+  waitUntil(recordLastEvent({ ok: true, caller: v.caller, format: f, kind: ev.kind, space: ev.space, intakeSpace: intakeSpace(), text: (ev.message?.argumentText ?? ev.message?.text ?? "").slice(0, 80) }));
 
   if (ev.kind === "added") {
     const role = ev.space === reviewSpace() ? "This is PM Review: drafts, questions, alerts and the daily summary land here."
@@ -41,6 +47,18 @@ export async function POST(req: Request) {
     return NextResponse.json({});
   }
   return NextResponse.json({});
+}
+
+/** GET is a reachability check: proves the route is deployed without any Chat involvement. */
+export async function GET() {
+  return NextResponse.json({ ok: true, route: "/api/gchat", expects: "POST from Google Chat with a Google-signed bearer token" });
+}
+
+/** The last Chat event, kept in settings so /api/health can show it without Vercel logs. */
+async function recordLastEvent(info: Record<string, unknown>) {
+  try {
+    await sql()`insert into settings (key, value) values ('gchat_last_event', ${JSON.stringify({ at: new Date().toISOString(), ...info })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+  } catch (e) { console.error("recordLastEvent failed", (e as Error).message); }
 }
 
 function permalinkFor(messageName: string): string | null {

@@ -30,20 +30,26 @@ function normSpace(s: string): string {
   return s.startsWith("spaces/") ? s : `spaces/${s}`;
 }
 
-/** Every request from Google Chat carries a JWT signed by Google for our project number. */
-export async function verifyChatRequest(authHeader: string | null): Promise<boolean> {
+/**
+ * Every request from Google Chat carries a JWT signed by Google. Audience is the project number (classic apps) or
+ * the endpoint URL (add-on style apps); the caller is Chat's system account or, for add-on deployments, the
+ * Workspace add-ons service agent. Returns the reason on failure so /api/health can show it.
+ */
+export async function verifyChatRequest(authHeader: string | null): Promise<{ ok: boolean; reason?: string; caller?: string }> {
   const projectNumber = process.env.GOOGLE_PROJECT_NUMBER;
-  if (!projectNumber || !authHeader?.startsWith("Bearer ")) return false;
-  // Audience is the project number (classic apps) or the endpoint URL (add-on style apps). Accept either.
+  if (!projectNumber) return { ok: false, reason: "GOOGLE_PROJECT_NUMBER not set" };
+  if (!authHeader?.startsWith("Bearer ")) return { ok: false, reason: "no bearer token" };
   const audiences = [projectNumber, process.env.GCHAT_ENDPOINT_URL || "https://pm-tasks.vercel.app/api/gchat"];
   try {
     const client = new OAuth2Client();
     const ticket = await client.verifyIdToken({ idToken: authHeader.slice(7), audience: audiences });
     const p = ticket.getPayload();
-    return p?.email === "chat@system.gserviceaccount.com" && p.email_verified === true;
+    const email = p?.email ?? "";
+    const trusted = email === "chat@system.gserviceaccount.com" || /^service-\d+@gcp-sa-gsuiteaddons\.iam\.gserviceaccount\.com$/.test(email);
+    if (!trusted || p?.email_verified !== true) return { ok: false, reason: `caller not trusted: ${email || "(no email)"} aud=${String(p?.aud)}`, caller: email };
+    return { ok: true, caller: email };
   } catch (e) {
-    console.error("chat jwt verify failed", (e as Error).message);
-    return false;
+    return { ok: false, reason: `jwt: ${(e as Error).message.slice(0, 200)}` };
   }
 }
 
