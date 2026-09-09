@@ -31,12 +31,17 @@ export async function GET(req: Request) {
       if (!id) { deps[dep] = { ref: cfg.board, resolved: null, problem: "board not found; check boards.yaml or the key's board membership" }; continue; }
       const wanted = [cfg.staging ?? (dep === "scope" ? null : "Staging"), cfg.list].filter((x): x is string => !!x);
       const lists: Record<string, string> = {};
-      for (const name of wanted) {
-        let lid = await pulp.findListId(id, name);
-        if (!lid && create) lid = await pulp.ensureList(id, name);
-        lists[name] = lid ? "ok" : "missing";
+      try {
+        for (const name of wanted) {
+          let lid = await pulp.findListId(id, name);
+          if (!lid && create) lid = await pulp.ensureList(id, name);
+          lists[name] = lid ? "ok" : "missing";
+        }
+        deps[dep] = { ref: cfg.board, resolved: id, name: all.find((b) => b.id === id)?.name ?? "(not in GET /boards; reached by id)", lists, sampleCardUrl: pulp.cardUrl(id, "<card-id>") };
+      } catch (e) {
+        // A UUID in config that GET /boards did not list: the status here says whether it is membership (403) or missing (404).
+        deps[dep] = { ref: cfg.board, resolved: id, problem: (e as Error).message };
       }
-      deps[dep] = { ref: cfg.board, resolved: id, name: all.find((b) => b.id === id)?.name, lists, sampleCardUrl: pulp.cardUrl(id, "<card-id>") };
     }
     out.departments = deps;
     return NextResponse.json({ ok: true, ...out });
