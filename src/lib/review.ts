@@ -73,6 +73,7 @@ export async function postReview(p: ReviewPost): Promise<void> {
     });
     const sent = await gchat.sendCard(space, card, `${clientName}: needs a person (${p.why})`, `human-${p.messageId}`);
     await rememberThread(sent.thread, { kind: "needs_human", messageId: p.messageId });
+    if (sent.name) await sql()`insert into settings (key, value) values (${"gchat_card_for:" + p.messageId}, ${JSON.stringify(sent.name)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
     return;
   }
   const label = p.kind === "possible_duplicate" ? "Possible duplicate" : "Change to an existing task";
@@ -86,6 +87,12 @@ export type ThreadTopic = { kind: "needs_human"; messageId: string } | { kind: "
 async function rememberThread(thread: string | null, topic: ThreadTopic): Promise<void> {
   if (!thread) return;
   await sql()`insert into settings (key, value) values (${"gchat_thread:" + thread}, ${JSON.stringify(topic)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+}
+/** Replace the "needs a person" card with a one-line outcome once someone answered it (from anywhere). */
+export async function closeNeedsHumanCard(messageId: string, text: string): Promise<void> {
+  const r = await sql()`select value from settings where key = ${"gchat_card_for:" + messageId}`;
+  if (!r.length || surface() !== "gchat") return;
+  try { await gchat.updateMessageText(String(r[0].value), text); } catch (e) { console.error("card update failed", (e as Error).message); }
 }
 export async function threadTopic(thread: string | null | undefined): Promise<ThreadTopic | null> {
   if (!thread) return null;

@@ -29,6 +29,11 @@ Last updated: 2026-09-09 (build day 2).
   service account may; else `VOICE_BUCKET`), long-running recognition, polled by queue job `transcribe_poll` every
   minute, then processed like typed text; one 🎙️ line on receipt, task lines when done. Audio kept in the bucket.
   English with UK/IN/US accents; Hinglish would need a language switch. ~2 cents per audio minute.
+- **Client name after (or before) a forward.** A forwarded message with no client name gets "Which client is this
+  for?" in its own thread (Intake) or chat (DM) plus the needs-a-person card in PM Review. A reply that is just a
+  client name in that thread, or the next message in the DM within 30 min, sets the client and processes it; the PM
+  Review card is replaced by one line. A name sent *before* the forward is kept 15 min (`client_hint:<sender>`) and
+  applied to the next message without a client. Answering from PM Review (dropdown or thread reply) still works.
 - **Acknowledgements.** Every team-side intake (Intake space, /task, forwarded email, voice note) gets one line in
   PM Review with the outcome. Client-channel messages produce drafts, not ack lines. Client-facing replies: never.
 - **Unanswered client nudge.** Client posts in Slack and no MangoEyes reply → one line in PM Review at 5 min and at

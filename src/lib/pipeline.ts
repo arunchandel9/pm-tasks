@@ -52,6 +52,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
 
   // Attachment only, or unknown client: a person decides, no model call.
   if (noiseVerdict.reason === "attachment_only" || m.scope === "unknown") {
+    await sql()`update messages set skip_reason = ${noiseVerdict.reason ?? "unknown_client"} where id = ${messageId}`;
     await postReview({ kind: "needs_human", messageId, client, message: m, why: noiseVerdict.reason ?? "unknown_client" });
     return { messageId, outcome: "review", reason: noiseVerdict.reason ?? "unknown_client" };
   }

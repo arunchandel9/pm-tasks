@@ -6,7 +6,7 @@ import { allClients, sql } from "@/lib/db";
 import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
 import { resolveClientFromText, stripClientPrefix } from "@/lib/resolve";
-import { postAck, postReview, postText, humanOutcome, threadTopic, type ThreadTopic } from "@/lib/review";
+import { postAck, postReview, postText, humanOutcome, threadTopic, closeNeedsHumanCard, type ThreadTopic } from "@/lib/review";
 import { transcribeAudio, isAudio, startLongTranscription, estimateMinutes } from "@/lib/transcribe";
 import type { Message } from "@/lib/types";
 
@@ -60,7 +60,7 @@ async function handle(ev: NormalisedEvent, raw: unknown, record: (extra: Record<
       return reply("review_thread_reply", {});
     }
     if (ev.space !== intakeSpace() && !ev.isDm) return reply("ignored_other_space", {});
-    waitUntil(handleIntakeMessage(ev.message, raw).catch((e) => console.error("gchat intake failed", e)));
+    waitUntil(handleIntakeMessage(ev.message, raw, ev.space).catch((e) => console.error("gchat intake failed", e)));
     return reply("empty_ack", {});
   }
   return reply("empty_other", {});
@@ -77,7 +77,8 @@ async function answerThread(topic: ThreadTopic, text: string, who: string): Prom
     if (hit) {
       await sql()`update messages set client_id = ${hit.client.id}, scope = ${hit.client.scope}, skip_reason = null where id = ${topic.messageId}`;
       await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: topic.messageId })}::jsonb)`;
-      return `👤 Client set to ${hit.client.name} by ${who}; processing on the next tick.`;
+      await closeNeedsHumanCard(topic.messageId, `👤 Client set to ${hit.client.name} by ${who}; processing.`);
+      return `👤 Client set to ${hit.client.name} by ${who}; processing.`;
     }
     if (yes) {
       await sql()`update messages set skip_reason = null where id = ${topic.messageId}`;
@@ -109,11 +110,33 @@ function permalinkFor(messageName: string): string | null {
   return m ? `https://chat.google.com/room/${m[1]}/${m[2]}` : null;
 }
 
-async function handleIntakeMessage(msg: ChatMessage, raw: unknown) {
+async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string) {
   const clients = await allClients();
   let text = (msg.argumentText ?? msg.text ?? "").replace(/^@?Task Hub\s*/i, "").trim();
   const sender = msg.sender?.displayName ?? msg.sender?.email ?? "unknown";
   let transcriptNote = "";
+  const say = (t: string) => sendText(space, t, msg.thread?.name).catch((e) => console.error("say failed", (e as Error).message));
+
+  // A message that is only a client name ("HOH", "this is for PSS"): it names the client for a forwarded message,
+  // sent just before (same thread, or the last 30 minutes in a direct chat) or about to be sent (kept for 15 minutes).
+  const nameHit = resolveClientFromText(text, clients);
+  if (nameHit && text.split(/\s+/).length <= 5 && !msg.attachment?.length) {
+    const pending = await sql()`
+      select id from messages where channel = 'intake' and client_id is null and skip_reason in ('unknown_client', 'attachment_only')
+        and (${msg.thread?.name ?? null}::text is not null and thread_ref = ${msg.thread?.name ?? null} or (${msg.thread?.name ?? null}::text is null and sender = ${sender} and created_at > now() - interval '30 minutes'))
+      order by created_at desc limit 1`;
+    if (pending.length) {
+      const id = String(pending[0].id);
+      await sql()`update messages set client_id = ${nameHit.client.id}, scope = ${nameHit.client.scope}, skip_reason = null where id = ${id}`;
+      await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: id })}::jsonb)`;
+      await closeNeedsHumanCard(id, `👤 Client set to ${nameHit.client.name} by ${sender}; processing.`);
+      await say(`Got it: ${nameHit.client.name}. Processing the message above.`);
+      return;
+    }
+    await sql()`insert into settings (key, value) values (${"client_hint:" + sender}, ${JSON.stringify({ clientId: nameHit.client.id, at: Date.now() })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+    await say(`Noted: ${nameHit.client.name}. Forward the message now and I will file it under that client.`);
+    return;
+  }
 
   for (const a of msg.attachment ?? []) {
     if (!a.attachmentDataRef?.resourceName || !isAudio(a.contentType ?? "", a.contentName ?? "")) continue;
@@ -136,8 +159,15 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown) {
     } catch (e) { transcriptNote = ` (voice note download failed: ${(e as Error).message})`; }
   }
 
-  const hit = resolveClientFromText(text, clients);
-  const m = baseMessage(msg, raw, sender, text, clients);
+  let m = baseMessage(msg, raw, sender, text, clients);
+  if (!m.clientId) {
+    // No client in the text: use the name the same person gave in the last 15 minutes, if any.
+    const h = await sql()`select value from settings where key = ${"client_hint:" + sender}`;
+    const hint = h.length ? (h[0].value as { clientId: string; at: number }) : null;
+    const c = hint && Date.now() - hint.at < 15 * 60 * 1000 ? clients.find((x) => x.id === hint.clientId) : null;
+    if (c) { m = { ...m, clientId: c.id, scope: c.scope }; await sql()`delete from settings where key = ${"client_hint:" + sender}`; }
+  }
+  const hit = m.clientId ? { client: clients.find((x) => x.id === m.clientId)! } : null;
   if (!m.text.trim() && !msg.attachment?.length) return;
   if (!m.text.trim()) {
     await postReview({ kind: "needs_human", messageId: (await storeOnly(m, "attachment_only")).id, client: null, message: m, why: `attachment_only${transcriptNote}` });
@@ -145,6 +175,7 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown) {
   }
   const result = await processMessage(m, { skip: false, reason: null });
   const n = result.requestIds?.length ?? 0;
+  if (result.outcome === "review" && result.reason === "unknown_client") await say("Which client is this for? Reply here with the name.");
   // When tasks were created, the feed lines are the acknowledgement; a second line would only add noise.
   if (result.outcome === "review" && n && !transcriptNote) return;
   const detail = result.outcome === "review" && n ? `${n} task${n > 1 ? "s" : ""} for ${hit?.client.name ?? "unknown client"} above${transcriptNote}`
@@ -158,7 +189,7 @@ function baseMessage(msg: ChatMessage, raw: unknown, sender: string, text: strin
   return {
     channel: "intake", externalId: msg.name, teamId: null, clientId: hit?.client.id ?? null, scope: hit ? hit.client.scope : "unknown",
     sender, senderIsStaff: true, sentAt: msg.createTime ? new Date(msg.createTime) : new Date(),
-    text: hit ? stripClientPrefix(text, hit.client) : text, permalink: permalinkFor(msg.name), threadRef: null, raw,
+    text: hit ? stripClientPrefix(text, hit.client) : text, permalink: permalinkFor(msg.name), threadRef: msg.thread?.name ?? null, raw,
   };
 }
 
@@ -218,7 +249,7 @@ async function handleCardClick(ev: NormalisedEvent) {
         const c = (await allClients()).find((x) => x.id === clientId);
         await sql()`update messages set client_id = ${clientId}, scope = ${c?.scope ?? "client"}, skip_reason = null where id = ${p.messageId}`;
         await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: p.messageId })}::jsonb)`;
-        return done(`👤 Client set to ${c?.name ?? clientId} by ${who}; processing on the next tick.`);
+        return done(`👤 Client set to ${c?.name ?? clientId} by ${who}; processing.`);
       }
       case "dismiss_message":
         await sql()`update messages set skip_reason = 'dismissed_by_human' where id = ${p.messageId}`;
