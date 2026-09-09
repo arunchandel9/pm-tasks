@@ -86,13 +86,15 @@ Last updated: 2026-09-09 (build day 2).
   post in PM Review with card links. Google's caller for the add-on style app is
   `service-<project>@gcp-sa-gsuiteaddons.iam.gserviceaccount.com` (accepted since; before that every event got 401 and Chat
   showed "Task Hub not responding").
+- **Milestone B reached 2026-09-09:** dragging the Dev card out of Staging wrote the row into the "HOH - House Of Health"
+  tab within a minute (poll → approveRequest moveCard:false → insertTaskRow with stamp "approved by drag in Pulp").
 - Unit tests: 59 passing (`npm test`). Build clean.
 
 ## Open items (owner: Arun)
 
 1. ~~Config tab~~ done: 15 client rows, sheet_tab at AB, link headers set (Template renamed; Dr Anil, MangoEyes blank header filled).
-2. ~~First Google Chat live test~~ passed to the feed stage. Left: drag the Dev card out of Staging → row in
-   "HOH - House Of Health" within a minute (milestone B). Then `/task`.
+2. ~~First Google Chat live test~~ passed end to end (feed, Staging cards, drag → sheet row). Left: try `/task` in
+   Intake; move the test card to Done and confirm the row drops below the DONE divider.
 3. Install Slack app into one client workspace; put its T-id in that client's Config row (column D).
 4. ~~Pulp API~~ connected and verified 2026-09-09. Left: archive the duplicate "To Do" lists the hub created on
    Development, Writers, Graphics, Onboarding & Automations (keep the boards' own "To-Do").
