@@ -101,7 +101,9 @@ Last updated: 2026-09-09 (build day 2).
   priority, assignee, dates (DD-MMM-YYYY and common variants), Comments; rows below the DONE divider count as done.
   Runs at `/api/sheet-sync` on demand and every 10 minutes from the tick. Never writes to the sheet or Pulp. Hub-made
   rows are matched by Pulp link and only pick up a PM-typed Assigned To. The Pulp poll only follows hub-origin tasks.
-  So the MCP hub and the summary answer from the PMs' own record, history included.
+  So the MCP hub and the summary answer from the PMs' own record, history included. First full import 2026-09-09:
+  15 tabs, 1164 rows, no errors (per-tab keys; upsert on conflict). Tab names may carry stray spaces ("Dr Sabrina ",
+  " Dr Tanov Eyes & Aesthetics"); matching trims them.
 - **MCP hub** (built 2026-09-09). `https://pm-tasks.vercel.app/api/mcp/<key>` (Streamable HTTP via `mcp-handler`
   2.x / `@modelcontextprotocol/server` 2.0). Per-person keys `mh_…` minted with `/api/setup?mcp_key=<name>|<email>`,
   sha256 stored in settings `mcp_key:<hash>`, revoked with `?mcp_revoke=`. Tools: list_clients, search_tasks,
@@ -124,6 +126,8 @@ Last updated: 2026-09-09 (build day 2).
   post in PM Review with card links. Google's caller for the add-on style app is
   `service-<project>@gcp-sa-gsuiteaddons.iam.gserviceaccount.com` (accepted since; before that every event got 401 and Chat
   showed "Task Hub not responding").
+- **Milestone C reached 2026-09-09:** Arun's Claude connected to `/api/mcp/<key>` and answered "what is pending for
+  HOH" with the Staging task, links and counts. Sheet history imported afterwards so answers cover pre-hub tasks.
 - **Milestone B reached 2026-09-09:** dragging the Dev card out of Staging wrote the row into the "HOH - House Of Health"
   tab within a minute (poll → approveRequest moveCard:false → insertTaskRow with stamp "approved by drag in Pulp").
   Card → Done then set Status "Done" and moved the row below the DONE divider (after the by-id poll fix).
