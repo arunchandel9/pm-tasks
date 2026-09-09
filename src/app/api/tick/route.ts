@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cronAuthorized } from "@/lib/auth";
-import { sql, upsertClient } from "@/lib/db";
+import { sql, upsertClient, enqueue } from "@/lib/db";
 import { readConfigTab, sheetsConfigured } from "@/lib/sheets";
 import { pulp, isDoneList } from "@/lib/pulp";
 
@@ -140,16 +140,48 @@ async function runJob(kind: string, payload: Record<string, unknown>) {
       return;
     }
     case "process_message": {
-      // Re-run of a stored message (after pause, or "Make it a task"). Rebuilt from the stored raw payload.
+      // Re-run of a stored message (after pause, "Make it a task", a client picked, or a long transcript arrived).
       const { processMessage } = await import("@/lib/pipeline");
       const rows = await sql()`select * from messages where id = ${payload.messageId as string}`;
       if (!rows.length) return;
       const r = rows[0];
       await sql()`delete from messages where id = ${r.id}`; // processMessage re-inserts idempotently
-      await processMessage({
+      const m = {
         channel: r.channel, externalId: r.external_id, teamId: (r.raw as { team?: string } | null)?.team ?? null, clientId: r.client_id, scope: r.scope, sender: r.sender,
         senderIsStaff: r.sender_is_staff, sentAt: new Date(r.sent_at), text: r.text, permalink: r.permalink, threadRef: r.thread_ref, raw: r.raw,
-      }, { skip: false, reason: null });
+      };
+      const result = await processMessage(m, { skip: false, reason: null });
+      if (m.channel === "intake" || m.channel === "task_cmd") {
+        const n = result.requestIds?.length ?? 0;
+        if (!(result.outcome === "review" && n)) {
+          const { postAck, humanOutcome } = await import("@/lib/review");
+          await postAck({ message: m, outcome: result.outcome, detail: humanOutcome(result.outcome, result.reason) });
+        }
+      }
+      return;
+    }
+    case "transcribe_poll": {
+      // A long voice note: is Google done? If not, ask again in a minute (a fresh job, so the backoff never slows it).
+      const { pollLongTranscription } = await import("@/lib/transcribe");
+      const job = payload.job as import("@/lib/transcribe").LongJob;
+      const r = await pollLongTranscription(job);
+      if (!r.done) { await enqueue("transcribe_poll", payload, 60); return; }
+      const { postText } = await import("@/lib/review");
+      if ("error" in r) {
+        await sql()`update messages set skip_reason = 'transcription_failed' where id = ${payload.messageId as string}`;
+        await postText(`🎙️ The long voice note could not be transcribed (${r.error.slice(0, 120)}). Please type the ask.`);
+        return;
+      }
+      const typed = String(payload.typed ?? "").trim();
+      const text = [typed, r.text].filter(Boolean).join("\n");
+      if (!text.trim()) { await postText("🎙️ The long voice note came back empty (no speech recognised). Please type the ask."); return; }
+      // Resolve the client from the transcript, then run the normal pipeline via process_message.
+      const { resolveClientFromText, stripClientPrefix } = await import("@/lib/resolve");
+      const { allClients } = await import("@/lib/db");
+      const hit = resolveClientFromText(text, await allClients());
+      await sql()`update messages set text = ${hit ? stripClientPrefix(text, hit.client) : text}, client_id = ${hit?.client.id ?? null}, scope = ${hit ? hit.client.scope : "unknown"}, skip_reason = null,
+        raw = coalesce(raw, '{}'::jsonb) || ${JSON.stringify({ transcript: r.text, audio: job.gsUri })}::jsonb where id = ${payload.messageId as string}`;
+      await enqueue("process_message", { messageId: payload.messageId }, 0);
       return;
     }
     case "reply_check": {

@@ -24,6 +24,11 @@ Last updated: 2026-09-09 (build day 2).
 - **Direct messages with Task Hub = intake without a mention.** Google only delivers space messages that mention
   the app, so the Intake space needs `@Task Hub`; a 1:1 chat with Task Hub delivers everything (forwarded WhatsApp
   text and voice notes from the phone's share sheet). Requires "Receive 1:1 messages" on in the Chat app config.
+- **Voice notes.** Google Speech-to-Text (same service account). ≤ ~1 min: synchronous, seconds. Longer (up to
+  hours; Arun needs 20 min): uploaded to bucket `<project>-task-hub-voice` (auto-created in ASIA-SOUTH1 if the
+  service account may; else `VOICE_BUCKET`), long-running recognition, polled by queue job `transcribe_poll` every
+  minute, then processed like typed text; one 🎙️ line on receipt, task lines when done. Audio kept in the bucket.
+  English with UK/IN/US accents; Hinglish would need a language switch. ~2 cents per audio minute.
 - **Acknowledgements.** Every team-side intake (Intake space, /task, forwarded email, voice note) gets one line in
   PM Review with the outcome. Client-channel messages produce drafts, not ack lines. Client-facing replies: never.
 - **Unanswered client nudge.** Client posts in Slack and no MangoEyes reply → one line in PM Review at 5 min and at

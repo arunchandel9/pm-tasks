@@ -6,8 +6,8 @@ import { allClients, sql } from "@/lib/db";
 import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
 import { resolveClientFromText, stripClientPrefix } from "@/lib/resolve";
-import { postAck, postReview, humanOutcome, threadTopic, type ThreadTopic } from "@/lib/review";
-import { transcribeAudio, isAudio } from "@/lib/transcribe";
+import { postAck, postReview, postText, humanOutcome, threadTopic, type ThreadTopic } from "@/lib/review";
+import { transcribeAudio, isAudio, startLongTranscription, estimateMinutes } from "@/lib/transcribe";
 import type { Message } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -121,20 +121,26 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown) {
       const buf = await downloadAttachment(a.attachmentDataRef.resourceName);
       const t = await transcribeAudio(buf, a.contentType ?? "", a.contentName ?? "");
       if ("text" in t && t.text) { text = [text, t.text].filter(Boolean).join("\n"); transcriptNote = " (voice note transcribed)"; }
-      else if ("tooLong" in t) transcriptNote = " (voice note over a minute: please type the ask)";
+      else if ("tooLong" in t) {
+        // Long note: upload, start the long-running recognition, and let the minute tick finish the job.
+        const mins = estimateMinutes(buf.length, a.contentType ?? "");
+        try {
+          const job = await startLongTranscription(buf, a.contentType ?? "", a.contentName ?? "");
+          const stored = await storeOnly({ ...baseMessage(msg, raw, sender, text, clients), text }, "transcribing");
+          await sql()`insert into queue (kind, payload, next_run_at) values ('transcribe_poll', ${JSON.stringify({ messageId: stored.id, job, typed: text })}::jsonb, now() + interval '60 seconds')`;
+          await postText(`🎙️ Voice note from ${sender} received (about ${mins} min). Transcribing; the task lines will follow in a few minutes.`);
+          return;
+        } catch (e) { transcriptNote = ` (long voice note could not be started: ${(e as Error).message.slice(0, 160)})`; }
+      }
       else transcriptNote = ` (voice note could not be transcribed: ${"error" in t ? t.error : "unknown"})`;
     } catch (e) { transcriptNote = ` (voice note download failed: ${(e as Error).message})`; }
   }
 
   const hit = resolveClientFromText(text, clients);
-  const m: Message = {
-    channel: "intake", externalId: msg.name, teamId: null, clientId: hit?.client.id ?? null, scope: hit ? hit.client.scope : "unknown",
-    sender, senderIsStaff: true, sentAt: msg.createTime ? new Date(msg.createTime) : new Date(),
-    text: hit ? stripClientPrefix(text, hit.client) : text, permalink: permalinkFor(msg.name), threadRef: null, raw,
-  };
+  const m = baseMessage(msg, raw, sender, text, clients);
   if (!m.text.trim() && !msg.attachment?.length) return;
   if (!m.text.trim()) {
-    await postReview({ kind: "needs_human", messageId: (await storeOnly(m)).id, client: null, message: m, why: `attachment_only${transcriptNote}` });
+    await postReview({ kind: "needs_human", messageId: (await storeOnly(m, "attachment_only")).id, client: null, message: m, why: `attachment_only${transcriptNote}` });
     return;
   }
   const result = await processMessage(m, { skip: false, reason: null });
@@ -146,11 +152,21 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown) {
   await postAck({ message: m, outcome: result.outcome, detail });
 }
 
-async function storeOnly(m: Message): Promise<{ id: string }> {
+/** The Message record for an Intake/DM post, with the client resolved from the text. */
+function baseMessage(msg: ChatMessage, raw: unknown, sender: string, text: string, clients: Awaited<ReturnType<typeof allClients>>): Message {
+  const hit = resolveClientFromText(text, clients);
+  return {
+    channel: "intake", externalId: msg.name, teamId: null, clientId: hit?.client.id ?? null, scope: hit ? hit.client.scope : "unknown",
+    sender, senderIsStaff: true, sentAt: msg.createTime ? new Date(msg.createTime) : new Date(),
+    text: hit ? stripClientPrefix(text, hit.client) : text, permalink: permalinkFor(msg.name), threadRef: null, raw,
+  };
+}
+
+async function storeOnly(m: Message, skipReason: string): Promise<{ id: string }> {
   const { textHash } = await import("@/lib/dedupe");
   const rows = await sql()`
     insert into messages (channel, external_id, client_id, scope, sender, sender_is_staff, sent_at, text, text_hash, permalink, thread_ref, raw, skip_reason)
-    values (${m.channel}, ${m.externalId}, ${m.clientId}, ${m.scope}, ${m.sender}, ${m.senderIsStaff}, ${m.sentAt.toISOString()}, ${m.text}, ${textHash(m.text || m.externalId)}, ${m.permalink}, ${m.threadRef}, ${JSON.stringify(m.raw)}::jsonb, 'attachment_only')
+    values (${m.channel}, ${m.externalId}, ${m.clientId}, ${m.scope}, ${m.sender}, ${m.senderIsStaff}, ${m.sentAt.toISOString()}, ${m.text}, ${textHash(m.text || m.externalId)}, ${m.permalink}, ${m.threadRef}, ${JSON.stringify(m.raw)}::jsonb, ${skipReason})
     on conflict (channel, external_id) do update set skip_reason = excluded.skip_reason returning id`;
   return { id: rows[0].id as string };
 }
