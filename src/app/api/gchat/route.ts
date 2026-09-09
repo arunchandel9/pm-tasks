@@ -36,6 +36,7 @@ async function handle(ev: NormalisedEvent, raw: unknown, record: (extra: Record<
   if (ev.kind === "added") {
     const role = ev.space === reviewSpace() ? "This is PM Review: drafts, questions, alerts and the daily summary land here."
       : ev.space === intakeSpace() ? "This is Intake: mention me with a pasted WhatsApp or any message, drop a voice note, or type /task for the form. Start with the client name and a colon when you can."
+      : ev.isDm ? "Send or forward anything here: a WhatsApp message, a voice note, a note to yourself. No mention needed. Put the client name in when you can."
       : "Add me to the PM Review and Intake spaces.";
     return reply("welcome", replyText(f, `Task Hub is here. ${role}`));
   }
@@ -58,7 +59,7 @@ async function handle(ev: NormalisedEvent, raw: unknown, record: (extra: Record<
       await sendText(reviewSpace(), answer, ev.message.thread?.name); // answer inside the same thread
       return reply("review_thread_reply", {});
     }
-    if (ev.space !== intakeSpace()) return reply("ignored_other_space", {});
+    if (ev.space !== intakeSpace() && !ev.isDm) return reply("ignored_other_space", {});
     waitUntil(handleIntakeMessage(ev.message, raw).catch((e) => console.error("gchat intake failed", e)));
     return reply("empty_ack", {});
   }

@@ -12,6 +12,8 @@ export interface NormalisedEvent {
   format: "classic" | "addon";
   kind: "added" | "message" | "command" | "click" | "dialog_submit" | "other";
   space: string;
+  /** Direct message with the app: every message is delivered, no mention needed. Treated like the Intake space. */
+  isDm: boolean;
   user: { email?: string; displayName?: string };
   message: ChatMessage | null;
   commandId: string | null;
@@ -30,36 +32,40 @@ export function normaliseChatEvent(ev: any, fnHint?: string | null): NormalisedE
   const parameters: Record<string, string> = { ...(ev.commonEventObject?.parameters ?? {}), ...(ev.common?.parameters ?? {}) };
   for (const p of ev.action?.parameters ?? []) parameters[p.key] = p.value;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dmOf = (sp: any) => !!sp && (sp.spaceType === "DIRECT_MESSAGE" || sp.type === "DM");
   if (ev.chat) {
     const c = ev.chat;
     const user = { email: c.user?.email, displayName: c.user?.displayName };
-    if (c.addedToSpacePayload) return { format: "addon", kind: "added", space: c.addedToSpacePayload.space?.name ?? "", user, message: null, commandId: null, invokedFunction, parameters, formInputs };
+    const isDm = dmOf(c.addedToSpacePayload?.space ?? c.appCommandPayload?.space ?? c.buttonClickedPayload?.space ?? c.messagePayload?.space ?? c.messagePayload?.message?.space);
+    if (c.addedToSpacePayload) return { format: "addon", kind: "added", space: c.addedToSpacePayload.space?.name ?? "", isDm, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
     if (c.appCommandPayload) {
       const meta = c.appCommandPayload.appCommandMetadata ?? {};
-      return { format: "addon", kind: "command", space: c.appCommandPayload.space?.name ?? c.appCommandPayload.message?.space?.name ?? "", user, message: c.appCommandPayload.message ?? null, commandId: meta.appCommandId != null ? String(meta.appCommandId) : null, invokedFunction, parameters, formInputs };
+      return { format: "addon", kind: "command", space: c.appCommandPayload.space?.name ?? c.appCommandPayload.message?.space?.name ?? "", isDm, user, message: c.appCommandPayload.message ?? null, commandId: meta.appCommandId != null ? String(meta.appCommandId) : null, invokedFunction, parameters, formInputs };
     }
     if (c.buttonClickedPayload) {
       const kind = invokedFunction === "submit_task" ? "dialog_submit" : "click";
-      return { format: "addon", kind, space: c.buttonClickedPayload.space?.name ?? c.buttonClickedPayload.message?.space?.name ?? "", user, message: c.buttonClickedPayload.message ?? null, commandId: null, invokedFunction, parameters, formInputs };
+      return { format: "addon", kind, space: c.buttonClickedPayload.space?.name ?? c.buttonClickedPayload.message?.space?.name ?? "", isDm, user, message: c.buttonClickedPayload.message ?? null, commandId: null, invokedFunction, parameters, formInputs };
     }
     if (c.messagePayload) {
       const msg = c.messagePayload.message ?? null;
       const cmd = msg?.slashCommand?.commandId;
-      return { format: "addon", kind: cmd != null ? "command" : "message", space: c.messagePayload.space?.name ?? msg?.space?.name ?? "", user, message: msg, commandId: cmd != null ? String(cmd) : null, invokedFunction, parameters, formInputs };
+      return { format: "addon", kind: cmd != null ? "command" : "message", space: c.messagePayload.space?.name ?? msg?.space?.name ?? "", isDm, user, message: msg, commandId: cmd != null ? String(cmd) : null, invokedFunction, parameters, formInputs };
     }
-    return { format: "addon", kind: "other", space: "", user, message: null, commandId: null, invokedFunction, parameters, formInputs };
+    return { format: "addon", kind: "other", space: "", isDm, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
   }
 
   const user = { email: ev.user?.email, displayName: ev.user?.displayName };
   const space: string = ev.space?.name ?? ev.message?.space?.name ?? "";
-  if (ev.type === "ADDED_TO_SPACE") return { format: "classic", kind: "added", space, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
-  if (ev.isDialogEvent && ev.dialogEventType === "SUBMIT") return { format: "classic", kind: "dialog_submit", space, user, message: ev.message ?? null, commandId: null, invokedFunction, parameters, formInputs };
-  if (ev.type === "CARD_CLICKED") return { format: "classic", kind: "click", space, user, message: ev.message ?? null, commandId: null, invokedFunction, parameters, formInputs };
+  const isDm = dmOf(ev.space ?? ev.message?.space);
+  if (ev.type === "ADDED_TO_SPACE") return { format: "classic", kind: "added", space, isDm, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
+  if (ev.isDialogEvent && ev.dialogEventType === "SUBMIT") return { format: "classic", kind: "dialog_submit", space, isDm, user, message: ev.message ?? null, commandId: null, invokedFunction, parameters, formInputs };
+  if (ev.type === "CARD_CLICKED") return { format: "classic", kind: "click", space, isDm, user, message: ev.message ?? null, commandId: null, invokedFunction, parameters, formInputs };
   if (ev.type === "MESSAGE") {
     const cmd = ev.message?.slashCommand?.commandId;
-    return { format: "classic", kind: cmd != null ? "command" : "message", space, user, message: ev.message ?? null, commandId: cmd != null ? String(cmd) : null, invokedFunction, parameters, formInputs };
+    return { format: "classic", kind: cmd != null ? "command" : "message", space, isDm, user, message: ev.message ?? null, commandId: cmd != null ? String(cmd) : null, invokedFunction, parameters, formInputs };
   }
-  return { format: "classic", kind: "other", space, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
+  return { format: "classic", kind: "other", space, isDm, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
 }
 
 // ---- replies, per format ----
