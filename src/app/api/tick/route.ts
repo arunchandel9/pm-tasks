@@ -48,6 +48,7 @@ export async function GET(req: Request) {
   //    compared with the card's current list every minute, so a failed write is retried and nothing is lost.
   if (pulp.configured()) {
     const errors: string[] = [];
+    const seen: Array<Record<string, unknown>> = [];
     let synced = 0, sheetUpdates = 0, boardsPolled = 0;
     try {
       const boards = await sql()`select distinct board_id from tasks where pulp_card_id is not null and board_id is not null
@@ -66,9 +67,10 @@ export async function GET(req: Request) {
           where t.board_id = ${String(b.board_id)} and t.pulp_card_id is not null and (t.completed_at is null or t.completed_at > now() - interval '7 days')`;
         for (const t of ours) {
           const card = cards.find((c) => c.id === t.pulp_card_id);
-          if (!card) continue; // archived or deleted in Pulp: leave the sheet as it is
+          if (!card) { seen.push({ title: String(t.title).slice(0, 40), found: false, cardsOnBoard: cards.length }); continue; } // archived or deleted in Pulp: leave the sheet as it is
           const listName = (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
           const done = isDoneList(listName);
+          seen.push({ title: String(t.title).slice(0, 40), found: true, listName, done, tab: t.tab ?? null, sheetStage: t.sheet_stage ?? null, moved: card.listId !== t.list_id });
 
           if (card.listId !== t.list_id) {
             const wasStaging = t.staging as boolean;
@@ -110,7 +112,7 @@ export async function GET(req: Request) {
     } catch (e) { errors.push((e as Error).message); }
     report.pulp = { boardsPolled, synced, sheetUpdates, errors };
     try {
-      await sql()`insert into settings (key, value) values ('pulp_poll_last', ${JSON.stringify({ at: new Date().toISOString(), boardsPolled, synced, sheetUpdates, errors })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+      await sql()`insert into settings (key, value) values ('pulp_poll_last', ${JSON.stringify({ at: new Date().toISOString(), boardsPolled, synced, sheetUpdates, errors, tasks: seen.slice(0, 10) })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
     } catch { /* ignore */ }
   }
 
