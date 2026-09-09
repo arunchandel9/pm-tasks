@@ -96,6 +96,12 @@ Last updated: 2026-09-09 (build day 2).
   "To Do" list on Development, Writers, Graphics and Onboarding & Automations because matching was exact; Arun to
   archive those four extra lists in the UI (API cannot). Matching fixed since.
 - **Data retention.** Keep everything forever. `RAW_RETENTION_DAYS` exists but is off (0).
+- **MCP hub** (built 2026-09-09). `https://pm-tasks.vercel.app/api/mcp/<key>` (Streamable HTTP via `mcp-handler`
+  2.x / `@modelcontextprotocol/server` 2.0). Per-person keys `mh_…` minted with `/api/setup?mcp_key=<name>|<email>`,
+  sha256 stored in settings `mcp_key:<hash>`, revoked with `?mcp_revoke=`. Tools: list_clients, search_tasks,
+  task_detail, client_summary, recent_messages, daily_summary, add_request (→ normal pipeline, Staging), hub_status.
+  Read side lives in `src/lib/hub.ts`; the EOD route uses the same `dailySummaryText` (`/api/eod?dry=1` previews).
+  How-to for PMs: `docs/MCP.md`.
 - **Cost.** Only two model calls per message; ~$6/month at 500 messages on Sonnet 5. Hub questions run on each PM's
   own assistant over MCP (phase 3), never on the API bill.
 - **Not Hermes.** Intake is event-driven and must not decide; Hermes runs code only when its agent decides and needs
@@ -135,9 +141,9 @@ Last updated: 2026-09-09 (build day 2).
 
 - Confirm Pulp client against the real API; create Staging cards; drag-out-of-Staging = approve; stage → sheet.
 - Edit / Merge dialogs in PM Review cards.
-- Daily summary posting to PM Review (route exists, cron 17:30 UTC weekdays).
-- MCP hub for PMs' assistants; Google Meet notes from the Drive folder; scope gate; new-page chain; asset handoff;
-  weekly digest; approval-loop nudges.
+- Daily summary: verify the 17:30 UTC post once a day of real data exists (`/api/eod?dry=1` to preview).
+- Google Meet notes from the Drive folder; scope gate; new-page chain; asset handoff; weekly digest;
+  approval-loop nudges.
 
 ## Environment variables in Vercel (names only)
 

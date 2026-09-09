@@ -45,6 +45,24 @@ export async function GET(req: Request) {
       }
       continue;
     }
+    if (k === "mcp_key") {
+      // mcp_key=<name>|<email>: mint a personal key for the MCP hub. Shown once, only here.
+      const [name, email] = v.split("|");
+      const { createMcpKey } = await import("@/lib/mcp-keys");
+      const key = await createMcpKey(name || email, email || name);
+      seeded.push(`mcp_key for ${name || email}: ${key}  →  https://pm-tasks.vercel.app/api/mcp/${key}`);
+      continue;
+    }
+    if (k === "mcp_revoke") {
+      const { revokeMcpKeys } = await import("@/lib/mcp-keys");
+      seeded.push(`mcp_revoked:${await revokeMcpKeys(v)}`);
+      continue;
+    }
+    if (k === "mcp_list") {
+      const { listMcpKeys } = await import("@/lib/mcp-keys");
+      seeded.push(`mcp_keys:${JSON.stringify(await listMcpKeys())}`);
+      continue;
+    }
     if (k === "remove_client") {
       // Remove a client that is not in the Config tab (e.g. the setup-time test client). Messages/requests keep their rows.
       const r = await sql()`delete from clients where id = ${v} returning id`;
