@@ -23,7 +23,7 @@ Last updated: 2026-09-09 (build day 2).
   `task-hub@mangoeyes-task-hub.iam.gserviceaccount.com` (Sheets, Chat, Speech-to-Text, Drive, Gmail enabled).
 - **Direct messages with Task Hub = intake without a mention.** Google only delivers space messages that mention
   the app, so the Intake space needs `@Task Hub`; a 1:1 chat with Task Hub delivers everything (forwarded WhatsApp
-  text and voice notes from the phone's share sheet). Requires "Receive 1:1 messages" on in the Chat app config.
+  text and voice notes from the phone's share sheet). Always on in the current Chat API config (no toggle exists).
 - **Voice notes.** Google Speech-to-Text (same service account). ≤ ~1 min: synchronous, seconds. Longer (up to
   hours; Arun needs 20 min): uploaded to bucket `<project>-task-hub-voice` (auto-created in ASIA-SOUTH1 if the
   service account may; else `VOICE_BUCKET`), long-running recognition, polled by queue job `transcribe_poll` every
@@ -34,8 +34,10 @@ Last updated: 2026-09-09 (build day 2).
   client name in that thread, or the next message in the DM within 30 min, sets the client and processes it; the PM
   Review card is replaced by one line. A name sent *before* the forward is kept 15 min (`client_hint:<sender>`) and
   applied to the next message without a client. Answering from PM Review (dropdown or thread reply) still works.
-- **Email intake** (built 2026-09-09, untested until delegation exists). Mailbox `intake@mangoeyesagency.com`
-  (`GMAIL_MAILBOX` must be the real Workspace user that owns the address; `GMAIL_INTAKE_ADDRESS` is the filter).
+- **Email intake** (built 2026-09-09). `intake@mangoeyesagency.com` is an alias of arun@mangoeyesagency.com, so
+  `GMAIL_MAILBOX=arun@mangoeyesagency.com` and `GMAIL_INTAKE_ADDRESS=intake@mangoeyesagency.com` (set in Vercel
+  2026-09-09). Domain-wide delegation added for service-account unique id 117215744015492300607 with gmail.readonly +
+  gmail.modify. Service account project role: Storage Admin only (for the voice bucket).
   Service account impersonates it via domain-wide delegation (scopes gmail.readonly + gmail.modify). Every minute:
   mails to the intake address without the Gmail label "Task Hub" (newer than 3 days) are parsed (forwards read from
   the inside: original sender + body; quoted history dropped), noise-filtered (`emailNoise`), client resolved from
