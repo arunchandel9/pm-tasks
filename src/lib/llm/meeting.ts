@@ -20,7 +20,7 @@ export type MeetingSort = z.infer<typeof MeetingSchema>;
 
 const INSTRUCTIONS = `You read the notes of one meeting at a digital marketing agency (MangoEyes: websites, content, design, SEO, ads, CRM automations, video for aesthetic clinics).
 Sort what was said into items. Each item is exactly one of: action (someone must do something), idea (a suggestion or future plan, not agreed), decision (agreed, changes how work is done), discussion (nothing to do).
-Name the client for each item from the client list. Work for the agency itself is client "MangoEyes". Only name a client that is clearly meant; otherwise null.
+Name the client for each item from the client list. Anything the agency does for or about a client (their site, content, ads, videos, transition, offboarding, reporting) belongs to that client, even when a MangoEyes person does the work. "MangoEyes" is only for the agency's own business: hiring, pay, its own website and marketing, internal process, tools. If the meeting is about one client, default that client for actions unless an item is clearly about another. Only null when no client fits.
 Do not merge separate actions. Do not invent items that are not in the notes. Keep every item to one sentence. Output only the fields.`;
 
 export async function sortMeeting(opts: { title: string; notes: string; attendees: string[]; clients: string[] }): Promise<MeetingSort> {

@@ -153,12 +153,15 @@ export async function dailySummaryText(days = 1): Promise<string> {
     select coalesce(c.name,'Internal') as client, left(t.id::text,8) as id, s.from_list, s.to_list, t.board_id, t.title
     from status_events s join tasks t on t.id = s.task_id left join clients c on c.id = t.client_id
     where s.at > now() - ${iv}::interval order by c.name`;
+  // Sheet-mirrored rows count as completed only when the sheet carries a real completion date (sheet_status Done
+  // with a Date Completed); rows that merely sit below the divider are dated by their import and would flood the list.
   const completed = await sql()`
     select coalesce(c.name,'Internal') as client, left(t.id::text,8) as id, t.title from tasks t left join clients c on c.id = t.client_id
-    where t.completed_at > now() - ${iv}::interval`;
+    where t.completed_at > now() - ${iv}::interval and (t.origin = 'hub' or t.completed_at::date <> t.created_at::date)`;
   const overdue = await sql()`
     select coalesce(c.name,'Internal') as client, left(t.id::text,8) as id, t.title, t.priority, to_char(t.due_at,'Dy DD Mon') as due
-    from tasks t left join clients c on c.id = t.client_id where t.completed_at is null and t.due_at < now() and t.staging = false order by t.due_at`;
+    from tasks t left join clients c on c.id = t.client_id where t.completed_at is null and t.due_at < now() and t.staging = false
+    order by case when t.priority = 'P1' then 0 when t.priority = 'P2' then 1 else 2 end, t.due_at desc`;
   const staging = await sql()`
     select coalesce(c.name,'Unknown') as client, t.title, to_char(t.created_at,'Dy DD Mon') as since from tasks t left join clients c on c.id = t.client_id
     where t.staging = true and t.completed_at is null order by t.created_at`;
@@ -183,7 +186,9 @@ export async function dailySummaryText(days = 1): Promise<string> {
     movedNamed.push({ ...r, from, to });
   }
   const day = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
-  const line = (rows: Record<string, unknown>[], f: (r: Record<string, unknown>) => string) => rows.length ? rows.map((r) => "  " + f(r)).join("\n") : "  —";
+  const CAP = 8;
+  const line = (rows: Record<string, unknown>[], f: (r: Record<string, unknown>) => string) =>
+    rows.length ? [...rows.slice(0, CAP).map((r) => "  " + f(r)), ...(rows.length > CAP ? [`  … and ${rows.length - CAP} more (ask the hub)`] : [])].join("\n") : "  —";
   return [
     `MangoEyes PM summary · ${day}${days > 1 ? ` (last ${days} days)` : ""}`,
     "",
