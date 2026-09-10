@@ -39,6 +39,10 @@ department_labels:
   general: PM
   internal: PM
 
+# Background colour for a row the hub adds (hex, or blank for none). A person checks the row is in the right place,
+# then makes it white; the hub never touches the colour again.
+new_row_colour: "#FFF2CC"
+
 # Status text written at each point
 stage_values:
   created: "To Do"

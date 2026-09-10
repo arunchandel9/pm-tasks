@@ -24,7 +24,7 @@ const sheetId = () => process.env.PM_SHEET_ID!;
 
 interface SheetConfig {
   header_row: number; date_format: string; done_divider: string[]; columns: Record<string, string[]>;
-  initial_note: string; stamp_timezone?: string; department_labels: Record<string, string>; stage_values: Record<string, string>;
+  initial_note: string; stamp_timezone?: string; new_row_colour?: string; department_labels: Record<string, string>; stage_values: Record<string, string>;
 }
 let _cfg: SheetConfig | null = null;
 export function sheetConfig(): SheetConfig {
@@ -241,16 +241,27 @@ export async function insertTaskRow(tab: string, f: TaskFields): Promise<{ row: 
   }
 
   const sid = await tabNumericId(tab);
-  await sheets().spreadsheets.batchUpdate({
-    spreadsheetId: sheetId(),
-    requestBody: { requests: [{ insertDimension: { range: { sheetId: sid, dimension: "ROWS", startIndex: insertAt, endIndex: insertAt + 1 }, inheritFromBefore: insertAt > cfg.header_row } }] },
-  });
+  const requests: sheets_v4.Schema$Request[] = [{ insertDimension: { range: { sheetId: sid, dimension: "ROWS", startIndex: insertAt, endIndex: insertAt + 1 }, inheritFromBefore: insertAt > cfg.header_row } }];
+  const colour = rowColour(cfg.new_row_colour);
+  if (colour) {
+    // Fresh-from-the-hub marker: the whole row goes yellow so a person can see it, check its place, and turn it white.
+    requests.push({ repeatCell: { range: { sheetId: sid, startRowIndex: insertAt, endRowIndex: insertAt + 1, startColumnIndex: 0, endColumnIndex: headers.length }, cell: { userEnteredFormat: { backgroundColor: colour } }, fields: "userEnteredFormat.backgroundColor" } });
+  }
+  await sheets().spreadsheets.batchUpdate({ spreadsheetId: sheetId(), requestBody: { requests } });
   const rowNumber = insertAt + 1;
   await sheets().spreadsheets.values.update({
     spreadsheetId: sheetId(), range: `'${tab}'!A${rowNumber}:${colLetter(headers.length - 1)}${rowNumber}`, valueInputOption: "USER_ENTERED",
     requestBody: { values: [row] },
   });
   return { row: rowNumber, wrote };
+}
+
+/** "#FFF2CC" → Sheets colour object; blank or unreadable → null (no colouring). */
+export function rowColour(hex: string | undefined): { red: number; green: number; blue: number } | null {
+  const m = (hex ?? "").trim().match(/^#?([0-9a-f]{6})$/i);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return { red: ((n >> 16) & 255) / 255, green: ((n >> 8) & 255) / 255, blue: (n & 255) / 255 };
 }
 
 /** Find a task's current row by its Pulp link (unique), else by title + created date. Rows may have been rearranged by hand. */

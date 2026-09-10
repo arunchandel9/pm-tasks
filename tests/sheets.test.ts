@@ -59,3 +59,13 @@ describe("row placement", () => {
     expect(placement([H], m)).toEqual({ insertAt: 1, nextSerial: 1 });
   });
 });
+
+describe("new-row colour", () => {
+  it("reads a hex colour and ignores junk", async () => {
+    const { rowColour } = await import("../src/lib/sheets");
+    expect(rowColour("#FFF2CC")).toEqual({ red: 1, green: 242 / 255, blue: 204 / 255 });
+    expect(rowColour("fff2cc")).not.toBeNull();
+    expect(rowColour("")).toBeNull();
+    expect(rowColour("yellow")).toBeNull();
+  });
+});

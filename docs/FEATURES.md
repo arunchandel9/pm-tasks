@@ -45,6 +45,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | 3.2 | Needs scope card | New page and new feature asks go to the **Needs scope** list on the Development board instead, for a person to scope first. | Built |
 | 3.3 | Drag = approval | A PM drags the card out of Staging (or Needs scope) to wherever it belongs. The hub sees the move within a minute, marks the request approved, and writes the sheet row. No buttons, no second step. | Live |
 | 3.4 | Sheet row with stamp | The row lands in the client's tab with title, department, priority, assignee, Pulp link, source link, created and due dates. The Comments cell reads "Task assigned. Added by Task Hub · approved by drag in Pulp · 9 Sep 2026, 14:30 IST · from Slack, Dr Mehta". | Live |
+| 3.4a | Yellow new rows | Every row the hub adds is coloured light yellow (`new_row_colour` in `config/sheet.yaml`). A person checks it is in the right place, moves it up or down if not, and makes it white. Moving a row never breaks the hub: rows are found by their Pulp link, not their position. | Built |
 | 3.5 | Status sync | Every hub card is checked by id every minute. Status in the sheet follows the card's list; Done fills Date Completed and moves the row below the DONE divider; moving back out of Done reopens it. | Live |
 | 3.6 | Hand-made cards | A card someone creates directly in Pulp and links in the sheet by hand is picked up by the sheet mirror. From then on the hub checks it in rotation and writes Status only when the card moves list (Done also closes the row). First look never overwrites a typed status. | Built |
 | 3.7 | Sheet mirror | Every 10 min all client tabs are read into the hub (history from before the hub and hand-typed rows), so Claude answers from the PMs' own record. Never writes to the sheet. | Live (1,164 rows) |
@@ -102,6 +103,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 3. A 15-minute voice note in Intake → transcript processed, feed line.
 4. Slack message in an Abela channel → feed line, card.
 5. "We want a new landing page for Botox" in Intake → card under Needs scope on Development; drag it → sheet row.
+6a. Drag a card out of Staging → the new sheet row is yellow; move the row two places up; move the card to Done → that same row goes Done.
 6. Create a card by hand in Pulp, paste its link in a sheet row → after 10 min it appears in Claude; move it to Done → Status Done and row below the divider.
 7. Claude: "what happened in the last meeting with The Eye Doctor" and "Abela, last 30 days".
 8. Turn `INTAKE_PAUSED=1` on, post in Intake, confirm nothing happens, turn it off.
