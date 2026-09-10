@@ -139,6 +139,14 @@ export async function GET(req: Request) {
     } catch { /* ignore */ }
   }
 
+  // 3a. Cards made by hand in Pulp and linked in the sheet by a PM: check a few per minute, write Status only when the card moved.
+  if (pulp.configured() && sheetsConfigured()) {
+    try {
+      const { pollSheetCards } = await import("@/lib/sheet-cards");
+      report.sheetCards = await pollSheetCards(40);
+    } catch (e) { report.sheetCards = { error: (e as Error).message }; }
+  }
+
   // 4. Housekeeping, off by default: RAW_RETENTION_DAYS=90 would drop the raw envelope of old messages.
   // Text, sender, links, classifications, decisions, tasks and status history are always kept.
   const retention = Number(process.env.RAW_RETENTION_DAYS || 0);

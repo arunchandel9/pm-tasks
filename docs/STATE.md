@@ -1,5 +1,8 @@
 # MangoEyes Task Hub — current state
 
+The full feature list, with status and the final-round checks, is `docs/FEATURES.md`. Keep both files current: a
+feature is added or dropped there first, decisions and IDs are recorded here.
+
 Read this first when resuming. It is the operational memory of the project: what is decided, what exists,
 what is verified, what is open. `PLAN.md` holds the design rationale; this file holds the live state.
 Keep it updated with every change.
@@ -157,7 +160,7 @@ Last updated: 2026-09-09 (build day 2).
   "Needs scope"; daily summary section "Waiting for a person: Staging / Needs scope" marks them. Dragging the card out
   of Needs scope is the approval, same as Staging (sheet row, stamp). The retry job also honours the gate. Live test:
   send "we want a new landing page for Botox" in Intake, expect the card under Needs scope on Development.
-- Unit tests: 69 passing (`npm test`). Build clean.
+- Unit tests: 73 passing (`npm test`). Build clean.
 
 ## Open items (owner: Arun)
 
@@ -175,9 +178,10 @@ Last updated: 2026-09-09 (build day 2).
 6. Slack: Abela workspace linked 2026-09-10 (`slack_team:abela=T0APH26RDK3`). Left: `/invite @Task Hub` in each Abela
    channel; install in the other client workspaces during the final round.
 7. ~~New-page chain~~ decided 2026-09-10: not built. Uptime monitor already set by Arun.
-   Handover rule (Arun, 2026-09-10): cards born in the hub are tracked in the sheet automatically; a card someone
-   creates directly in Pulp is not, so that person adds the row and the card link to the client tab by hand. Filing
-   the extra card through `/task` or Claude's add_request avoids the manual row.
+   Handover rule (Arun, 2026-09-10): a card someone creates directly in Pulp gets its row and card link added to the
+   client tab by hand. From then on the hub tracks it too (feature 3.6 in FEATURES.md, `src/lib/sheet-cards.ts`):
+   40 such cards are checked per minute in rotation, Status is written only when the card moves list, Done closes
+   the row. Filing the extra card through `/task` or Claude's add_request avoids even the manual row.
    Ads / CRM / Search Console / analytics stay connected to each PM's own Claude or Codex, not to the hub (decided
    2026-09-10); the hub is the task and conversation record only.
 8. Final round (Arun's call to defer): MangoEyes board override `c898e940-b4df-4467-baf6-272f5acbc24a` in Config;

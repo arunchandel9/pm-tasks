@@ -15,7 +15,7 @@ export async function GET() {
   try {
     const r = await sql()`select (select count(*) from clients)::int as clients, (select count(*) from slack_workspaces)::int as workspaces, (select team_name from slack_workspaces where is_home limit 1) as home`;
     out.db = { ok: true, clients: r[0].clients, slackWorkspaces: r[0].workspaces, homeWorkspace: r[0].home };
-    const last = await sql()`select key, value from settings where key in ('gchat_last_event', 'pulp_poll_last', 'gmail_poll_last', 'sheet_sync_last', 'meet_poll_last', 'tick_last')`;
+    const last = await sql()`select key, value from settings where key in ('gchat_last_event', 'pulp_poll_last', 'gmail_poll_last', 'sheet_sync_last', 'meet_poll_last', 'sheet_cards_last', 'tick_last')`;
     const tickLast = last.find((x) => x.key === "tick_last")?.value as string | undefined;
     out.tickLast = tickLast ?? null;
     out.tickAgeSeconds = tickLast ? Math.round((Date.now() - new Date(tickLast).getTime()) / 1000) : null;
@@ -25,6 +25,7 @@ export async function GET() {
     out.gmailPollLast = last.find((x) => x.key === "gmail_poll_last")?.value ?? null;
     out.sheetSyncLast = last.find((x) => x.key === "sheet_sync_last")?.value ?? null;
     out.meetPollLast = last.find((x) => x.key === "meet_poll_last")?.value ?? null;
+    out.sheetCardsLast = last.find((x) => x.key === "sheet_cards_last")?.value ?? null;
     const recent = await sql()`select channel, sender, left(text, 80) as text, skip_reason, created_at from messages order by created_at desc limit 3`;
     out.recentMessages = recent;
     const errs = await sql()`select kind, attempts, left(last_error, 160) as last_error from queue where done_at is null and last_error is not null order by next_run_at limit 3`;

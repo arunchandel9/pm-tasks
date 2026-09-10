@@ -1,0 +1,107 @@
+# MangoEyes Task Hub — feature register
+
+The complete list of what the hub does. One line per feature, nothing left implied. The handover guide is built
+from this file, and every feature here has a live check in the final round. Add a row whenever a feature is added;
+strike a row when one is removed. Decisions that shaped a feature are in `docs/STATE.md`.
+
+Legend: **Live** = deployed and verified on real traffic · **Built** = deployed, unit-tested, live check in the
+final round · **Dropped** = decided against, kept here so it is not asked for again.
+
+## 1. Where requests come from (intake)
+
+| # | Feature | How it works | Status |
+|---|---|---|---|
+| 1.1 | Client Slack channels | The Task Hub Slack app is installed in a client's workspace and invited to its channels. Every non-staff message is read; staff messages are ignored. Workspace T-id sits in the client's Config row (column D). | Live in Abela; other clients in the final round |
+| 1.2 | Google Chat: Intake space | Anyone at MangoEyes posts a client request in the Intake space (text, forwarded WhatsApp text, or a voice note). | Live |
+| 1.3 | Google Chat: DM to Task Hub | Same as Intake, but private. Delivered to the hub every time. | Built |
+| 1.4 | Client name before or after | A forwarded message with no client name is held; the sender adds the client name in the same thread and processing continues. A prefix like "HOH: …" is stripped and used as the client. | Live |
+| 1.5 | `/task` form | Slash command in Chat opens a dialog: client dropdown, title, details. Submits straight into the pipeline. | Live |
+| 1.6 | Voice notes, short | Audio attached in Chat is transcribed (Google Speech-to-Text) and processed like text. | Live |
+| 1.7 | Voice notes, long (up to 20 min) | Long audio goes to a Cloud Storage bucket and a long-running transcription; the hub polls until the text is ready, then processes it. | Built |
+| 1.8 | Email | Mail to intake@mangoeyesagency.com (read from arun@ via domain-wide delegation) is polled every minute. Forwarded mails are unwrapped, signatures stripped, each mail processed once (Message-ID dedupe), then labelled "Task Hub". | Live (one forwarded mail verified) |
+| 1.9 | Google Meet notes | "Meet Recordings" folders shared with the service account are scanned every 5 min for new Gemini notes docs. Only notes modified after the hub first looked (`meet_since`), never the backlog. | Live |
+| 1.10 | MCP `add_request` | A PM's own Claude or Codex files a request straight into the hub. | Built |
+| 1.11 | Unknown client | If no client can be matched, the message is stored with reason `unknown_client`, listed under "Needs a person" in the summary, and can be resolved by replying with the client name. | Live |
+| 1.12 | Kill switch | `INTAKE_PAUSED=1` in Vercel stops all intake without redeploying. | Built |
+
+## 2. Understanding the request
+
+| # | Feature | How it works | Status |
+|---|---|---|---|
+| 2.1 | Noise filter | Acknowledgements, emojis, attachment-only posts, tiny thread replies and known bot senders never reach a model. | Live |
+| 2.2 | Extract | One model call pulls every distinct ask out of a message (a message with two asks becomes two requests). | Live |
+| 2.3 | Classify | Each ask gets a request type, department, priority with reason, and a card title and description. Prompt caching keeps cost low; every call is logged with tokens and cost. | Live |
+| 2.4 | Deterministic routing | `config/routing.yaml` decides board, list, labels, SLA due date and P1 keywords. The model never decides these. | Live |
+| 2.5 | P1 keywords | "site down", "form not working", "ad disapproved", "hacked" and the rest force P1 with a 4-hour due time. | Live |
+| 2.6 | Dedupe and follow-ups | A message that matches an open task (same thread, or similar text within the window) is noted as a comment on that card instead of creating a new one. The feed shows a 🔁 line. | Live |
+| 2.7 | Meeting sorter | Each notes doc is split into actions, ideas, decisions and discussion. Client actions become requests under that client; MangoEyes-internal items stay internal. Ideas and decisions are stored and searchable. | Live |
+| 2.8 | Daily model cap | A per-client daily cap on model calls stops a runaway thread from spending money. | Built |
+
+## 3. Cards, approval and the sheet
+
+| # | Feature | How it works | Status |
+|---|---|---|---|
+| 3.1 | Staging card | Every approved-type ask becomes a real card in the **Staging** list of the right department board, with the client label, priority label, description, original quote, source link and due date. | Live |
+| 3.2 | Needs scope card | New page and new feature asks go to the **Needs scope** list on the Development board instead, for a person to scope first. | Built |
+| 3.3 | Drag = approval | A PM drags the card out of Staging (or Needs scope) to wherever it belongs. The hub sees the move within a minute, marks the request approved, and writes the sheet row. No buttons, no second step. | Live |
+| 3.4 | Sheet row with stamp | The row lands in the client's tab with title, department, priority, assignee, Pulp link, source link, created and due dates. The Comments cell reads "Task assigned. Added by Task Hub · approved by drag in Pulp · 9 Sep 2026, 14:30 IST · from Slack, Dr Mehta". | Live |
+| 3.5 | Status sync | Every hub card is checked by id every minute. Status in the sheet follows the card's list; Done fills Date Completed and moves the row below the DONE divider; moving back out of Done reopens it. | Live |
+| 3.6 | Hand-made cards | A card someone creates directly in Pulp and links in the sheet by hand is picked up by the sheet mirror. From then on the hub checks it in rotation and writes Status only when the card moves list (Done also closes the row). First look never overwrites a typed status. | Built |
+| 3.7 | Sheet mirror | Every 10 min all client tabs are read into the hub (history from before the hub and hand-typed rows), so Claude answers from the PMs' own record. Never writes to the sheet. | Live (1,164 rows) |
+| 3.8 | Retry without re-approving | A card that failed to create is retried by a background job that never changes the approval; a failed sheet write is retried the same way. | Built |
+| 3.9 | Client board overrides | A client's Config row can point any department to another board or list; blank means the default in `config/boards.yaml`. | Built |
+| 3.10 | New-page chain | Seven linked sub-cards per new page. | Dropped 2026-09-10: pages are mostly one person's work; the PM adds cards by hand |
+
+## 4. Keeping a person in the loop
+
+| # | Feature | How it works | Status |
+|---|---|---|---|
+| 4.1 | PM Review feed | One short line per task in the PM Review space: client, title, department, priority, link to the card, source. All asks from one message in one post. No buttons. | Live |
+| 4.2 | Thread replies | Replying in a feed thread with a client name or a correction is picked up and applied. | Live |
+| 4.3 | Receipt rule | The feed line is the receipt. If no line appears within 2 minutes of a message, use `/task`. | Live |
+| 4.4 | Acknowledgement in Intake | The hub replies in the Intake thread with what it did (created, noted on an existing card, nothing to do and why). | Live |
+| 4.5 | Reply nudges | If a client message has had no staff reply after the configured minutes, a nudge is posted. | Built |
+| 4.6 | Daily summary | 17:30 UTC weekdays to PM Review: Created, Waiting for a person (Staging / Needs scope), Moved, Completed, Overdue, Needs a person, Waiting on client, Updates with no task, Needs attention. Eight lines per section, then "and N more (ask the hub)". | Live |
+
+## 5. The hub (ask it from your own assistant)
+
+| # | Feature | How it works | Status |
+|---|---|---|---|
+| 5.1 | MCP server | `https://pm-tasks.vercel.app/api/mcp/<personal key>` over Streamable HTTP. Works in Claude (web, desktop, Code) and Codex. Guide in `docs/MCP.md`. | Live |
+| 5.2 | Personal keys | Minted, listed and revoked from `/api/setup?mcp_key=Name|email`, `?mcp_list`, `?mcp_revoke=`. Keys are stored hashed. | Live |
+| 5.3 | Tools | `list_clients`, `search_tasks`, `task_detail`, `client_summary`, `recent_messages`, `daily_summary`, `add_request`, `meetings`, `meeting_detail`, `ideas`, `decisions`, `hub_status`. | Live |
+| 5.4 | Answers cover the whole record | Hub-made tasks and sheet history both answer, with status, links, assignee and dates. | Live |
+| 5.5 | External platforms | Ads, CRM, Search Console, analytics stay on each PM's own Claude/Codex connectors. The PM's assistant compiles hub data with platform data. Not connected to the hub by decision. | Decided 2026-09-10 |
+
+## 6. Nothing gets lost (reliability)
+
+| # | Feature | How it works | Status |
+|---|---|---|---|
+| 6.1 | Every message stored first | The raw message is saved before anything else happens, with a reason code if skipped. | Live |
+| 6.2 | Retry queue | Card creation, comments, sheet writes, transcription polls and message processing all go through a queue with backoff. Abandoned jobs are reported. | Live |
+| 6.3 | Watchdog | Every 10 min: half-processed messages are reprocessed, tasks without a card get one (without re-approving), stuck jobs are listed under "Needs attention" in the summary. | Live |
+| 6.4 | Health page | `/api/health` shows what is configured, last poll times, recent messages and errors. Returns 503 when the minute tick is older than 5 minutes. Uptime monitor set by Arun. | Live |
+| 6.5 | Self-healing sheet | The status the sheet last received is remembered per task and compared with the card every minute, so a failed write is retried until it matches. | Live |
+| 6.6 | Sheet import is idempotent | Keys per tab and card; the same row is never inserted twice; re-runs update in place. | Live |
+
+## 7. Configuration (no code changes needed)
+
+| # | What | Where |
+|---|---|---|
+| 7.1 | Clients: name, aliases, Slack T-id, sheet tab, board overrides | Config tab of the PM Overview sheet, refreshed every minute |
+| 7.2 | Department boards, Staging and Needs scope lists, card URL shape | `config/boards.yaml` |
+| 7.3 | Request types, SLA days, labels, gating, P1 keywords | `config/routing.yaml` |
+| 7.4 | Sheet columns, stamp wording, timezone, status values | `config/sheet.yaml` |
+| 7.5 | Noise rules, dedupe window, nudge timings, daily cap | `config/noise.yaml` |
+| 7.6 | Secrets and switches | Vercel environment variables (names in `docs/STATE.md`) |
+
+## 8. Final-round live checks (one per feature that is still "Built")
+
+1. DM the Task Hub with "HOH: the booking form is broken" → feed line, Staging card, P1.
+2. Email intake@ with subject "Abela: update pricing page" → feed line within 2 minutes.
+3. A 15-minute voice note in Intake → transcript processed, feed line.
+4. Slack message in an Abela channel → feed line, card.
+5. "We want a new landing page for Botox" in Intake → card under Needs scope on Development; drag it → sheet row.
+6. Create a card by hand in Pulp, paste its link in a sheet row → after 10 min it appears in Claude; move it to Done → Status Done and row below the divider.
+7. Claude: "what happened in the last meeting with The Eye Doctor" and "Abela, last 30 days".
+8. Turn `INTAKE_PAUSED=1` on, post in Intake, confirm nothing happens, turn it off.

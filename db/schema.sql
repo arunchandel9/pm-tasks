@@ -126,6 +126,7 @@ alter table tasks add column if not exists sheet_tab text;
 alter table tasks add column if not exists sheet_status text;                         -- Status cell as the PM wrote it
 alter table tasks add column if not exists department text;
 alter table tasks add column if not exists notes text;                                -- Comments cell
+alter table tasks add column if not exists pulp_checked_at timestamptz;               -- sheet rows with a hand-made card: last time the card was looked at
 create unique index if not exists tasks_sheet_key on tasks (sheet_key) where sheet_key is not null;
 
 -- Every list change observed in Pulp.
