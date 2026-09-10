@@ -63,6 +63,15 @@ export async function GET(req: Request) {
       seeded.push(`mcp_keys:${JSON.stringify(await listMcpKeys())}`);
       continue;
     }
+    if (k === "slack_team") {
+      // slack_team=<client id or name>|<T-id>: writes the workspace id into the client's Config row and the DB at once.
+      const [ref, teamId] = v.split("|").map((x) => x.trim());
+      const { setConfigCell } = await import("@/lib/sheets");
+      const w = await setConfigCell(ref, "slack_team_id", teamId);
+      if (w.ok) await sql()`update clients set slack_team_id = ${teamId}, updated_at = now() where lower(id) = ${ref.toLowerCase()} or lower(name) = ${ref.toLowerCase()}`;
+      seeded.push(w.ok ? `slack_team:${ref}=${teamId}` : `slack_team failed: ${w.reason}`);
+      continue;
+    }
     if (k === "remove_client") {
       // Remove a client that is not in the Config tab (e.g. the setup-time test client). Messages/requests keep their rows.
       const r = await sql()`delete from clients where id = ${v} returning id`;

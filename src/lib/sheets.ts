@@ -151,6 +151,22 @@ export function placement(rows: string[][], map: Record<string, number>, cfg: Sh
 
 // ---- config tab → clients ----
 
+/** Write one cell of a client's Config row by column header (e.g. slack_team_id). Returns false if row or column is missing. */
+export async function setConfigCell(clientRef: string, column: string, value: string): Promise<{ ok: boolean; reason?: string }> {
+  const tab = process.env.PM_SHEET_CONFIG_TAB || "Config";
+  const res = await sheets().spreadsheets.values.get({ spreadsheetId: sheetId(), range: `'${tab}'!A1:AZ200` });
+  const rows = res.data.values ?? [];
+  const header = (rows[0] ?? []).map((h) => String(h).trim().toLowerCase());
+  const ci = header.indexOf(column.toLowerCase());
+  if (ci < 0) return { ok: false, reason: `no column "${column}" in Config` };
+  const idCol = header.indexOf("id"), nameCol = header.indexOf("name");
+  const ref = clientRef.trim().toLowerCase();
+  const ri = rows.findIndex((r, i) => i > 0 && (String(r[idCol] ?? "").trim().toLowerCase() === ref || String(r[nameCol] ?? "").trim().toLowerCase() === ref));
+  if (ri < 0) return { ok: false, reason: `no client "${clientRef}" in Config` };
+  await sheets().spreadsheets.values.update({ spreadsheetId: sheetId(), range: `'${tab}'!${colLetter(ci)}${ri + 1}`, valueInputOption: "RAW", requestBody: { values: [[value]] } });
+  return { ok: true };
+}
+
 export async function readConfigTab(): Promise<{ clients: Client[]; errors: string[] }> {
   const tab = process.env.PM_SHEET_CONFIG_TAB || "Config";
   const res = await sheets().spreadsheets.values.get({ spreadsheetId: sheetId(), range: `'${tab}'!A1:AZ200` });
