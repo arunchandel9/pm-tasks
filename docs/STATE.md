@@ -174,10 +174,10 @@ Last updated: 2026-09-09 (build day 2).
    Development, Writers, Graphics, Onboarding & Automations (keep the boards' own "To-Do").
 6. Slack: Abela workspace linked 2026-09-10 (`slack_team:abela=T0APH26RDK3`). Left: `/invite @Task Hub` in each Abela
    channel; install in the other client workspaces during the final round.
-7. Decide on the new-page chain (seven linked sub-cards) or scope gate only.
-8. Optional: UptimeRobot on `/api/health` (503 when the tick is older than 5 min); MangoEyes board override
-   `c898e940-b4df-4467-baf6-272f5acbc24a` in Config; two Claude checks ("last meeting with The Eye Doctor", "Abela
-   last 30 days"); review or delete the three meeting-created Staging cards.
+7. ~~New-page chain~~ decided 2026-09-10: not built. Uptime monitor already set by Arun.
+8. Final round (Arun's call to defer): MangoEyes board override `c898e940-b4df-4467-baf6-272f5acbc24a` in Config;
+   two Claude checks ("last meeting with The Eye Doctor", "Abela last 30 days"); review or delete the three
+   meeting-created Staging cards.
 
 ## Phases (agreed 2026-09-09; six phases, timings set by Arun)
 
@@ -187,7 +187,7 @@ Last updated: 2026-09-09 (build day 2).
 | 2. Intake | Slack, Chat + DMs, /task form, voice notes (short + long), email, noise filter, extract/classify, client detection | Done; email and long voice notes await their first live test |
 | 3. Cards and sheet | Pulp Staging cards, drag approval, sheet rows + stamp, Done sync, nudges, daily summary | Done |
 | 4. Hub | MCP with per-person keys, sheet history mirrored every 10 min | Done (milestone C) |
-| 5. Meetings and routing | Meet notes from the Drive folder (built), scope gate (built), new-page chain | waiting on Arun's decision: keep the seven linked sub-cards, or scope gate only with the PM splitting by hand |
+| 5. Meetings and routing | Meet notes from the Drive folder, scope gate | Done. New-page chain dropped 2026-09-10 (pages are mostly one person's work now; PM adds extra cards by hand) |
 | 6. Soak and handover | 2 hours on live traffic with filter tuning; 1 hour team brief + one-page guide | 3 hours |
 
 After go-live, one hour each when wanted: weekly per-client digest, approval-loop nudges, auto-move Staging → To Do.

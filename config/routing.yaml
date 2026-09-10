@@ -2,7 +2,7 @@
 # department: which board family (dev | content | design | seo | automation | video | general | internal)
 # gated: true → card goes to the "Needs scope" list first; a person moves it on.
 # sla_days: working days from creation to due date. P1 overrides with p1_sla_hours.
-# chain: ordered sub-cards created under a parent (new page).
+# No sub-card chains: a new page is one card; the PM adds extra cards by hand if a page needs more than one person (decided 2026-09-10).
 
 p1_sla_hours: 4
 p1_keywords:
@@ -68,14 +68,6 @@ request_types:
     gated: true
     sla_days: 10
     labels: [new-page]
-    chain:
-      - { step: seo_research,     department: seo,     title: "SEO research" }
-      - { step: content_creation, department: content, title: "Content creation" }
-      - { step: web_development,  department: dev,     title: "Web development" }
-      - { step: graphic_design,   department: design,  title: "Graphic design (page assets)" }
-      - { step: client_approval,  department: general, title: "Client approval", waiting_on_client: true }
-      - { step: build,            department: dev,     title: "Build" }
-      - { step: menu_linking,     department: dev,     title: "Menu linking" }
   new_feature:
     department: dev
     gated: true
