@@ -74,6 +74,21 @@ export interface ParsedMail {
 
 const emailOf = (s: string) => (s.match(/<([^>]+)>/)?.[1] ?? s).trim().toLowerCase();
 
+/** Drop signatures ("Kind regards," and everything after), image placeholders, and mobile footers. */
+export function stripSignature(text: string): string {
+  // "[image: logo]" placeholders come from Gmail's text rendering; keep the alt text so "[image: Kind regards," still reads as a signature start.
+  const lines = text.replace(/\[image:\s*([^\]\n]*)\]?/gi, "$1").split("\n");
+  const out: string[] = [];
+  for (const line of lines) {
+    const l = line.trim();
+    if (/^--\s*$/.test(l)) break;
+    if (/^((kind|best|warm|many)\s+)?(regards|thanks|thank you|cheers|sincerely|best)\s*[,!.]?\s*$/i.test(l)) break;
+    if (/^(sent from my|get outlook for)/i.test(l)) break;
+    out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 /**
  * A forwarded mail is read from the inside out: the forwarder's note above the marker, then the original sender
  * and body below it. Anything quoted deeper than that (earlier replies) is dropped.
@@ -101,8 +116,8 @@ export function parseMail(raw: gmail_v1.Schema$Message): ParsedMail {
     }
     body = block.slice(i).join("\n");
   }
-  body = stripQuotedHistory(body).trim();
-  note = stripQuotedHistory(note).trim();
+  body = stripSignature(stripQuotedHistory(body));
+  note = stripSignature(stripQuotedHistory(note));
   return {
     id: raw.id ?? "", threadId: raw.threadId ?? "", subject, from, fromEmail: emailOf(from), to: header(raw, "To"),
     date: raw.internalDate ? new Date(Number(raw.internalDate)) : new Date(),
@@ -121,20 +136,33 @@ async function labelId(): Promise<string> {
   return created.data.id!;
 }
 
-/** Unread-by-the-hub mails to the intake address, newest 20, oldest first. */
+/**
+ * Mails to the intake address the hub has not seen, newest 20, oldest first. The database is the guard (ids already
+ * stored are skipped); the Gmail label is a convenience for people. Sent copies are excluded: forwarding from the
+ * mailbox to its own alias leaves one in Sent and one in the inbox.
+ */
 export async function fetchNewMails(): Promise<gmail_v1.Schema$Message[]> {
   const g = gmail();
   const addr = intakeAddress();
-  const q = `${addr ? `to:${addr} ` : ""}-label:"${LABEL}" newer_than:3d -in:spam -in:trash`;
+  const q = `${addr ? `to:${addr} ` : ""}-label:"${LABEL}" -in:sent newer_than:3d -in:spam -in:trash`;
   const list = await g.users.messages.list({ userId: "me", q, maxResults: 20 });
   const ids = (list.data.messages ?? []).map((m) => m.id!).reverse();
+  if (!ids.length) return [];
+  const seen = new Set((await sql()`select external_id from messages where channel = 'email' and external_id = any(${ids}::text[])`).map((r) => String(r.external_id)));
   const out: gmail_v1.Schema$Message[] = [];
-  for (const id of ids) out.push((await g.users.messages.get({ userId: "me", id, format: "full" })).data);
+  for (const id of ids) {
+    if (seen.has(id)) { markProcessed(id).catch(() => { /* label is best effort */ }); continue; }
+    out.push((await g.users.messages.get({ userId: "me", id, format: "full" })).data);
+  }
   return out;
 }
 
+let _labelId: string | null = null;
 export async function markProcessed(id: string): Promise<void> {
-  await gmail().users.messages.modify({ userId: "me", id, requestBody: { addLabelIds: [await labelId()] } });
+  const g = gmail();
+  const attempt = async () => { _labelId = _labelId ?? (await labelId()); await g.users.messages.modify({ userId: "me", id, requestBody: { addLabelIds: [_labelId] } }); };
+  try { await attempt(); }
+  catch { _labelId = null; await attempt(); } // the cached label may have been deleted by a person; look it up again once
 }
 
 const staffDomains = () => (process.env.STAFF_EMAIL_DOMAINS ?? "mangoeyesagency.com").split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
@@ -143,6 +171,11 @@ const isStaffEmail = (e: string) => staffDomains().some((d) => e.endsWith("@" + 
 /** Turn one mail into a hub Message and run it. Returns a short outcome for the poll report. */
 export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> {
   const mail = parseMail(raw);
+  const rfcId = mail.headers["Message-ID"] ?? mail.headers["Message-Id"] ?? null;
+  if (rfcId) {
+    const dup = await sql()`select 1 from messages where channel = 'email' and raw->'gmail'->>'messageId' = ${rfcId} limit 1`;
+    if (dup.length) return `${mail.subject.slice(0, 40)} → already received (same Message-ID)`;
+  }
   const clients = await allClients();
   // Who really wrote it: the original sender of a forward, else the From.
   const senderEmail = mail.originalFromEmail ?? mail.fromEmail;
@@ -162,7 +195,7 @@ export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> 
     sender: `${senderName} <${senderEmail}>`, senderIsStaff, sentAt: mail.date,
     text: hit ? stripClientPrefix(composed, hit.client) : composed,
     permalink: `https://mail.google.com/mail/u/0/#all/${mail.id}`, threadRef: mail.threadId,
-    raw: { gmail: { id: mail.id, threadId: mail.threadId, subject: mail.subject, from: mail.from, to: mail.to, isForward: mail.isForward, originalFrom: mail.originalFrom } },
+    raw: { gmail: { id: mail.id, messageId: rfcId, threadId: mail.threadId, subject: mail.subject, from: mail.from, to: mail.to, isForward: mail.isForward, originalFrom: mail.originalFrom } },
   };
   const result = await processMessage(m, verdict);
   const n = result.requestIds?.length ?? 0;

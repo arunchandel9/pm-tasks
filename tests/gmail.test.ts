@@ -23,3 +23,12 @@ describe("email parsing", () => {
     expect(p.body).toBe("The Book Now button is broken on mobile.");
   });
 });
+
+describe("signatures", () => {
+  it("cuts the signature and image placeholders", async () => {
+    const { stripSignature } = await import("../src/lib/gmail");
+    expect(stripSignature("Please update the price list.\n\nKind regards,\nArun\n[image: logo]")).toBe("Please update the price list.");
+    expect(stripSignature("[image: Kind regards,\nArun Chandel\nMangoEyes")).toBe("");
+    expect(stripSignature("Thanks, can you update the price list by Friday?")).toBe("Thanks, can you update the price list by Friday?");
+  });
+});
