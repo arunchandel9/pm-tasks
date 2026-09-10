@@ -2,9 +2,18 @@ import { sql, enqueue } from "./db";
 import { pulp } from "./pulp";
 import { boards as boardsConfig } from "./config";
 import { insertTaskRow, sheetsConfigured, findClientTab } from "./sheets";
+import { ruleFor } from "./route";
 import type { Client, Draft, Message, RouteDecision } from "./types";
 
 export interface TaskRow { id: string; pulpCardId: string | null; boardId: string | null }
+
+/**
+ * Where a new card waits for a person: "Staging" for ordinary asks, "Needs scope" for gated types (new page, new feature).
+ * Both are hold lists: dragging the card out of either is the approval.
+ */
+export function holdListName(route: { gated: boolean; list: string | null; staging: string | null }): string {
+  return route.gated ? route.list ?? "Needs scope" : route.staging ?? "Staging";
+}
 
 /** "Slack, Dr Mehta" / "Intake, Priya" / "/task, Priya" — the origin stamped into the sheet's Comments cell. */
 export function sourceText(channel: string, sender: string): string {
@@ -34,7 +43,7 @@ export async function createStagingCard(p: { requestId: string; client: Client |
     try {
       boardId = await pulp.resolveBoardId(p.route.board);
       if (!boardId) throw new Error(`board "${p.route.board}" not found in Pulp (is the API key's user a member?)`);
-      listId = await pulp.ensureList(boardId, p.route.staging ?? "Staging");
+      listId = await pulp.ensureList(boardId, holdListName(p.route));
       const card = await pulp.createCard({
         // Department sprint boards hold every client's cards; the client label is how the team tells them apart.
         boardId, listId, title: p.draft.title, description, labels: [...(p.client?.name ? [p.client.name] : []), ...p.draft.labels],
@@ -55,22 +64,24 @@ export async function createStagingCard(p: { requestId: string; client: Client |
   return { id: ins[0].id as string, pulpCardId, boardId };
 }
 
-/** Retry path: a task whose Staging card was never created. Creates it now; never approves anything. */
+/** Retry path: a task whose hold card (Staging / Needs scope) was never created. Creates it now; never approves anything. */
 export async function createCardForTask(taskId: string): Promise<boolean> {
   if (!pulp.configured()) return false;
   const rows = await sql()`
-    select t.id, t.pulp_card_id, t.board_id, t.title, t.priority, t.assignee, t.due_at, r.department, r.quote, r.draft, c.name as client_name, c.boards, m.channel, m.sender, m.permalink
+    select t.id, t.pulp_card_id, t.board_id, t.title, t.priority, t.assignee, t.due_at, r.department, r.request_type, r.quote, r.draft, c.name as client_name, c.boards, m.channel, m.sender, m.permalink
     from tasks t join requests r on r.id = t.request_id left join clients c on c.id = t.client_id left join messages m on m.id = r.message_id
     where t.id = ${taskId} and t.pulp_card_id is null and t.origin = 'hub'`;
   if (!rows.length) return false;
   const x = rows[0];
   const draft = (x.draft ?? {}) as { description?: string; labels?: string[] };
-  const own = (x.boards ?? {}) as Record<string, { board?: string; staging?: string }>;
-  const dep = String(x.department);
-  const boardRef = own[dep]?.board || boardsConfig().departments[dep]?.board || String(x.board_id ?? "");
+  const own = (x.boards ?? {}) as Record<string, { board?: string; list?: string; staging?: string }>;
+  const gated = !!ruleFor(String(x.request_type ?? ""))?.gated;
+  const dep = gated ? "scope" : String(x.department);
+  const boardRef = own[dep]?.board || boardsConfig().departments[dep]?.board || own[String(x.department)]?.board || boardsConfig().departments[String(x.department)]?.board || String(x.board_id ?? "");
   const boardId = await pulp.resolveBoardId(boardRef);
   if (!boardId) throw new Error(`board "${boardRef}" not found for ${dep}`);
-  const listId = await pulp.ensureList(boardId, own[dep]?.staging || boardsConfig().departments[dep]?.staging || "Staging");
+  const holdList = gated ? own.scope?.list || boardsConfig().departments.scope?.list || "Needs scope" : own[dep]?.staging || boardsConfig().departments[dep]?.staging || "Staging";
+  const listId = await pulp.ensureList(boardId, holdList);
   const description = [draft.description ?? "", "", `Original (${x.channel}, ${x.sender}):`, `> ${x.quote ?? ""}`, x.permalink ? `Source: ${x.permalink}` : "", `(card created on retry)`].filter((l) => l !== "").join("\n");
   const card = await pulp.createCard({
     boardId, listId, title: String(x.title), description, labels: [...(x.client_name ? [String(x.client_name)] : []), ...(draft.labels ?? []), String(x.priority)],

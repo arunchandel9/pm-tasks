@@ -51,3 +51,15 @@ describe("route", () => {
     expect(r.department).toBe("content"); expect(r.board).toBe("b-content"); expect(r.priority).toBe("P2");
   });
 });
+
+describe("hold list", () => {
+  it("gated asks wait in Needs scope, everything else in Staging", async () => {
+    const { holdListName } = await import("../src/lib/tasks");
+    const page = route({ requestType: "new_page", modelDepartment: "seo", priorityHint: "P3", priorityReason: null, text: "new landing page", client, now: mon });
+    const fix = route({ requestType: "dev_issue", modelDepartment: "dev", priorityHint: "P3", priorityReason: null, text: "button broken", client, now: mon });
+    expect(holdListName(page)).toBe("Needs scope");
+    expect(holdListName(fix)).toBe("Staging");
+    expect(holdListName({ gated: true, list: null, staging: null })).toBe("Needs scope");
+    expect(holdListName({ gated: false, list: "To Do", staging: null })).toBe("Staging");
+  });
+});

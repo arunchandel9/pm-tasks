@@ -151,7 +151,13 @@ Last updated: 2026-09-09 (build day 2).
 - **Milestone B reached 2026-09-09:** dragging the Dev card out of Staging wrote the row into the "HOH - House Of Health"
   tab within a minute (poll → approveRequest moveCard:false → insertTaskRow with stamp "approved by drag in Pulp").
   Card → Done then set Status "Done" and moved the row below the DONE divider (after the by-id poll fix).
-- Unit tests: 59 passing (`npm test`). Build clean.
+- **Scope gate built 2026-09-10:** gated request types (`new_page`, `new_feature` in `config/routing.yaml`) create their
+  card in the **Needs scope** list on the Development board (`departments.scope` in `config/boards.yaml`; a client row
+  can override) instead of Staging. Request status `needs_scope`; feed line links "Needs scope card"; hub/MCP status
+  "Needs scope"; daily summary section "Waiting for a person: Staging / Needs scope" marks them. Dragging the card out
+  of Needs scope is the approval, same as Staging (sheet row, stamp). The retry job also honours the gate. Live test:
+  send "we want a new landing page for Botox" in Intake, expect the card under Needs scope on Development.
+- Unit tests: 69 passing (`npm test`). Build clean.
 
 ## Open items (owner: Arun)
 
@@ -166,6 +172,12 @@ Last updated: 2026-09-09 (build day 2).
    archive the four duplicate "To Do" lists.
 4. ~~Pulp API~~ connected and verified 2026-09-09. Left: archive the duplicate "To Do" lists the hub created on
    Development, Writers, Graphics, Onboarding & Automations (keep the boards' own "To-Do").
+6. Slack: Abela workspace linked 2026-09-10 (`slack_team:abela=T0APH26RDK3`). Left: `/invite @Task Hub` in each Abela
+   channel; install in the other client workspaces during the final round.
+7. Decide on the new-page chain (seven linked sub-cards) or scope gate only.
+8. Optional: UptimeRobot on `/api/health` (503 when the tick is older than 5 min); MangoEyes board override
+   `c898e940-b4df-4467-baf6-272f5acbc24a` in Config; two Claude checks ("last meeting with The Eye Doctor", "Abela
+   last 30 days"); review or delete the three meeting-created Staging cards.
 
 ## Phases (agreed 2026-09-09; six phases, timings set by Arun)
 
@@ -175,7 +187,7 @@ Last updated: 2026-09-09 (build day 2).
 | 2. Intake | Slack, Chat + DMs, /task form, voice notes (short + long), email, noise filter, extract/classify, client detection | Done; email and long voice notes await their first live test |
 | 3. Cards and sheet | Pulp Staging cards, drag approval, sheet rows + stamp, Done sync, nudges, daily summary | Done |
 | 4. Hub | MCP with per-person keys, sheet history mirrored every 10 min | Done (milestone C) |
-| 5. Meetings and routing | Meet notes from the Drive folder (built), scope gate, new-page chain | in progress |
+| 5. Meetings and routing | Meet notes from the Drive folder (built), scope gate (built), new-page chain | waiting on Arun's decision: keep the seven linked sub-cards, or scope gate only with the PM splitting by hand |
 | 6. Soak and handover | 2 hours on live traffic with filter tuning; 1 hour team brief + one-page guide | 3 hours |
 
 After go-live, one hour each when wanted: weekly per-client digest, approval-loop nudges, auto-move Staging → To Do.

@@ -14,7 +14,12 @@ describe("PM Review feed lines", () => {
   it("P1 is marked at the start and needs-scope is flagged", () => {
     const line = draftLine({ client, title: "Site is down", department: "dev", priority: "P1", gated: true, pulpLink: "x", message });
     expect(line.startsWith("🔴 *P1* *HOH*")).toBe(true);
-    expect(line).toContain("needs scope");
+    expect(line).toContain("<x|Needs scope card>");
+    expect(line).not.toContain("Staging");
+  });
+  it("gated ask without a card yet still says needs scope", () => {
+    const line = draftLine({ client, title: "New botox landing page", department: "seo", priority: "P3", gated: true, pulpLink: null, message });
+    expect(line).toContain("needs scope, card pending");
   });
   it("follow-ups say which task they were noted on", () => {
     const line = followupLine({ client, existingTitle: "Fix Book Now button on mobile", kind: "followup_change", message });

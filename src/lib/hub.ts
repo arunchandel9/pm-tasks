@@ -14,8 +14,8 @@ export interface TaskRow {
 }
 
 const listNameCache = new Map<string, string>();
-async function listName(boardId: string | null, listId: string | null, staging: boolean): Promise<string> {
-  if (staging) return "Staging";
+async function listName(boardId: string | null, listId: string | null, staging: boolean, needsScope = false): Promise<string> {
+  if (staging) return needsScope ? "Needs scope" : "Staging";
   if (!boardId || !listId) return "Unknown";
   const key = `${boardId}:${listId}`;
   const hit = listNameCache.get(key);
@@ -48,7 +48,7 @@ export async function searchTasks(q: TaskQuery): Promise<TaskRow[]> {
   const like = q.query ? `%${q.query.trim()}%` : null;
   const days = q.days ?? null;
   const rows = await sql()`
-    select t.id, t.title, c.name as client, coalesce(r.department, t.department) as department, t.priority, t.staging, t.assignee, t.due_at, t.created_at, t.completed_at, t.last_moved_at,
+    select t.id, t.title, c.name as client, coalesce(r.department, t.department) as department, t.priority, t.staging, r.status as request_status, t.assignee, t.due_at, t.created_at, t.completed_at, t.last_moved_at,
            t.board_id, t.list_id, t.pulp_card_id, t.waiting_on_client_since, t.origin, t.sheet_status, t.sheet_tab, t.notes, m.channel, m.permalink, m.sender
     from tasks t
     left join clients c on c.id = t.client_id
@@ -72,7 +72,7 @@ export async function searchTasks(q: TaskQuery): Promise<TaskRow[]> {
     out.push({
       id: String(t.id), title: String(t.title), client: (t.client as string | null) ?? null, department: (t.department as string | null) ?? null,
       priority: (t.priority as string | null) ?? null,
-      status: t.origin === "sheet" ? String(t.sheet_status ?? (t.completed_at ? "Done" : "Open")) : await listName(t.board_id as string | null, t.list_id as string | null, !!t.staging),
+      status: t.origin === "sheet" ? String(t.sheet_status ?? (t.completed_at ? "Done" : "Open")) : await listName(t.board_id as string | null, t.list_id as string | null, !!t.staging, t.request_status === "needs_scope"),
       origin: String(t.origin ?? "hub"), sheetTab: (t.sheet_tab as string | null) ?? null, notes: (t.notes as string | null) ?? null,
       staging: !!t.staging, assignee: (t.assignee as string | null) ?? null, due: t.due_at ? new Date(t.due_at as string).toISOString().slice(0, 10) : null,
       created: new Date(t.created_at as string).toISOString(), completed: t.completed_at ? new Date(t.completed_at as string).toISOString() : null,
@@ -97,7 +97,7 @@ export async function taskDetail(ref: string): Promise<Record<string, unknown> |
   const history = await sql()`select from_list, to_list, source, at from status_events where task_id = ${t.id} order by at`;
   return {
     id: t.id, title: t.title, client: t.client_name, origin: t.origin, department: t.department ?? t.department, requestType: t.request_type, priority: t.priority, priorityReason: t.priority_reason,
-    status: t.origin === "sheet" ? (t.sheet_status ?? (t.completed_at ? "Done" : "Open")) : await listName(t.board_id as string | null, t.list_id as string | null, !!t.staging),
+    status: t.origin === "sheet" ? (t.sheet_status ?? (t.completed_at ? "Done" : "Open")) : await listName(t.board_id as string | null, t.list_id as string | null, !!t.staging, t.request_status === "needs_scope"),
     sheetTab: t.sheet_tab, notes: t.notes, assignee: t.assignee, due: t.due_at, created: t.created_at, completed: t.completed_at,
     pulpLink: t.pulp_card_id && t.board_id ? pulp.cardUrl(String(t.board_id), String(t.pulp_card_id)) : null,
     description: (t.draft as { description?: string } | null)?.description ?? null,
@@ -163,7 +163,8 @@ export async function dailySummaryText(days = 1): Promise<string> {
     from tasks t left join clients c on c.id = t.client_id where t.completed_at is null and t.due_at < now() and t.staging = false
     order by case when t.priority = 'P1' then 0 when t.priority = 'P2' then 1 else 2 end, t.due_at desc`;
   const staging = await sql()`
-    select coalesce(c.name,'Unknown') as client, t.title, to_char(t.created_at,'Dy DD Mon') as since from tasks t left join clients c on c.id = t.client_id
+    select coalesce(c.name,'Unknown') as client, t.title, to_char(t.created_at,'Dy DD Mon') as since, (r.status = 'needs_scope') as needs_scope
+    from tasks t left join clients c on c.id = t.client_id left join requests r on r.id = t.request_id
     where t.staging = true and t.completed_at is null order by t.created_at`;
   const decisions = await sql()`
     select coalesce(c.name,'Unknown') as client, m.skip_reason, left(m.text, 70) as text from messages m left join clients c on c.id = m.client_id
@@ -202,7 +203,7 @@ export async function dailySummaryText(days = 1): Promise<string> {
     `MangoEyes PM summary · ${day}${days > 1 ? ` (last ${days} days)` : ""}`,
     "",
     `Created (${created.length})`, line(created, (r) => `${r.client}  ${r.department}  ${r.title}  via ${r.channel}${r.priority === "P1" ? "  🔴" : ""}`),
-    `Still in Staging (${staging.length})`, line(staging, (r) => `${r.client}  ${r.title}  since ${r.since}`),
+    `Waiting for a person: Staging / Needs scope (${staging.length})`, line(staging, (r) => `${r.client}  ${r.title}  ${r.needs_scope ? "needs scope, " : ""}since ${r.since}`),
     `Moved (${movedNamed.length})`, line(movedNamed, (r) => `${r.client}  ${r.title}  ${r.from} → ${r.to}`),
     `Completed (${completed.length})`, line(completed, (r) => `${r.client}  ${r.title}`),
     `Overdue (${overdue.length})`, line(overdue, (r) => `${r.client}  ${r.title}  due ${r.due}, ${r.priority}`),

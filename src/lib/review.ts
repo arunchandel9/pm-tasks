@@ -31,12 +31,16 @@ export function sourceLabel(m: Message): string {
 const DEPT: Record<string, string> = { dev: "Dev", content: "Content", design: "Graphics", seo: "SEO", automation: "Automation", video: "Video", general: "PM", internal: "PM" };
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
-/** One feed line: `🆕 *HOH* · Fix Book Now button on mobile · Dev · P2 · Staging card · Slack, Dr Mehta`. P1 lines start with 🔴. */
+/**
+ * One feed line: `🆕 *HOH* · Fix Book Now button on mobile · Dev · P2 · Staging card · Slack, Dr Mehta`. P1 lines start with 🔴.
+ * Gated asks (new page, new feature) say `Needs scope card` instead: the card waits in the Needs scope list until a person scopes it.
+ */
 export function draftLine(p: { client: Client | null; title: string; department: string; priority: string; gated: boolean; pulpLink: string | null; message: Message }): string {
   const icon = p.priority === "P1" ? "🔴 *P1*" : "🆕";
   const name = `*${p.client?.name ?? "Unknown client"}*${p.client?.scope === "internal" ? " (internal)" : ""}`;
-  const where = p.pulpLink ? `<${p.pulpLink}|Staging card>` : "card pending";
-  const parts = [`${icon} ${name}`, clip(p.title, 90), DEPT[p.department] ?? p.department, p.priority === "P1" ? null : p.priority, p.gated ? "needs scope" : null, where, sourceLabel(p.message).replace(" · ", ", ")];
+  const hold = p.gated ? "Needs scope card" : "Staging card";
+  const where = p.pulpLink ? `<${p.pulpLink}|${hold}>` : p.gated ? "needs scope, card pending" : "card pending";
+  const parts = [`${icon} ${name}`, clip(p.title, 90), DEPT[p.department] ?? p.department, p.priority === "P1" ? null : p.priority, where, sourceLabel(p.message).replace(" · ", ", ")];
   return parts.filter(Boolean).join(" · ");
 }
 
