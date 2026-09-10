@@ -15,7 +15,11 @@ export async function GET() {
   try {
     const r = await sql()`select (select count(*) from clients)::int as clients, (select count(*) from slack_workspaces)::int as workspaces, (select team_name from slack_workspaces where is_home limit 1) as home`;
     out.db = { ok: true, clients: r[0].clients, slackWorkspaces: r[0].workspaces, homeWorkspace: r[0].home };
-    const last = await sql()`select key, value from settings where key in ('gchat_last_event', 'pulp_poll_last', 'gmail_poll_last', 'sheet_sync_last', 'meet_poll_last')`;
+    const last = await sql()`select key, value from settings where key in ('gchat_last_event', 'pulp_poll_last', 'gmail_poll_last', 'sheet_sync_last', 'meet_poll_last', 'tick_last')`;
+    const tickLast = last.find((x) => x.key === "tick_last")?.value as string | undefined;
+    out.tickLast = tickLast ?? null;
+    out.tickAgeSeconds = tickLast ? Math.round((Date.now() - new Date(tickLast).getTime()) / 1000) : null;
+    out.ok = !!tickLast && (out.tickAgeSeconds as number) < 300;
     out.gchatLastEvent = last.find((x) => x.key === "gchat_last_event")?.value ?? null;
     out.pulpPollLast = last.find((x) => x.key === "pulp_poll_last")?.value ?? null;
     out.gmailPollLast = last.find((x) => x.key === "gmail_poll_last")?.value ?? null;
@@ -31,5 +35,5 @@ export async function GET() {
   } catch (e) {
     out.db = { ok: false, error: (e as Error).message };
   }
-  return NextResponse.json(out);
+  return NextResponse.json(out, { status: out.ok === false ? 503 : 200 });
 }

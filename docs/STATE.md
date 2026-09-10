@@ -107,6 +107,14 @@ Last updated: 2026-09-09 (build day 2).
   (Staging lists created on all six boards). Mistake that day: the first `?create=1` run also created a duplicate
   "To Do" list on Development, Writers, Graphics and Onboarding & Automations because matching was exact; Arun to
   archive those four extra lists in the UI (API cannot). Matching fixed since.
+- **Nothing fails quietly** (built 2026-09-10). Every message is stored before processing; card and sheet writes retry
+  from the queue (`create_card` creates the missing Staging card without approving; `sync_sheet` re-runs the approval
+  keeping the approver). Watchdog every 10 min (minute % 10 == 5): messages older than 3 min with no outcome and no
+  request are reprocessed up to 3 times, then marked `failed` + one ⚠️ line in PM Review with the link; hub tasks with
+  no Pulp card are created on retry, ⚠️ after 3 failures; queue jobs report ⚠️ at 5 attempts and are abandoned at 8.
+  Daily summary has a "⚠️ Needs attention" section for all three. Heartbeat `tick_last`: /api/health returns
+  `tickAgeSeconds` and HTTP 503 with `ok:false` when the tick is older than 5 min, for an uptime monitor.
+  Team rule for the guide: the feed is the receipt; no line within 2 minutes means it is not in the system, use /task.
 - **Data retention.** Keep everything forever. `RAW_RETENTION_DAYS` exists but is off (0).
 - **Sheet → hub mirror** (built 2026-09-09). Every client tab of the PM Overview sheet is read into `tasks` with
   `origin='sheet'` (key `card:<pulp id>` or `row:<tab>:<serial>:<title>`): title, status text, department label,

@@ -177,6 +177,15 @@ export async function dailySummaryText(days = 1): Promise<string> {
   const spend = await sql()`
     select count(*)::int as calls, coalesce(sum(cost_usd),0)::numeric(10,4) as usd, coalesce(sum(cache_read_tokens),0)::int as cached
     from llm_calls where created_at > now() - ${iv}::interval`;
+  const attention = await sql()`
+    select 'message could not be processed: ' || coalesce(c.name,'Unknown') || ' · "' || left(m.text, 60) || '"' as what from messages m left join clients c on c.id = m.client_id
+      where m.skip_reason = 'failed' and m.created_at > now() - interval '7 days'
+    union all
+    select 'no Pulp card yet: ' || coalesce(c.name,'Unknown') || ' · ' || t.title from tasks t left join clients c on c.id = t.client_id
+      where t.origin = 'hub' and t.pulp_card_id is null and t.completed_at is null and t.created_at < now() - interval '10 minutes' and t.created_at > now() - interval '7 days'
+    union all
+    select 'background step abandoned: ' || kind || ' · ' || left(coalesce(last_error,''), 60) from queue where last_error like 'abandoned:%' and done_at > now() - interval '1 day'
+    limit 20`;
 
   const movedNamed: Array<Record<string, unknown>> = [];
   for (const r of moved) {
@@ -200,6 +209,7 @@ export async function dailySummaryText(days = 1): Promise<string> {
     `Needs a person (${decisions.length})`, line(decisions, (r) => `${r.client}  ${String(r.skip_reason).replace(/_/g, " ")}: "${r.text}"`),
     `Waiting on client (${waiting.length})`, line(waiting, (r) => `${r.client}  ${r.title}  since ${r.since}`),
     `Updates, no task (${updates.length})`, line(updates, (r) => `${r.client}  ${r.text}`),
+    ...(attention.length ? [`⚠️ Needs attention (${attention.length})`, line(attention, (r) => String(r.what))] : []),
     "",
     `Model spend: ${spend[0].calls} calls, $${spend[0].usd}${Number(spend[0].cached) === 0 && Number(spend[0].calls) > 3 ? "  ⚠️ cache reads were zero" : ""}`,
   ].join("\n");

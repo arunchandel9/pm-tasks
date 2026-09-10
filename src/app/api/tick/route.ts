@@ -149,7 +149,70 @@ export async function GET(req: Request) {
     } catch (e) { report.housekeeping = { error: (e as Error).message }; }
   }
 
+  // 5. Watchdog every 10 minutes: nothing stored may stay half-done, and nothing may fail quietly.
+  if (new Date().getMinutes() % 10 === 5) {
+    try { report.watchdog = await watchdog(); } catch (e) { report.watchdog = { error: (e as Error).message }; }
+  }
+
+  // Heartbeat for /api/health and uptime monitors.
+  try { await sql()`insert into settings (key, value) values ('tick_last', ${JSON.stringify(new Date().toISOString())}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`; } catch { /* ignore */ }
   return NextResponse.json(report);
+}
+
+/**
+ * Three sweeps. Each problem is retried up to three times; after that one ⚠️ line goes to PM Review with the link,
+ * the item is marked so it is never re-flagged, and the daily summary lists it under "Needs attention".
+ */
+async function watchdog(): Promise<Record<string, unknown>> {
+  const { postText } = await import("@/lib/review");
+  const out = { messagesRetried: 0, messagesFailed: 0, cardsCreated: 0, cardsFailed: 0, jobsAbandoned: 0 };
+  const strikes = async (key: string) => {
+    const r = await sql()`insert into settings (key, value) values (${key}, '1'::jsonb) on conflict (key) do update set value = (coalesce((settings.value)::text::int, 0) + 1)::text::jsonb, updated_at = now() returning value`;
+    return Number(r[0].value);
+  };
+
+  // a. Stored but never finished: no outcome, no request, older than 3 minutes, not waiting on anything.
+  const orphans = await sql()`
+    select m.id, m.channel, m.sender, left(m.text, 80) as text, m.permalink from messages m
+    where m.skip_reason is null and m.created_at < now() - interval '3 minutes' and m.created_at > now() - interval '3 days'
+      and not exists (select 1 from requests r where r.message_id = m.id)
+      and not exists (select 1 from queue q where q.done_at is null and q.payload->>'messageId' = m.id::text)
+    limit 20`;
+  for (const m of orphans) {
+    const n = await strikes(`watchdog:msg:${m.id}`);
+    if (n <= 3) { await enqueue("process_message", { messageId: m.id }, 0); out.messagesRetried++; continue; }
+    await sql()`update messages set skip_reason = 'failed' where id = ${m.id}`;
+    await postText(`⚠️ Could not process a ${m.channel} message from ${m.sender} after 3 tries: "${m.text}…"${m.permalink ? `\n${m.permalink}` : ""}\nPlease file it by hand with /task.`);
+    out.messagesFailed++;
+  }
+
+  // b. Tasks without a Pulp card (hub-made, open, older than 3 minutes).
+  if (pulp.configured()) {
+    const { createCardForTask } = await import("@/lib/tasks");
+    const noCard = await sql()`select t.id, t.title, c.name as client from tasks t left join clients c on c.id = t.client_id
+      where t.origin = 'hub' and t.pulp_card_id is null and t.completed_at is null and t.created_at < now() - interval '3 minutes' and t.created_at > now() - interval '3 days'
+        and not exists (select 1 from requests r where r.id = t.request_id and r.status in ('dismissed','merged')) limit 20`;
+    for (const t of noCard) {
+      const n = await strikes(`watchdog:card:${t.id}`);
+      if (n > 4) continue; // already reported
+      try { if (await createCardForTask(String(t.id))) out.cardsCreated++; }
+      catch (e) {
+        if (n === 4) { await postText(`⚠️ No Pulp card could be created for *${t.client ?? "Unknown"}* · ${t.title} after 3 tries (${(e as Error).message.slice(0, 100)}). Please create it by hand.`); out.cardsFailed++; }
+      }
+    }
+  }
+
+  // c. Queue jobs that keep failing: report once at 5 attempts, abandon at 8.
+  const stuck = await sql()`select id, kind, attempts, left(last_error, 120) as last_error from queue where done_at is null and attempts >= 5`;
+  for (const j of stuck) {
+    const warned = await sql()`select 1 from settings where key = ${"watchdog:job:" + j.id}`;
+    if (!warned.length) {
+      await sql()`insert into settings (key, value) values (${"watchdog:job:" + j.id}, '1'::jsonb) on conflict (key) do nothing`;
+      await postText(`⚠️ A background step (${j.kind}) has failed ${j.attempts} times: ${j.last_error}. I keep retrying; if this persists, tell Arun.`);
+    }
+    if (Number(j.attempts) >= 8) { await sql()`update queue set done_at = now(), last_error = 'abandoned: ' || coalesce(last_error, '') where id = ${j.id}`; out.jobsAbandoned++; }
+  }
+  return out;
 }
 
 async function runJob(kind: string, payload: Record<string, unknown>) {
@@ -231,15 +294,20 @@ async function runJob(kind: string, payload: Record<string, unknown>) {
       await postText(`${mins >= 60 ? "⏰" : "💬"} *${m.client_name ?? "A client"}* wrote ${label} ago in their Slack and nobody from the team has replied yet: "${quote}${String(m.text).length > 160 ? "…" : ""}"${m.permalink ? `\n${m.permalink}` : ""}`);
       return;
     }
-    case "create_card":
-    case "sync_sheet":
-      // Both are re-driven by approveRequest; a retry simply re-approves.
-      {
-        const { approveRequest } = await import("@/lib/tasks");
-        const rid = payload.requestId ?? (await sql()`select request_id from tasks where id = ${payload.taskId as string}`)[0]?.request_id;
-        if (rid) await approveRequest(rid as string, "system:retry");
-      }
+    case "create_card": {
+      // The Staging card failed at intake: create it now for the existing task. Never approves.
+      const { createCardForTask } = await import("@/lib/tasks");
+      const tid = payload.taskId ?? (await sql()`select id from tasks where request_id = ${payload.requestId as string}`)[0]?.id;
+      if (tid) await createCardForTask(String(tid));
       return;
+    }
+    case "sync_sheet": {
+      // The sheet row failed after approval: re-run the approval, which keeps the original approver.
+      const { approveRequest } = await import("@/lib/tasks");
+      const rid = payload.requestId ?? (await sql()`select request_id from tasks where id = ${payload.taskId as string}`)[0]?.request_id;
+      if (rid) await approveRequest(rid as string, "system:retry", { moveCard: false });
+      return;
+    }
     default:
       throw new Error(`unknown job kind ${kind}`);
   }

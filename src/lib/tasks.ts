@@ -1,5 +1,6 @@
 import { sql, enqueue } from "./db";
 import { pulp } from "./pulp";
+import { boards as boardsConfig } from "./config";
 import { insertTaskRow, sheetsConfigured, findClientTab } from "./sheets";
 import type { Client, Draft, Message, RouteDecision } from "./types";
 
@@ -52,6 +53,31 @@ export async function createStagingCard(p: { requestId: string; client: Client |
             ${p.route.assignee}, ${p.route.dueAt?.toISOString() ?? null}, true)
     returning id`;
   return { id: ins[0].id as string, pulpCardId, boardId };
+}
+
+/** Retry path: a task whose Staging card was never created. Creates it now; never approves anything. */
+export async function createCardForTask(taskId: string): Promise<boolean> {
+  if (!pulp.configured()) return false;
+  const rows = await sql()`
+    select t.id, t.pulp_card_id, t.board_id, t.title, t.priority, t.assignee, t.due_at, r.department, r.quote, r.draft, c.name as client_name, c.boards, m.channel, m.sender, m.permalink
+    from tasks t join requests r on r.id = t.request_id left join clients c on c.id = t.client_id left join messages m on m.id = r.message_id
+    where t.id = ${taskId} and t.pulp_card_id is null and t.origin = 'hub'`;
+  if (!rows.length) return false;
+  const x = rows[0];
+  const draft = (x.draft ?? {}) as { description?: string; labels?: string[] };
+  const own = (x.boards ?? {}) as Record<string, { board?: string; staging?: string }>;
+  const dep = String(x.department);
+  const boardRef = own[dep]?.board || boardsConfig().departments[dep]?.board || String(x.board_id ?? "");
+  const boardId = await pulp.resolveBoardId(boardRef);
+  if (!boardId) throw new Error(`board "${boardRef}" not found for ${dep}`);
+  const listId = await pulp.ensureList(boardId, own[dep]?.staging || boardsConfig().departments[dep]?.staging || "Staging");
+  const description = [draft.description ?? "", "", `Original (${x.channel}, ${x.sender}):`, `> ${x.quote ?? ""}`, x.permalink ? `Source: ${x.permalink}` : "", `(card created on retry)`].filter((l) => l !== "").join("\n");
+  const card = await pulp.createCard({
+    boardId, listId, title: String(x.title), description, labels: [...(x.client_name ? [String(x.client_name)] : []), ...(draft.labels ?? []), String(x.priority)],
+    assignee: (x.assignee as string | null) ?? null, dueAt: x.due_at ? new Date(x.due_at as string) : null,
+  });
+  await sql()`update tasks set pulp_card_id = ${card.id}, board_id = ${boardId}, list_id = ${listId}, staging = true where id = ${taskId}`;
+  return true;
 }
 
 /**
