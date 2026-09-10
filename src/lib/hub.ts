@@ -199,3 +199,38 @@ export async function dailySummaryText(days = 1): Promise<string> {
     `Model spend: ${spend[0].calls} calls, $${spend[0].usd}${Number(spend[0].cached) === 0 && Number(spend[0].calls) > 3 ? "  ⚠️ cache reads were zero" : ""}`,
   ].join("\n");
 }
+
+export async function listMeetings(q: { client?: string | null; days?: number | null; limit?: number | null }) {
+  const clientId = await resolveClientId(q.client);
+  if (q.client && !clientId) return [];
+  const days = q.days ?? 30, limit = Math.min(Math.max(q.limit ?? 20, 1), 100);
+  return sql()`
+    select m.id, m.title, m.held_at, c.name as client, m.scope, m.organiser, m.summary, m.doc_url,
+           (select count(*) from meeting_items i where i.meeting_id = m.id and i.kind = 'action')::int as actions,
+           (select count(*) from meeting_items i where i.meeting_id = m.id and i.kind = 'idea')::int as ideas,
+           (select count(*) from meeting_items i where i.meeting_id = m.id and i.kind = 'decision')::int as decisions
+    from meetings m left join clients c on c.id = m.client_id
+    where (${clientId}::text is null or m.client_id = ${clientId} or exists (select 1 from meeting_items i where i.meeting_id = m.id and i.client_id = ${clientId}))
+      and m.held_at > now() - (${days} || ' days')::interval
+    order by m.held_at desc limit ${limit}`;
+}
+
+export async function meetingDetail(ref: string): Promise<Record<string, unknown> | null> {
+  const r = ref.trim();
+  const rows = await sql()`select m.*, c.name as client_name from meetings m left join clients c on c.id = m.client_id where m.id::text = ${r} or m.id::text like ${r + "%"} or m.drive_file_id = ${r} or m.title ilike ${"%" + r + "%"} order by m.held_at desc limit 1`;
+  if (!rows.length) return null;
+  const m = rows[0];
+  const items = await sql()`select i.kind, c.name as client, i.text, i.owner, i.due_text, i.outcome, i.request_id from meeting_items i left join clients c on c.id = i.client_id where i.meeting_id = ${m.id} order by i.kind, i.created_at`;
+  return { id: m.id, title: m.title, heldAt: m.held_at, client: m.client_name, scope: m.scope, organiser: m.organiser, attendees: m.attendees, docUrl: m.doc_url, summary: m.summary, items, notes: String(m.notes).slice(0, 12000) };
+}
+
+export async function listItems(kind: "idea" | "decision", q: { client?: string | null; days?: number | null; limit?: number | null }) {
+  const clientId = await resolveClientId(q.client);
+  if (q.client && !clientId) return [];
+  const days = q.days ?? 90, limit = Math.min(Math.max(q.limit ?? 50, 1), 200);
+  return sql()`
+    select i.text, c.name as client, i.owner, i.due_text, m.title as meeting, m.held_at, m.doc_url
+    from meeting_items i left join clients c on c.id = i.client_id join meetings m on m.id = i.meeting_id
+    where i.kind = ${kind} and (${clientId}::text is null or i.client_id = ${clientId}) and m.held_at > now() - (${days} || ' days')::interval
+    order by m.held_at desc limit ${limit}`;
+}

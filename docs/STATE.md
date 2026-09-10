@@ -43,6 +43,16 @@ Last updated: 2026-09-09 (build day 2).
   the inside: original sender + body; quoted history dropped), noise-filtered (`emailNoise`), client resolved from
   subject/note prefix → original sender's domain → text, run through the pipeline as channel `email`, then labelled.
   `/api/gmail-check` proves the connection; `gmail_poll_last` on /api/health shows the last run.
+- **Meeting notes** (built 2026-09-10, untested until a folder is shared). Each organiser shares their Drive folder
+  "Meet Recordings" with the service account once (Viewer); the hub finds every folder of that name shared with it
+  (`MEET_FOLDER_NAMES`, default "Meet Recordings,Task Hub Notes") plus any "… - Notes by Gemini" doc shared
+  directly. Every 5 minutes (minute % 5 == 2) new docs from the last 3 days are read (max 3 per tick). One model call
+  (`sortMeeting`) sorts items into action / idea / decision / discussion and names the client per item (MangoEyes for
+  internal). Actions go per client through the normal pipeline as channel `meet` (dedupe against open tasks, Staging
+  card, feed line; no client → needs-a-person card); ideas 💡 and decisions 📌 are stored in `meeting_items` and get
+  one line each (max 6); discussion stays in `meetings.notes`. Feed: one 📝 header per meeting + a ↳ tally line.
+  MCP tools: meetings, meeting_detail, ideas, decisions. `/api/meet-check` shows folders/docs visible; `?run=1` reads now.
+  Tables `meetings`, `meeting_items` (schema applied by `/api/setup`).
 - **Acknowledgements.** Every team-side intake (Intake space, /task, forwarded email, voice note) gets one line in
   PM Review with the outcome. Client-channel messages produce drafts, not ack lines. Client-facing replies: never.
 - **Unanswered client nudge.** Client posts in Slack and no MangoEyes reply → one line in PM Review at 5 min and at
@@ -157,7 +167,7 @@ Last updated: 2026-09-09 (build day 2).
 | 2. Intake | Slack, Chat + DMs, /task form, voice notes (short + long), email, noise filter, extract/classify, client detection | Done; email and long voice notes await their first live test |
 | 3. Cards and sheet | Pulp Staging cards, drag approval, sheet rows + stamp, Done sync, nudges, daily summary | Done |
 | 4. Hub | MCP with per-person keys, sheet history mirrored every 10 min | Done (milestone C) |
-| 5. Meetings and routing | Meet notes from the Drive folder, scope gate, new-page chain | 1 hour, in progress |
+| 5. Meetings and routing | Meet notes from the Drive folder (built), scope gate, new-page chain | in progress |
 | 6. Soak and handover | 2 hours on live traffic with filter tuning; 1 hour team brief + one-page guide | 3 hours |
 
 After go-live, one hour each when wanted: weekly per-client digest, approval-loop nudges, auto-move Staging → To Do.

@@ -164,3 +164,35 @@ create table if not exists queue (
   done_at     timestamptz
 );
 create index if not exists queue_due on queue (next_run_at) where done_at is null;
+
+-- Meeting notes (Google Meet "Notes by Gemini" docs, or any notes doc shared with the hub).
+create table if not exists meetings (
+  id             uuid primary key default gen_random_uuid(),
+  drive_file_id  text not null unique,
+  title          text not null,
+  held_at        timestamptz,
+  organiser      text,
+  attendees      jsonb not null default '[]'::jsonb,
+  client_id      text references clients(id),
+  scope          text not null default 'unknown',    -- client | internal | unknown
+  doc_url        text,
+  notes          text not null,                      -- full text of the notes doc
+  summary        jsonb not null default '[]'::jsonb, -- 2-5 bullet points
+  created_at     timestamptz not null default now()
+);
+create index if not exists meetings_client on meetings (client_id, held_at desc);
+
+-- Every item the sorter found in a meeting: what it was and what became of it.
+create table if not exists meeting_items (
+  id          uuid primary key default gen_random_uuid(),
+  meeting_id  uuid not null references meetings(id),
+  kind        text not null,                          -- action | idea | decision | discussion
+  client_id   text references clients(id),
+  text        text not null,
+  owner       text,
+  due_text    text,
+  outcome     text not null default 'noted',          -- task | on_existing_card | idea | decision | noted
+  request_id  uuid references requests(id),
+  created_at  timestamptz not null default now()
+);
+create index if not exists meeting_items_kind on meeting_items (kind, client_id, created_at desc);

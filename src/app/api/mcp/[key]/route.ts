@@ -3,7 +3,7 @@ import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { verifyMcpKey, type McpKeyOwner } from "@/lib/mcp-keys";
 import { allClients, sql } from "@/lib/db";
-import { searchTasks, taskDetail, clientSummary, recentMessages, dailySummaryText } from "@/lib/hub";
+import { searchTasks, taskDetail, clientSummary, recentMessages, dailySummaryText, listMeetings, meetingDetail, listItems } from "@/lib/hub";
 import { processMessage } from "@/lib/pipeline";
 import { humanOutcome } from "@/lib/review";
 import type { Message } from "@/lib/types";
@@ -86,6 +86,26 @@ function buildHandler(owner: McpKeyOwner) {
         return text(n ? `${n} task${n > 1 ? "s" : ""} created in Staging for ${c.name}; a PM will approve by dragging the card out.` : humanOutcome(r.outcome, r.reason));
       });
 
+      server.registerTool("meetings", {
+        title: "Meetings", description: "Recent meetings (Google Meet notes read by the hub): title, date, client, summary, and counts of actions, ideas, decisions. Filter by client and days (default 30).",
+        inputSchema: z.object({ client: z.string().optional(), days: z.number().int().positive().optional(), limit: z.number().int().positive().max(100).optional() }),
+      }, async (a) => text(await listMeetings(a)));
+
+      server.registerTool("meeting_detail", {
+        title: "Meeting detail", description: "One meeting: summary, every item (action / idea / decision / discussion) with what became of it, and the notes text. Pass the meeting id, or words from the title.",
+        inputSchema: z.object({ meeting: z.string() }),
+      }, async ({ meeting }) => text((await meetingDetail(meeting)) ?? { error: "no such meeting" }));
+
+      server.registerTool("ideas", {
+        title: "Ideas", description: "Ideas and future plans raised in meetings, by client (or MangoEyes for internal), newest first. days default 90.",
+        inputSchema: z.object({ client: z.string().optional(), days: z.number().int().positive().optional(), limit: z.number().int().positive().max(200).optional() }),
+      }, async (a) => text(await listItems("idea", a)));
+
+      server.registerTool("decisions", {
+        title: "Decisions", description: "Decisions recorded in meetings, by client, newest first. days default 90.",
+        inputSchema: z.object({ client: z.string().optional(), days: z.number().int().positive().optional(), limit: z.number().int().positive().max(200).optional() }),
+      }, async (a) => text(await listItems("decision", a)));
+
       server.registerTool("hub_status", {
         title: "Hub status", description: "Counts and health: messages by channel this week, tasks created, model spend, last polls.",
         inputSchema: z.object({}),
@@ -99,7 +119,7 @@ function buildHandler(owner: McpKeyOwner) {
     },
     {
       serverInfo: { name: "mangoeyes-task-hub", version: "1.0.0" },
-      instructions: `You are connected to the MangoEyes Task Hub as ${owner.name}. Clients are aesthetic clinics; tasks live on Pulp department boards and in the PM Overview sheet. Use search_tasks / client_summary for status questions, task_detail to read the original ask, daily_summary for "what happened today", add_request to file a new client ask (it goes to Staging for a PM to approve).`,
+      instructions: `You are connected to the MangoEyes Task Hub as ${owner.name}. Clients are aesthetic clinics; tasks live on Pulp department boards and in the PM Overview sheet. Use search_tasks / client_summary for status questions, task_detail to read the original ask, daily_summary for "what happened today", meetings / meeting_detail for "what happened in the last call with X", ideas and decisions for what was raised or agreed, add_request to file a new client ask (it goes to Staging for a PM to approve).`,
     },
   );
 }

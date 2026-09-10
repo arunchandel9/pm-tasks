@@ -32,7 +32,7 @@ function cost(model: string, u: Anthropic.Usage): number {
  * Nothing volatile above the breakpoint. Config is rendered in fixed key order.
  */
 export async function structuredCall<T extends z.ZodType>(opts: {
-  step: "extract" | "classify";
+  step: "extract" | "classify" | "meeting";
   instructions: string;
   userContent: string;
   schema: T;

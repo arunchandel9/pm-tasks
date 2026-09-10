@@ -35,6 +35,14 @@ export async function GET(req: Request) {
     } catch (e) { report.sheetSync = { error: (e as Error).message }; }
   }
 
+  // 1c. Meeting notes every 5 minutes
+  if (new Date().getMinutes() % 5 === 2) {
+    const { meetConfigured, pollMeetings } = await import("@/lib/meet");
+    if (meetConfigured()) {
+      try { report.meetings = await pollMeetings(); } catch (e) { report.meetings = { error: (e as Error).message }; }
+    }
+  }
+
   // 1b. Mailbox
   {
     const { gmailConfigured, pollMailbox } = await import("@/lib/gmail");
