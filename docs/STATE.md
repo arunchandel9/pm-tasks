@@ -1,7 +1,9 @@
 # MangoEyes Task Hub — current state
 
 The full feature list, with status and the final-round checks, is `docs/FEATURES.md`. Keep both files current: a
-feature is added or dropped there first, decisions and IDs are recorded here.
+feature is added or dropped there first, decisions and IDs are recorded here. Standing rule from Arun (2026-09-10):
+nothing built may go unnoticed. Every feature appears in FEATURES.md, in the handover guide, in the handover message
+and in any cost or summary document. `tests/features.test.ts` fails when an endpoint or module is not in FEATURES.md.
 
 Read this first when resuming. It is the operational memory of the project: what is decided, what exists,
 what is verified, what is open. `PLAN.md` holds the design rationale; this file holds the live state.

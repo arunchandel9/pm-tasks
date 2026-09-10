@@ -105,3 +105,44 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 6. Create a card by hand in Pulp, paste its link in a sheet row → after 10 min it appears in Claude; move it to Done → Status Done and row below the divider.
 7. Claude: "what happened in the last meeting with The Eye Doctor" and "Abela, last 30 days".
 8. Turn `INTAKE_PAUSED=1` on, post in Intake, confirm nothing happens, turn it off.
+
+## 9. Endpoints (every URL the hub answers on)
+
+| Endpoint | What it does | Who calls it |
+|---|---|---|
+| `/api/tick` | The minute loop: client map, sheet mirror (every 10 min), meeting notes (every 5 min), mailbox, retry queue, Pulp poll for hub cards, hand-made card check, watchdog (every 10 min), heartbeat. | Vercel Cron, every minute |
+| `/api/eod` | Posts the daily summary to PM Review. `?dry=1` returns it without posting. | Vercel Cron, 17:30 UTC weekdays |
+| `/api/gchat` | Google Chat events: Intake and DM messages, `/task` dialog, button clicks, feed-thread replies. | Google Chat |
+| `/api/slack/events`, `/api/slack/install`, `/api/slack/oauth` | Slack messages from client channels; app install and OAuth for a new client workspace. | Slack |
+| `/api/mcp/[key]` | The MCP hub for a PM's own Claude or Codex. | PMs' assistants |
+| `/api/health` | Configuration flags, last poll times, recent activity, 503 when the tick is stale. | Uptime monitor, people |
+| `/api/setup` | Applies the schema; seeds clients, Slack team ids, MCP keys; removes a test client. | Arun, with the cron secret |
+| `/api/sheet-check` | Shows every client tab and how its headers map. | Arun |
+| `/api/sheet-sync` | Runs the sheet mirror now (`?client=` for one client). | Arun |
+| `/api/pulp-check` | Verifies the Pulp key, boards and lists (`?create=1` creates missing Staging lists). | Arun |
+| `/api/gmail-check` | Verifies mailbox access and shows the last mails seen. | Arun |
+| `/api/meet-check` | Lists the Meet Recordings folders it can see (`?run=1` processes new notes now). | Arun |
+
+## 10. Code map (every module, and the feature rows it serves)
+
+| Module | Serves |
+|---|---|
+| `src/lib/pipeline.ts` | 1.11, 2.1–2.6, 3.1, 4.1, 4.4, 4.5, 6.1 — the one path every message takes |
+| `src/lib/filter/noise.ts`, `src/lib/dedupe.ts`, `src/lib/resolve.ts` | 2.1, 2.6, 1.4 (client matching) |
+| `src/lib/llm/client.ts`, `src/lib/llm/extract.ts`, `src/lib/llm/classify.ts`, `src/lib/llm/meeting.ts` | 2.2, 2.3, 2.7, 2.8 (model calls, caching, cost log) |
+| `src/lib/route.ts`, `src/lib/config.ts` | 2.4, 2.5, 3.2, section 7 |
+| `src/lib/tasks.ts`, `src/lib/pulp.ts` | 3.1, 3.2, 3.3, 3.8, 3.9 |
+| `src/lib/sheets.ts`, `src/lib/sheet-sync.ts`, `src/lib/sheet-cards.ts` | 3.4, 3.5, 3.6, 3.7, 6.5, 6.6, 7.1 |
+| `src/lib/review.ts`, `src/lib/gchat.ts`, `src/lib/gchat-events.ts` | 1.2–1.5, 4.1–4.4 |
+| `src/lib/slack.ts`, `src/lib/normalize/slack.ts` | 1.1 |
+| `src/lib/gmail.ts` | 1.8 |
+| `src/lib/transcribe.ts` | 1.6, 1.7 |
+| `src/lib/meet.ts` | 1.9, 2.7 |
+| `src/lib/hub.ts`, `src/lib/mcp-keys.ts` | 1.10, 4.6, section 5 |
+| `src/lib/db.ts`, `src/lib/schema.ts`, `src/lib/schema-split.ts`, `src/lib/auth.ts`, `src/lib/types.ts` | storage, schema apply, cron secret check, shared types |
+
+## Rule
+
+Nothing built is allowed to exist only in code. A test (`tests/features.test.ts`) fails the build when an endpoint or
+module is missing from this file, so a new piece of work cannot ship unlisted. The handover guide, the team brief and
+any cost or summary document are written from this file, never from memory.
