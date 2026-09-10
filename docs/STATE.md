@@ -175,6 +175,11 @@ Last updated: 2026-09-09 (build day 2).
 6. Slack: Abela workspace linked 2026-09-10 (`slack_team:abela=T0APH26RDK3`). Left: `/invite @Task Hub` in each Abela
    channel; install in the other client workspaces during the final round.
 7. ~~New-page chain~~ decided 2026-09-10: not built. Uptime monitor already set by Arun.
+   Handover rule (Arun, 2026-09-10): cards born in the hub are tracked in the sheet automatically; a card someone
+   creates directly in Pulp is not, so that person adds the row and the card link to the client tab by hand. Filing
+   the extra card through `/task` or Claude's add_request avoids the manual row.
+   Ads / CRM / Search Console / analytics stay connected to each PM's own Claude or Codex, not to the hub (decided
+   2026-09-10); the hub is the task and conversation record only.
 8. Final round (Arun's call to defer): MangoEyes board override `c898e940-b4df-4467-baf6-272f5acbc24a` in Config;
    two Claude checks ("last meeting with The Eye Doctor", "Abela last 30 days"); review or delete the three
    meeting-created Staging cards.
