@@ -162,10 +162,22 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   return `${title}: ${tail || "nothing actionable"}`;
 }
 
+/** Meetings are read from the moment the hub first looked (settings `meet_since`), never the backlog before that. */
+async function meetSince(): Promise<Date> {
+  const r = await sql()`select value from settings where key = 'meet_since'`;
+  if (r.length) return new Date(String(r[0].value));
+  const since = new Date(Date.now() - 60 * 60 * 1000);
+  await sql()`insert into settings (key, value) values ('meet_since', ${JSON.stringify(since.toISOString())}::jsonb) on conflict (key) do nothing`;
+  return since;
+}
+
 export async function pollMeetings(): Promise<{ found: number; processed: string[]; errors: string[] }> {
   const processed: string[] = [], errors: string[] = [];
   let docs: NoteDoc[] = [];
-  try { docs = await findNoteDocs(); } catch (e) { return { found: 0, processed, errors: [(e as Error).message.slice(0, 200)] }; }
+  try {
+    const since = await meetSince();
+    docs = (await findNoteDocs()).filter((d) => new Date(d.modifiedTime) > since);
+  } catch (e) { return { found: 0, processed, errors: [(e as Error).message.slice(0, 200)] }; }
   const known = new Set((await sql()`select drive_file_id from meetings where drive_file_id = any(${docs.map((d) => d.id)}::text[])`).map((r) => String(r.drive_file_id)));
   let done = 0;
   for (const doc of docs) {
