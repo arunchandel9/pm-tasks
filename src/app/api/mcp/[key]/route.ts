@@ -113,7 +113,7 @@ function buildHandler(owner: McpKeyOwner) {
         const byChannel = await sql()`select channel, count(*)::int as messages from messages where created_at > now() - interval '7 days' group by channel order by 2 desc`;
         const tasks = (await sql()`select count(*) filter (where created_at > now() - interval '7 days')::int as created_7d, count(*) filter (where completed_at is null)::int as open, count(*) filter (where staging and completed_at is null)::int as staging from tasks`)[0];
         const spend = (await sql()`select count(*)::int as calls, coalesce(sum(cost_usd),0)::numeric(10,4) as usd from llm_calls where created_at > now() - interval '30 days'`)[0];
-        const polls = await sql()`select key, value from settings where key in ('pulp_poll_last','gmail_poll_last','gchat_last_event')`;
+        const polls = await sql()`select key, value from settings where key in ('pulp_poll_last','gmail_poll_last','gchat_last_event','voice_last','sheet_cards_last','meet_poll_last','tick_last')`;
         return text({ you: owner, messagesByChannel7d: byChannel, tasks, modelSpend30d: spend, lastPolls: Object.fromEntries(polls.map((p) => [p.key, p.value])) });
       });
     },

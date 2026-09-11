@@ -83,9 +83,18 @@ const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 const isTooLong = (msg: string) => /too long|exceeds|longer than|duration|LongRunningRecognize/i.test(msg);
 const isRateIssue = (msg: string) => /sample rate|sample_rate/i.test(msg);
 
+/** What happened to the last voice note: engine, audio length, words, errors. Read on /api/health as voice_last. */
+async function noteVoice(d: Record<string, unknown>) {
+  try {
+    const { sql } = await import("./db");
+    await sql()`insert into settings (key, value) values ('voice_last', ${JSON.stringify({ at: new Date().toISOString(), ...d })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+  } catch { /* diagnostics only */ }
+}
+
 /** Short notes: instant. Returns `tooLong` when the service refuses the length, so the caller can go the long way. */
 export async function transcribeAudio(buf: Buffer, contentType: string, fileName = ""): Promise<{ text: string } | { tooLong: true } | { error: string }> {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_B64) return { error: "GOOGLE_NOT_CONFIGURED" };
+  const diag: Record<string, unknown> = { file: fileName, contentType, bytes: buf.length, sniff: sniffAudio(buf), opusRate: opusInputRate(buf), errors: [] as string[] };
   const attempt = async (rate?: number, config: Record<string, unknown> = baseConfig) => {
     const res = await speech().speech.recognize({
       requestBody: { config: { ...encodingFor(contentType, fileName, rate, buf), ...config }, audio: { content: buf.toString("base64") } },
@@ -94,10 +103,14 @@ export async function transcribeAudio(buf: Buffer, contentType: string, fileName
   };
   const seconds = buf.length / (/(mp3|mpeg)/i.test(contentType) ? 16_000 : 2_000);
   // First choice: v2 with Chirp, then v2's long model. Both decode the file themselves. v1 below is the fallback.
+  diag.seconds = Math.round(seconds);
   if (seconds <= 58 && buf.length < 9_000_000 && process.env.SPEECH_V2 !== "off") {
     for (const model of [process.env.SPEECH_MODEL || "chirp_3", "long"]) {
-      try { const t = await recognizeV2(buf, model); if (words(t)) return { text: t }; }
-      catch (e) { console.error("speech v2 failed:", (e as Error).message.slice(0, 200)); }
+      try {
+        const t = await recognizeV2(buf, model);
+        if (words(t)) { await noteVoice({ ...diag, engine: `v2:${model}`, words: words(t), text: t.slice(0, 120) }); return { text: t }; }
+        (diag.errors as string[]).push(`v2:${model}: empty`);
+      } catch (e) { (diag.errors as string[]).push(`v2:${model}: ${(e as Error).message.slice(0, 160)}`); }
     }
   }
   try {
@@ -110,10 +123,13 @@ export async function transcribeAudio(buf: Buffer, contentType: string, fileName
     if (seconds > 3 && !words(text)) {
       try { const plain = await attempt(undefined, plainConfig); if (words(plain) > words(text)) text = plain; } catch { /* keep what we have */ }
     }
+    await noteVoice({ ...diag, engine: "v1", words: words(text), text: text.slice(0, 120) });
     if (!text) return { error: "no speech recognised" };
     return { text };
   } catch (e) {
     const msg = (e as Error).message || "";
+    (diag.errors as string[]).push(`v1: ${msg.slice(0, 160)}`);
+    await noteVoice({ ...diag, engine: "none" });
     if (isTooLong(msg)) return { tooLong: true };
     if (isRateIssue(msg)) { try { return { text: await attempt(48000) }; } catch (e2) { return { error: (e2 as Error).message }; } }
     return { error: msg };
