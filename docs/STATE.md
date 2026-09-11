@@ -16,7 +16,9 @@ Last updated: 2026-09-09 (build day 2).
 - **2026-09-11, Google Chat surfaces:** the DM with the Task Hub app is the front door (forward, type, voice, `/task`; no
   mention). The Intake space is retired (a space app only gets mentioned messages; the Workspace Events API could
   change that later, about an hour plus admin scopes, not for go-live). The review space stays, renamed by Arun
-  (hub knows it by ID `AAQAjieDBM4`). Source label for DM messages: "Task Hub, <name>". Feed wording: "the feed".
+  (hub knows it by ID `AAQAjieDBM4`). Source label for DM messages: "Task Hub, <name>". Feed wording: "the feed". Feed space renamed "Task Hub Feed".
+  App install: manual, one click per person (Chat → + → Apps → Task Hub → Install). Marketplace admin push
+  considered 2026-09-11 and not done (three console prompts exist in the session if ever wanted). Guide step 1.
 
 - **Shape.** One Next.js app on Vercel (project `mangoeyes-task-hub`, domain `pm-tasks.vercel.app`, branch
   `claude/mangowise-task-automation-3qnd3k`), Neon Postgres via the Vercel integration (variable `storage_DATABASE_URL`,
