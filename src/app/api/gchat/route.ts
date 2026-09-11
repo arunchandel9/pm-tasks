@@ -34,10 +34,10 @@ async function handle(ev: NormalisedEvent, raw: unknown, record: (extra: Record<
   const reply = (label: string, body: unknown) => { record({ replied: label }); return NextResponse.json(body); };
 
   if (ev.kind === "added") {
-    const role = ev.space === reviewSpace() ? "This is PM Review: drafts, questions, alerts and the daily summary land here."
-      : ev.space === intakeSpace() ? "This is Intake: mention me with a pasted WhatsApp or any message, drop a voice note, or type /task for the form. Start with the client name and a colon when you can."
-      : ev.isDm ? "Send or forward anything here: a WhatsApp message, a voice note, a note to yourself. No mention needed. Put the client name in when you can."
-      : "Add me to the PM Review and Intake spaces.";
+    const role = ev.space === reviewSpace() ? "This is the feed: one line per task, questions, alerts and the daily summary land here."
+      : ev.isDm ? "Send or forward anything here: a WhatsApp message, a voice note, a screenshot, a note to yourself. No mention needed. Start with the client name and a colon when you can, or type /task for the form."
+      : ev.space === intakeSpace() ? "In a space I only receive messages that mention me (@Task Hub). For forwarding, open a direct message with me instead."
+      : "Open a direct message with me to send requests. Add me to the feed space to post the daily summary.";
     return reply("welcome", replyText(f, `Task Hub is here. ${role}`));
   }
 

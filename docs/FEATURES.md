@@ -12,16 +12,16 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | # | Feature | How it works | Status |
 |---|---|---|---|
 | 1.1 | Client Slack channels | The Task Hub Slack app is installed in a client's workspace and invited to its channels. Every non-staff message is read; staff messages are ignored. Workspace T-id sits in the client's Config row (column D). | Live in Abela; other clients in the final round |
-| 1.2 | Google Chat: Intake space | Anyone at MangoEyes posts a client request in the Intake space, starting with `@Task Hub` (Google delivers a space message to an app only when it is mentioned). Text, forwarded WhatsApp text, or a voice note. | Live |
-| 1.3 | Google Chat: DM to Task Hub | The forwarding lane. Forward a WhatsApp text, a voice note or a screenshot into the DM: nothing to type, no mention, delivered every time. Client name can follow in the same thread. | Built |
+| 1.2 | Google Chat: Intake space | Retired 2026-09-11: the DM with the app does everything with no mention. A group space still works if anyone wants one, with `@Task Hub` first (Google delivers a space message to an app only when mentioned). | Dropped |
+| 1.3 | Google Chat: DM with Task Hub | The front door. Each person opens a DM with the app once (Chat → + → search "Task Hub" under Apps). Forward a WhatsApp text, a voice note or a screenshot, type an ask, or run `/task`: no mention, delivered every time. Client name can follow in the same thread. Source label in the feed and the sheet: "Task Hub, <name>". | Live |
 | 1.4 | Client name before or after | A forwarded message with no client name is held; the sender adds the client name in the same thread and processing continues. A prefix like "HOH: …" is stripped and used as the client. | Live |
-| 1.5 | `/task` form | Slash command in Chat opens a dialog: client dropdown, title, details. Submits straight into the pipeline. | Live |
+| 1.5 | `/task` form | Slash command in the DM opens a dialog: client dropdown, title, details. Submits straight into the pipeline. | Live |
 | 1.6 | Voice notes, short | Audio attached in Chat is transcribed (Google Speech-to-Text) and processed like text. | Live |
 | 1.7 | Voice notes, long (up to 20 min) | Long audio goes to a Cloud Storage bucket and a long-running transcription; the hub polls until the text is ready, then processes it. | Built |
 | 1.8 | Email | Mail to intake@mangoeyesagency.com (read from arun@ via domain-wide delegation) is polled every minute. Forwarded mails are unwrapped, signatures stripped, each mail processed once (Message-ID dedupe), then labelled "Task Hub". | Live (one forwarded mail verified) |
 | 1.9 | Google Meet notes | Each organiser shares their Meet folder ("Meet Recordings" or "Google Meet", whichever Google made for them) with the service account once. Every 5 min the hub finds every "… Notes by Gemini" doc it can see, at any depth, shortcuts included. Only notes modified after the hub first looked (`meet_since`), never the backlog. | Live |
 | 1.10 | MCP `add_request` | A PM's own Claude or Codex files a request straight into the hub. | Built |
-| 1.11 | Unknown client | If no client can be matched, the message is stored with reason `unknown_client`, listed under "Needs a person" in the summary, and can be resolved by replying with the client name. | Live |
+| 1.11 | Unknown client | If no client can be matched, the hub asks in the DM thread, stores the message with reason `unknown_client`, lists it under "Needs a person" in the summary, and continues when the person replies with the client name. | Live |
 | 1.12 | Kill switch | `INTAKE_PAUSED=1` in Vercel stops all intake without redeploying. | Built |
 
 ## 2. Understanding the request
@@ -57,10 +57,10 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 
 | # | Feature | How it works | Status |
 |---|---|---|---|
-| 4.1 | PM Review feed | One short line per task in the PM Review space: client, title, department, priority, link to the card, source. All asks from one message in one post. No buttons. | Live |
+| 4.1 | The feed space (formerly PM Review, renamed by Arun) | One short line per task: client, title, department, priority, link to the card, source. All asks from one message in one post. No buttons. The hub knows the space by ID, so renaming it changes nothing. | Live |
 | 4.2 | Thread replies | Replying in a feed thread with a client name or a correction is picked up and applied. | Live |
 | 4.3 | Receipt rule | The feed line is the receipt. If no line appears within 2 minutes of a message, use `/task`. | Live |
-| 4.4 | Acknowledgement in Intake | The hub replies in the Intake thread with what it did (created, noted on an existing card, nothing to do and why). | Live |
+| 4.4 | Acknowledgement in the DM | The hub replies in the DM thread with what it did (created, noted on an existing card, nothing to do and why). | Live |
 | 4.5 | Reply nudges | If a client message has had no staff reply after the configured minutes, a nudge is posted. | Built |
 | 4.6 | Daily summary | 17:30 UTC weekdays to PM Review: Created, Waiting for a person (Staging / Needs scope), Moved, Completed, Overdue, Needs a person, Waiting on client, Updates with no task, Needs attention. Eight lines per section, then "and N more (ask the hub)". | Live |
 

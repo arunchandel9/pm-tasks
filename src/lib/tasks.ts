@@ -15,9 +15,9 @@ export function holdListName(route: { gated: boolean; list: string | null; stagi
   return route.gated ? route.list ?? "Needs scope" : route.staging ?? "Staging";
 }
 
-/** "Slack, Dr Mehta" / "Intake, Priya" / "/task, Priya" — the origin stamped into the sheet's Comments cell. */
+/** "Slack, Dr Mehta" / "Task Hub, Priya" (DM with the app) / "/task, Priya" — the origin stamped into the sheet's Comments cell. */
 export function sourceText(channel: string, sender: string): string {
-  const where = { slack: "Slack", intake: "Intake", email: "Email", task_cmd: "/task", meet: "Meeting" }[channel] ?? channel;
+  const where = { slack: "Slack", intake: "Task Hub", email: "Email", task_cmd: "/task", meet: "Meeting" }[channel] ?? channel;
   return sender ? `${where}, ${sender}` : where;
 }
 

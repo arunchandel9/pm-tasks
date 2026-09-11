@@ -13,6 +13,11 @@ Last updated: 2026-09-09 (build day 2).
 
 ## Decisions finalised
 
+- **2026-09-11, Google Chat surfaces:** the DM with the Task Hub app is the front door (forward, type, voice, `/task`; no
+  mention). The Intake space is retired (a space app only gets mentioned messages; the Workspace Events API could
+  change that later, about an hour plus admin scopes, not for go-live). The review space stays, renamed by Arun
+  (hub knows it by ID `AAQAjieDBM4`). Source label for DM messages: "Task Hub, <name>". Feed wording: "the feed".
+
 - **Shape.** One Next.js app on Vercel (project `mangoeyes-task-hub`, domain `pm-tasks.vercel.app`, branch
   `claude/mangowise-task-automation-3qnd3k`), Neon Postgres via the Vercel integration (variable `storage_DATABASE_URL`,
   code accepts any `*_DATABASE_URL`). Model: Claude Sonnet 5 (`LLM_MODEL`), two structured calls per message.
