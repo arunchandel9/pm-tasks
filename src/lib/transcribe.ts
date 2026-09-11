@@ -36,16 +36,27 @@ export function sniffAudio(buf: Buffer): "ogg" | "mp3" | "wav" | "flac" | null {
   return null;
 }
 
+/** The Opus header inside an Ogg file carries the original sample rate; Google needs the matching value or it mishears. */
+export function opusInputRate(buf: Buffer): number | null {
+  const i = buf.subarray(0, 512).indexOf("OpusHead", 0, "latin1");
+  if (i < 0 || i + 16 > buf.length) return null;
+  const rate = buf.readUInt32LE(i + 12);
+  const allowed = [8000, 12000, 16000, 24000, 48000];
+  return allowed.includes(rate) ? rate : allowed.reduce((a, b) => (Math.abs(b - rate) < Math.abs(a - rate) ? b : a));
+}
+
 function encodingFor(contentType: string, fileName: string, sampleRateHertz?: number, buf?: Buffer) {
   const ct = contentType.toLowerCase(), fn = fileName.toLowerCase();
   const sniffed = buf ? sniffAudio(buf) : null;
-  if (sniffed === "ogg" || ct.includes("ogg") || ct.includes("opus") || fn.endsWith(".ogg") || fn.endsWith(".opus") || WHATSAPP_VOICE.test(fileName)) return { encoding: "OGG_OPUS", sampleRateHertz: sampleRateHertz ?? 16000 };
+  if (sniffed === "ogg" || ct.includes("ogg") || ct.includes("opus") || fn.endsWith(".ogg") || fn.endsWith(".opus") || WHATSAPP_VOICE.test(fileName)) return { encoding: "OGG_OPUS", sampleRateHertz: sampleRateHertz ?? (buf ? opusInputRate(buf) : null) ?? 16000 };
   if (sniffed === "mp3") return { encoding: "MP3", sampleRateHertz: sampleRateHertz ?? 44100 };
   if (ct.includes("mpeg") || ct.includes("mp3") || fn.endsWith(".mp3")) return { encoding: "MP3", sampleRateHertz: sampleRateHertz ?? 44100 };
   if (ct.includes("webm")) return { encoding: "WEBM_OPUS", sampleRateHertz: sampleRateHertz ?? 48000 };
   return {}; // wav/flac/m4a: the service reads the header
 }
-const baseConfig = { languageCode: "en-GB", alternativeLanguageCodes: ["en-IN", "en-US"], enableAutomaticPunctuation: true, model: "latest_long" };
+// Indian English first (the team's accent), British and American as alternatives; the enhanced model where offered.
+const baseConfig = { languageCode: "en-IN", alternativeLanguageCodes: ["en-GB", "en-US"], enableAutomaticPunctuation: true, model: "latest_long", useEnhanced: true };
+const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 const isTooLong = (msg: string) => /too long|exceeds|longer than|duration|LongRunningRecognize/i.test(msg);
 const isRateIssue = (msg: string) => /sample rate|sample_rate/i.test(msg);
 
@@ -59,7 +70,14 @@ export async function transcribeAudio(buf: Buffer, contentType: string, fileName
     return (res.data.results ?? []).map((r) => r.alternatives?.[0]?.transcript ?? "").join(" ").trim();
   };
   try {
-    return { text: await attempt() };
+    let text = await attempt();
+    // A few words out of many seconds of audio means the rate was wrong: try the other common Opus rate, keep the longer.
+    const seconds = buf.length / (/(mp3|mpeg)/i.test(contentType) ? 16_000 : 2_000);
+    if (seconds > 6 && words(text) < 4 && sniffAudio(buf) === "ogg") {
+      const first = opusInputRate(buf) ?? 16000;
+      try { const again = await attempt(first === 48000 ? 16000 : 48000); if (words(again) > words(text)) text = again; } catch { /* keep the first */ }
+    }
+    return { text };
   } catch (e) {
     const msg = (e as Error).message || "";
     if (isTooLong(msg)) return { tooLong: true };

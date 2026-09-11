@@ -11,3 +11,14 @@ describe("WhatsApp voice notes", () => {
     expect(sniffAudio(Buffer.from("\x89PNG", "latin1"))).toBeNull();
   });
 });
+
+describe("opus sample rate", () => {
+  it("reads the input rate from the OpusHead packet", async () => {
+    const { opusInputRate } = await import("../src/lib/transcribe");
+    const head = Buffer.alloc(64); head.write("OggS", 0, "latin1"); head.write("OpusHead", 28, "latin1"); head.writeUInt32LE(48000, 28 + 12);
+    expect(opusInputRate(head)).toBe(48000);
+    const h2 = Buffer.alloc(64); h2.write("OpusHead", 28, "latin1"); h2.writeUInt32LE(16000, 28 + 12);
+    expect(opusInputRate(h2)).toBe(16000);
+    expect(opusInputRate(Buffer.from("RIFF"))).toBeNull();
+  });
+});
