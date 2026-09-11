@@ -194,7 +194,14 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   const n = result.requestIds?.length ?? 0;
   // The DM answers only when the sender must act or nothing was created; the feed lines are the receipt for created tasks.
   if (result.outcome === "review" && result.reason === "unknown_client") { await say("Which client is this for? Reply here with the name."); return; }
-  if (result.outcome === "review" && n) { if (transcriptNote) await say(`Done: ${n} task${n > 1 ? "s" : ""} in the feed${transcriptNote}.`); return; }
+  if (result.outcome === "review" && n) {
+    // Short or uncertain asks: say what was filed and invite detail in the same thread (a reply there lands on the card).
+    const reqs = await sql()`select draft->>'title' as title, confidence from requests where id = any(${result.requestIds ?? []}::uuid[]) and status in ('pending_review','needs_scope')`;
+    const vague = m.text.trim().split(/\s+/).length < 10 || reqs.some((r) => Number(r.confidence) < 0.7);
+    if (vague && reqs.length) await say(`Filed: ${reqs.map((r) => String(r.title)).join("; ")}${transcriptNote}. Anything to add (which page, a link, a deadline)? Reply here and it goes on the card.`);
+    else if (transcriptNote) await say(`Done: ${n} task${n > 1 ? "s" : ""} in the feed${transcriptNote}.`);
+    return;
+  }
   await say(`Nothing created: ${humanOutcome(result.outcome, result.reason)}${transcriptNote}`);
 }
 

@@ -20,6 +20,28 @@ function auth() {
 const speech = () => google.speech({ version: "v1p1beta1", auth: auth() });
 const storage = () => google.storage({ version: "v1", auth: auth() });
 
+/**
+ * Speech-to-Text v2 (Chirp): decodes the file itself (no encoding or sample-rate guessing) and handles accents far
+ * better than v1. Regional; SPEECH_LOCATION defaults to us-central1 where chirp_3 is offered. Sync limit: 60 s / 10 MB.
+ */
+async function recognizeV2(buf: Buffer, model: string): Promise<string> {
+  const location = process.env.SPEECH_LOCATION || "us-central1";
+  const project = credentials().project_id;
+  const client = await auth().getClient();
+  const token = (await client.getAccessToken()).token;
+  const res = await fetch(`https://${location}-speech.googleapis.com/v2/projects/${project}/locations/${location}/recognizers/_:recognize`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      config: { autoDecodingConfig: {}, languageCodes: [process.env.SPEECH_LANGUAGE || "en-IN"], model, features: { enableAutomaticPunctuation: true } },
+      content: buf.toString("base64"),
+    }),
+  });
+  if (!res.ok) throw new Error(`speech v2 ${model} → ${res.status} ${(await res.text()).slice(0, 200)}`);
+  const data = (await res.json()) as { results?: Array<{ alternatives?: Array<{ transcript?: string }> }> };
+  return (data.results ?? []).map((r) => r.alternatives?.[0]?.transcript ?? "").join(" ").trim();
+}
+
 /** WhatsApp voice notes arrive as "PTT-20260911-WA0014" (no extension) or "AUD-…"; Chat often labels them octet-stream. */
 const WHATSAPP_VOICE = /^(PTT|AUD)-\d{8}-WA\d+/i;
 export const isAudio = (contentType: string, fileName = "") =>
@@ -70,10 +92,17 @@ export async function transcribeAudio(buf: Buffer, contentType: string, fileName
     });
     return (res.data.results ?? []).map((r) => r.alternatives?.[0]?.transcript ?? "").join(" ").trim();
   };
+  const seconds = buf.length / (/(mp3|mpeg)/i.test(contentType) ? 16_000 : 2_000);
+  // First choice: v2 with Chirp, then v2's long model. Both decode the file themselves. v1 below is the fallback.
+  if (seconds <= 58 && buf.length < 9_000_000 && process.env.SPEECH_V2 !== "off") {
+    for (const model of [process.env.SPEECH_MODEL || "chirp_3", "long"]) {
+      try { const t = await recognizeV2(buf, model); if (words(t)) return { text: t }; }
+      catch (e) { console.error("speech v2 failed:", (e as Error).message.slice(0, 200)); }
+    }
+  }
   try {
     let text = await attempt();
     // A few words out of many seconds of audio means the rate was wrong: try the other common Opus rate, keep the longer.
-    const seconds = buf.length / (/(mp3|mpeg)/i.test(contentType) ? 16_000 : 2_000);
     if (seconds > 6 && words(text) < 4 && sniffAudio(buf) === "ogg") {
       const first = opusInputRate(buf) ?? 16000;
       try { const again = await attempt(first === 48000 ? 16000 : 48000); if (words(again) > words(text)) text = again; } catch { /* keep the first */ }

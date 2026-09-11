@@ -18,6 +18,7 @@ export type Extraction = z.infer<typeof ExtractSchema>;
 const INSTRUCTIONS = `You read one message sent to a digital marketing agency (MangoEyes) by a client or a team member.
 Split it into distinct asks. One message can contain several; each gets its own entry.
 Quote the sender's exact words for each ask. Do not invent asks that are not in the text.
+A stated problem is an ask: "the Book Now button is not working", "the form is broken", "leads stopped" each mean "fix this" and get one entry.
 If the message contains no actionable ask (an update, thanks, or a pure question), set is_request=false and asks=[].
 Be literal and brief. No advice, no extra commentary.`;
 

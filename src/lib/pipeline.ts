@@ -21,6 +21,8 @@ export interface ProcessResult {
  * Store → filter → dedupe → extract → classify → route → review.
  * Every branch is recorded. Nothing is silently dropped.
  */
+export const PROBLEM = /\b(not working|isn'?t working|doesn'?t work|broken|down|error|bug|issue|missing|stopped|failing|fails|crash|wrong|please fix|fix)\b/i;
+
 export async function processMessage(m: Message, noiseVerdict: { skip: boolean; reason: string | null }): Promise<ProcessResult> {
   const hash = textHash(m.text);
 
@@ -95,6 +97,11 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
 
   // Model call 1.
   const ex = await extract({ text: m.text, channel: m.channel, clientName: client?.name ?? null, messageId });
+  // Guard: a problem statement is always an ask, whatever the model said ("… is not working" → fix it).
+  if ((!ex.is_request || ex.asks.length === 0) && PROBLEM.test(m.text) && m.text.trim().split(/\s+/).length >= 3) {
+    ex.is_request = true;
+    ex.asks = [{ ask: `Fix: ${m.text.trim()}`, quote: m.text.trim(), deadline: null, urls: [] }];
+  }
   if (!ex.is_request || ex.asks.length === 0) {
     await sql()`update messages set skip_reason = 'no_ask' where id = ${messageId}`;
     // Logged as a client update; surfaces in the EOD "updates, no task" bucket.
