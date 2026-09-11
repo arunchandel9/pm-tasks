@@ -14,7 +14,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | 1.1 | Client Slack channels | The Task Hub Slack app is installed in a client's workspace and invited to its channels. Every non-staff message is read; staff messages are ignored. Workspace T-id sits in the client's Config row (column D). | Live in Abela; other clients in the final round |
 | 1.2 | Google Chat: Intake space | Retired 2026-09-11: the DM with the app does everything with no mention. A group space still works if anyone wants one, with `@Task Hub` first (Google delivers a space message to an app only when mentioned). | Dropped |
 | 1.3 | Google Chat: DM with Task Hub | The front door. Each person opens a DM with the app once (Chat → + → search "Task Hub" under Apps → Install). Forward a WhatsApp text, a voice note or a screenshot, or type an ask: no mention, delivered every time. Welcome text is one line. Client name can follow in the same thread. Source label in the feed and the sheet: "Task Hub, <name>". | Live |
-| 1.4 | Client name before or after | A forwarded message with no client name is held; the sender adds the client name in the same thread and processing continues. A prefix like "HOH: …" is stripped and used as the client. | Live |
+| 1.4 | Client name before or after | A forwarded message with no client name is held; the sender adds the client name in the same thread and processing continues. A prefix like "HOH: …" is stripped and used as the client. Any later reply in that thread belongs to the same client, so "also broken on tablet" needs no name. | Live |
 | 1.5 | `/task` form | Slash command that opens a dialog. Works, but not taught: Arun decided 2026-09-11 that the DM alone is simpler. Not in the guide, not in the welcome text. | Dropped from the guide (code kept) |
 | 1.6 | Voice notes, short | Audio attached in Chat is transcribed (Google Speech-to-Text) and processed like text. | Live |
 | 1.7 | Voice notes, long (up to 20 min) | Long audio goes to a Cloud Storage bucket and a long-running transcription; the hub polls until the text is ready, then processes it. | Built |
@@ -28,7 +28,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 
 | # | Feature | How it works | Status |
 |---|---|---|---|
-| 2.1 | Noise filter | Acknowledgements, emojis, attachment-only posts, tiny thread replies and known bot senders never reach a model. | Live |
+| 2.1 | Noise filter | Acknowledgements, emojis, attachment-only posts, tiny thread replies and known bot senders never reach a model. In the DM, "ok thanks" or a 👍 gets no reply at all; it is stored as skipped. | Live |
 | 2.2 | Extract | One model call pulls every distinct ask out of a message (a message with two asks becomes two requests). | Live |
 | 2.3 | Classify | Each ask gets a request type, department, priority with reason, and a card title and description. Prompt caching keeps cost low; every call is logged with tokens and cost. | Live |
 | 2.4 | Deterministic routing | `config/routing.yaml` decides board, list, labels, SLA due date and P1 keywords. The model never decides these. | Live |

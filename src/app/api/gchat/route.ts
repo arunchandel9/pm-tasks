@@ -8,6 +8,8 @@ import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
 import { resolveClientFromText, stripClientPrefix } from "@/lib/resolve";
 import { postAck, postText, humanOutcome, threadTopic, closeNeedsHumanCard, messageThreadKey, type ThreadTopic } from "@/lib/review";
 import { transcribeAudio, isAudio, startLongTranscription, estimateMinutes } from "@/lib/transcribe";
+import { isAcknowledgement } from "@/lib/filter/noise";
+import { noise } from "@/lib/config";
 import type { Message } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -117,6 +119,12 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   let transcriptNote = "";
   const say = (t: string) => sendText(space, t, msg.thread?.name).catch((e) => console.error("say failed", (e as Error).message));
 
+  // "ok thanks", "👍", "great": nothing to do and nothing to say. Stored as skipped so it is still on record.
+  if (!msg.attachment?.length && isAcknowledgement(text, noise())) {
+    await storeOnly(baseMessage(msg, raw, sender, text, clients), "acknowledgement");
+    return;
+  }
+
   // A message that is only a client name ("HOH", "this is for PSS"): it names the client for a forwarded message,
   // sent just before (same thread, or the last 30 minutes in a direct chat) or about to be sent (kept for 15 minutes).
   const nameHit = resolveClientFromText(text, clients);
@@ -160,6 +168,11 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   }
 
   let m = baseMessage(msg, raw, sender, text, clients);
+  if (!m.clientId && msg.thread?.name) {
+    // A reply inside a thread belongs to that thread's client: "also broken on tablet" under the HOH forward is HOH.
+    const root = await sql()`select client_id, scope from messages where thread_ref = ${msg.thread.name} and client_id is not null order by created_at asc limit 1`;
+    if (root.length) m = { ...m, clientId: String(root[0].client_id), scope: root[0].scope as Message["scope"] };
+  }
   if (!m.clientId) {
     // No client in the text: use the name the same person gave in the last 15 minutes, if any.
     const h = await sql()`select value from settings where key = ${"client_hint:" + sender}`;
