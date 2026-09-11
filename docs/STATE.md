@@ -49,8 +49,9 @@ Last updated: 2026-09-09 (build day 2).
   subject/note prefix → original sender's domain → text, run through the pipeline as channel `email`, then labelled.
   `/api/gmail-check` proves the connection; `gmail_poll_last` on /api/health shows the last run.
 - **Meeting notes** (built 2026-09-10, untested until a folder is shared). Each organiser shares their Drive folder
-  "Meet Recordings" with the service account once (Viewer); the hub finds every folder of that name shared with it
-  (`MEET_FOLDER_NAMES`, default "Meet Recordings,Task Hub Notes") plus any "… - Notes by Gemini" doc shared
+  "Meet Recordings" or "Google Meet" (Google made one or the other, per account and date) with the service account
+  once (Viewer); since 2026-09-11 the hub does not walk folders but queries every "… Notes by Gemini" doc it can
+  see at any depth, shortcuts resolved (Google's newer layout is "Google Meet/<meeting> - <date>/"), plus any doc shared
   directly. Every 5 minutes (minute % 5 == 2) new docs from the last 3 days are read (max 3 per tick). One model call
   (`sortMeeting`) sorts items into action / idea / decision / discussion and names the client per item (MangoEyes for
   internal). Actions go per client through the normal pipeline as channel `meet` (dedupe against open tasks, Staging

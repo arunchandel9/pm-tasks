@@ -19,7 +19,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | 1.6 | Voice notes, short | Audio attached in Chat is transcribed (Google Speech-to-Text) and processed like text. | Live |
 | 1.7 | Voice notes, long (up to 20 min) | Long audio goes to a Cloud Storage bucket and a long-running transcription; the hub polls until the text is ready, then processes it. | Built |
 | 1.8 | Email | Mail to intake@mangoeyesagency.com (read from arun@ via domain-wide delegation) is polled every minute. Forwarded mails are unwrapped, signatures stripped, each mail processed once (Message-ID dedupe), then labelled "Task Hub". | Live (one forwarded mail verified) |
-| 1.9 | Google Meet notes | "Meet Recordings" folders shared with the service account are scanned every 5 min for new Gemini notes docs. Only notes modified after the hub first looked (`meet_since`), never the backlog. | Live |
+| 1.9 | Google Meet notes | Each organiser shares their Meet folder ("Meet Recordings" or "Google Meet", whichever Google made for them) with the service account once. Every 5 min the hub finds every "… Notes by Gemini" doc it can see, at any depth, shortcuts included. Only notes modified after the hub first looked (`meet_since`), never the backlog. | Live |
 | 1.10 | MCP `add_request` | A PM's own Claude or Codex files a request straight into the hub. | Built |
 | 1.11 | Unknown client | If no client can be matched, the message is stored with reason `unknown_client`, listed under "Needs a person" in the summary, and can be resolved by replying with the client name. | Live |
 | 1.12 | Kill switch | `INTAKE_PAUSED=1` in Vercel stops all intake without redeploying. | Built |
@@ -123,7 +123,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | `/api/sheet-sync` | Runs the sheet mirror now (`?client=` for one client). | Arun |
 | `/api/pulp-check` | Verifies the Pulp key, boards and lists (`?create=1` creates missing Staging lists). | Arun |
 | `/api/gmail-check` | Verifies mailbox access and shows the last mails seen. | Arun |
-| `/api/meet-check` | Lists the Meet Recordings folders it can see (`?run=1` processes new notes now). | Arun |
+| `/api/meet-check` | Lists the Meet folders shared with it, the organisers covered, and the notes docs it can see (`?run=1` processes new notes now). | Arun |
 
 ## 10. Code map (every module, and the feature rows it serves)
 

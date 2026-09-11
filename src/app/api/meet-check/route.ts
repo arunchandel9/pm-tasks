@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 /**
- * What the hub can see in Drive: folders shared with it, and notes docs from the last 14 days. Add ?run=1 to read
+ * What the hub can see in Drive: folders shared with it (by owner), and notes docs from the last 14 days at any depth. Add ?run=1 to read
  * any new docs now instead of waiting for the 5-minute tick.
  *   curl -H "Authorization: Bearer $CRON_SECRET" "https://pm-tasks.vercel.app/api/meet-check?run=1"
  */
@@ -20,6 +20,7 @@ export async function GET(req: Request) {
     const out: Record<string, unknown> = {
       ok: true,
       foldersSharedWithHub: (folders.data.files ?? []).map((f) => ({ name: f.name, owner: f.owners?.[0]?.emailAddress ?? null })),
+      organisersCovered: [...new Set((folders.data.files ?? []).map((f) => f.owners?.[0]?.emailAddress).filter(Boolean))],
       notesDocsLast14Days: docs.map((d) => ({ name: d.name, modified: d.modifiedTime, owner: d.owner, folder: d.folder })),
     };
     if (new URL(req.url).searchParams.get("run") === "1") out.run = await pollMeetings();

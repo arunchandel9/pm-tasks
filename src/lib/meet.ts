@@ -7,9 +7,9 @@ import { postText } from "./review";
 import type { Client, Message } from "./types";
 
 /**
- * Meeting notes. Google Meet writes "<title> - Notes by Gemini" docs into the organiser's Drive folder
- * "Meet Recordings". Each organiser shares that folder with the service account once; the hub finds every such
- * folder shared with it, plus any notes doc shared directly. New docs are read every 5 minutes.
+ * Meeting notes. Google Meet writes "<title> - Notes by Gemini" docs into the organiser's Drive, under "Meet
+ * Recordings" or "Google Meet/<meeting>/". Each organiser shares that folder with the service account once; the hub
+ * finds every notes doc it can see at any depth, plus any notes doc shared directly. New docs are read every 5 minutes.
  *
  * Every meeting is sorted into four buckets (one model call): actions go through the normal pipeline per client
  * (dedupe against open tasks, Staging card, feed line); ideas and decisions are stored and get one line each;
@@ -28,32 +28,50 @@ export function drive(): drive_v3.Drive {
 }
 export const meetConfigured = () => !!process.env.GOOGLE_SERVICE_ACCOUNT_B64;
 
-const FOLDER_NAMES = (process.env.MEET_FOLDER_NAMES ?? "Meet Recordings,Task Hub Notes").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
 const NOTES_TITLE = /\s*[-–—]\s*(Notes by Gemini|Gemini notes|notes)\s*$/i;
 const TRANSCRIPT_TITLE = /\s*[-–—]\s*transcript\s*$/i;
 
 export interface NoteDoc { id: string; name: string; modifiedTime: string; owner: string | null; folder: string | null }
 
-/** Folders shared with the hub by name, then their Gemini notes docs; plus notes docs shared directly. */
+/**
+ * Every Gemini notes doc the hub can see, at any depth. Google files them differently over time: directly in
+ * "Meet Recordings", or under "Google Meet/<meeting> - <date>/", sometimes as a shortcut in a recurring meeting's
+ * folder. So this does not walk folders at all: one Drive query for anything named "… Notes by Gemini" (documents
+ * and shortcuts to documents) modified since the watermark, wherever it sits. Sharing any ancestor folder with the
+ * service account is enough; a doc shared directly counts too. Shortcuts resolve to their target and dedupe.
+ */
 export async function findNoteDocs(days = 3): Promise<NoteDoc[]> {
   const d = drive();
   const since = new Date(Date.now() - days * 86400 * 1000).toISOString();
   const out = new Map<string, NoteDoc>();
-  const add = (f: drive_v3.Schema$File, folder: string | null) => {
-    if (!f.id || !f.name || TRANSCRIPT_TITLE.test(f.name)) return;
-    out.set(f.id, { id: f.id, name: f.name, modifiedTime: f.modifiedTime ?? since, owner: f.owners?.[0]?.emailAddress ?? null, folder });
+  const parentNames = new Map<string, string>();
+  const folderName = async (id: string | undefined): Promise<string | null> => {
+    if (!id) return null;
+    if (!parentNames.has(id)) {
+      try { const r = await d.files.get({ fileId: id, fields: "name", supportsAllDrives: true }); parentNames.set(id, r.data.name ?? id); }
+      catch { parentNames.set(id, id); }
+    }
+    return parentNames.get(id) ?? null;
   };
-  const folders = await d.files.list({ q: "sharedWithMe and mimeType = 'application/vnd.google-apps.folder' and trashed = false", fields: "files(id,name,owners(emailAddress))", pageSize: 100, supportsAllDrives: true, includeItemsFromAllDrives: true });
-  for (const folder of folders.data.files ?? []) {
-    if (!folder.id || !FOLDER_NAMES.includes((folder.name ?? "").trim().toLowerCase())) continue;
-    const docs = await d.files.list({
-      q: `'${folder.id}' in parents and mimeType = 'application/vnd.google-apps.document' and modifiedTime > '${since}' and trashed = false`,
-      fields: "files(id,name,modifiedTime,owners(emailAddress))", pageSize: 50, orderBy: "modifiedTime", supportsAllDrives: true, includeItemsFromAllDrives: true,
+  let pageToken: string | undefined;
+  do {
+    const res = await d.files.list({
+      q: `name contains 'Notes by Gemini' and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/vnd.google-apps.shortcut') and modifiedTime > '${since}' and trashed = false`,
+      fields: "nextPageToken, files(id,name,mimeType,modifiedTime,owners(emailAddress),parents,shortcutDetails(targetId,targetMimeType))",
+      pageSize: 100, orderBy: "modifiedTime", supportsAllDrives: true, includeItemsFromAllDrives: true, pageToken,
     });
-    for (const f of docs.data.files ?? []) add(f, `${folder.name} (${folder.owners?.[0]?.emailAddress ?? "?"})`);
-  }
-  const direct = await d.files.list({ q: `sharedWithMe and mimeType = 'application/vnd.google-apps.document' and modifiedTime > '${since}' and trashed = false`, fields: "files(id,name,modifiedTime,owners(emailAddress))", pageSize: 50 });
-  for (const f of direct.data.files ?? []) if (NOTES_TITLE.test(f.name ?? "")) add(f, null);
+    for (const f of res.data.files ?? []) {
+      if (!f.id || !f.name || TRANSCRIPT_TITLE.test(f.name) || !NOTES_TITLE.test(f.name)) continue;
+      let id = f.id;
+      if (f.mimeType === "application/vnd.google-apps.shortcut") {
+        if (f.shortcutDetails?.targetMimeType !== "application/vnd.google-apps.document" || !f.shortcutDetails.targetId) continue;
+        id = f.shortcutDetails.targetId;
+      }
+      if (out.has(id)) continue;
+      out.set(id, { id, name: f.name, modifiedTime: f.modifiedTime ?? since, owner: f.owners?.[0]?.emailAddress ?? null, folder: await folderName(f.parents?.[0]) });
+    }
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
   return [...out.values()].sort((a, b) => a.modifiedTime.localeCompare(b.modifiedTime));
 }
 

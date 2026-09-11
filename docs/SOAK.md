@@ -19,6 +19,7 @@ Roles: **A** = Arun · **H** = the hub builder (me) · **PM** = one project mana
 | 0.6 | Housekeeping in Pulp: archive the duplicate "To Do" lists; delete or drag the five meeting-made Staging cards | Done |
 | 0.7 | Housekeeping in the sheet: delete the HOH test row from milestone B | Done |
 | 0.8 | Everyone who will use the hub is a member of the PM Review and Intake spaces | Confirmed |
+| 0.9 | Every meeting organiser (Arun, Saurav, each PM who hosts client calls) shares the Meet folder they own ("Meet Recordings" and "Google Meet", whichever exist in their My Drive, plain folder icon, not the ones with a person icon) with `task-hub@mangoeyes-task-hub.iam.gserviceaccount.com` as Viewer | `/api/meet-check` lists each organiser under `organisersCovered` |
 
 ## Block A — intake, every channel (40 min)
 
