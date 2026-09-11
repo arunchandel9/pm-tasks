@@ -13,7 +13,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 |---|---|---|---|
 | 1.1 | Client Slack channels | The Task Hub Slack app is installed in a client's workspace and invited to its channels. Every non-staff message is read; staff messages are ignored. Workspace T-id sits in the client's Config row (column D). | Live in Abela; other clients in the final round |
 | 1.2 | Google Chat: Intake space | Anyone at MangoEyes posts a client request in the Intake space, starting with `@Task Hub` (Google delivers a space message to an app only when it is mentioned). Text, forwarded WhatsApp text, or a voice note. | Live |
-| 1.3 | Google Chat: DM to Task Hub | Same as Intake, but private and with no mention needed. Delivered to the hub every time. | Built |
+| 1.3 | Google Chat: DM to Task Hub | The forwarding lane. Forward a WhatsApp text, a voice note or a screenshot into the DM: nothing to type, no mention, delivered every time. Client name can follow in the same thread. | Built |
 | 1.4 | Client name before or after | A forwarded message with no client name is held; the sender adds the client name in the same thread and processing continues. A prefix like "HOH: …" is stripped and used as the client. | Live |
 | 1.5 | `/task` form | Slash command in Chat opens a dialog: client dropdown, title, details. Submits straight into the pipeline. | Live |
 | 1.6 | Voice notes, short | Audio attached in Chat is transcribed (Google Speech-to-Text) and processed like text. | Live |

@@ -4,8 +4,9 @@ Two hours of soak, one hour of handover. Every row in `docs/FEATURES.md` gets it
 **Live** only when its check passes on real data. Anything that fails is fixed and re-checked in the same block.
 Work top to bottom. Each check says who does it, what to do, and what "pass" looks like.
 
-Google Chat rule: in the Intake space every message to the hub starts with `@Task Hub` (a space app only receives
-messages that mention it). In a DM with the Task Hub no mention is needed. `/task` works in both.
+Google Chat rule, two lanes. **Forwarding lane** = the DM with Task Hub: forward a WhatsApp text, a voice note, a
+screenshot, nothing to type, no mention (a DM delivers every message). **Typing lane** = the Intake space: start with
+`@Task Hub`, because Google delivers a space message to an app only when it is mentioned. `/task` works in both.
 
 Roles: **A** = Arun · **H** = the hub builder (me) · **PM** = one project manager · **C** = someone acting as a client
 (a non-MangoEyes Slack account, or a real client who agrees to post one line).
@@ -29,11 +30,11 @@ Roles: **A** = Arun · **H** = the hub builder (me) · **PM** = one project mana
 | # | Register | Who | Do | Pass |
 |---|---|---|---|---|
 | A1 | 1.2 | A | Intake: `@Task Hub HOH: the Book Now button on the contact page is not working on mobile` | Feed line in PM Review within 2 min, 🔴 P1, Dev, Staging card link. Ack in the Intake thread. |
-| A2 | 1.4 | A | Intake: `@Task Hub` then paste a forwarded WhatsApp text with no client name | Hub asks for the client in the thread. Reply `Abela`. Feed line follows. |
+| A2 | 1.4 | A | DM with Task Hub: forward a WhatsApp text with no client name, nothing else typed | Hub asks for the client in the thread. Reply `Abela`. Feed line follows. |
 | A3 | 1.3 | PM | DM the Task Hub: `TED: please update the opening hours on the footer` | Feed line, Dev or Content, card. |
 | A4 | 1.5 | PM | `/task` in Intake, pick a client, title, details, submit | Ack in the dialog, feed line, card. |
-| A5 | 1.6 | A | Intake: `@Task Hub` with a 30-second voice note attached, say the client name in it | Feed line with the transcribed ask. |
-| A6 | 1.7 | A | Intake: `@Task Hub` with the long voice note from 0.5 attached | Ack says it is transcribing. Feed line within about 5 min. Audio visible in the bucket `mangoeyes-task-hub-task-hub-voice`. |
+| A5 | 1.6 | A | DM with Task Hub: forward a 30-second voice note, say the client name in it | Feed line with the transcribed ask. |
+| A6 | 1.7 | A | DM with Task Hub: forward the long voice note from 0.5 | Ack says it is transcribing. Feed line within about 5 min. Audio visible in the bucket `mangoeyes-task-hub-task-hub-voice`. |
 | A7 | 1.8 | A | Email to intake@mangoeyesagency.com, subject `Abela: pricing page shows old prices`, two lines of body | Feed line within 2 min, label "Task Hub" on the mail. |
 | A8 | 1.8 | A | Forward a real client email to intake@ with the client name as the first line | Feed line, signature and quoted history not in the card. |
 | A9 | 1.1 | C | One line in an Abela Slack channel the app is in: `can you add the new offer banner to the home page` | Feed line, card with the Abela label. Staff replies in that channel produce nothing. |
@@ -41,7 +42,7 @@ Roles: **A** = Arun · **H** = the hub builder (me) · **PM** = one project mana
 | A11 | 1.9 | A | Next real Google Meet with Gemini notes, or one 3-minute test call with notes on | Feed line per client action, ideas and decisions visible in Claude (D3). |
 | A12 | 1.10 | PM | In their Claude: `add a request for HOH: change the hero image on the home page` | Feed line, Staging card, Claude reports the card link. |
 | A13 | 1.11 | A | Intake: `@Task Hub please fix the popup` with no client anywhere | Hub asks for the client. Leave it. It appears under "Needs a person" in C3. |
-| A14 | 2.1 | A | Intake: `@Task Hub ok thanks 👍`, then `@Task Hub` with a photo and no text | No feed line. Ack says nothing to do. |
+| A14 | 2.1 | A | DM with Task Hub: `ok thanks 👍`, then a photo with no text | No feed line. Ack says nothing to do. |
 | A15 | 2.2 | A | Intake: `@Task Hub HOH: two things - the blog page is slow, and can we get a reel for the new laser` | Two feed lines in one post, two cards (Dev and Video). |
 | A16 | 2.5 | covered by A1 | | |
 
