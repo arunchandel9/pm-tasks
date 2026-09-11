@@ -7,7 +7,7 @@ import { classify } from "./llm/classify";
 import { route } from "./route";
 import type { Message, Client } from "./types";
 import { addReaction, postThreadFollowupComment } from "./slack";
-import { postReview, postP1Ping, postText, reviewMode, draftLine, followupLine } from "./review";
+import { postReview, postP1Ping, postText, reviewMode, draftLine, followupLine, messageThreadKey } from "./review";
 import { createStagingCard } from "./tasks";
 
 export interface ProcessResult {
@@ -170,7 +170,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     if (r.priority === "P1") await postP1Ping({ requestId, client, title: cl.title, message: m, reason: r.priorityReason });
   }
 
-  if (feed.length) await postText(feed.join("\n"));
+  if (feed.length) await postText(feed.join("\n"), { threadKey: messageThreadKey(messageId) });
   await addReaction(m, "eyes");
   return { messageId, outcome: "review", requestIds };
 }

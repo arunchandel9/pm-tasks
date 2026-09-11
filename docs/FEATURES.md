@@ -57,7 +57,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 
 | # | Feature | How it works | Status |
 |---|---|---|---|
-| 4.1 | The feed space (formerly PM Review, renamed by Arun) | One short line per task: client, title, department, priority, link to the card, source. All asks from one message in one post. No buttons. The hub knows the space by ID, so renaming it changes nothing. | Live |
+| 4.1 | The feed space (Task Hub Feed, formerly PM Review) | One short line per task: client, title, department, priority, link to the card, source. All asks from one message in one post. No buttons. Everything about one source message sits in one thread: the "which client?" card, the "client set" line, the voice-note notice, the task lines. The hub knows the space by ID, so renaming it changes nothing. | Built (threading added 2026-09-11) |
 | 4.2 | Thread replies | Replying in a feed thread with a client name or a correction is picked up and applied. | Live |
 | 4.3 | Receipt rule | The feed line is the receipt. If no line appears within 2 minutes of a message, use `/task`. | Live |
 | 4.4 | Acknowledgement in the DM | The hub replies in the DM thread with what it did (created, noted on an existing card, nothing to do and why). | Live |

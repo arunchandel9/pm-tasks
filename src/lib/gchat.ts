@@ -66,19 +66,26 @@ export async function verifyChatRequest(authHeader: string | null, calledUrl?: s
 
 // ---- sending ----
 
-export async function sendText(space: string, text: string, threadName?: string): Promise<string | null> {
+/**
+ * Threads: a message can join an existing thread by its name, or by a threadKey the hub chooses (Chat creates the
+ * thread on first use and reuses it after). The feed keys every post by the source message (`msg-<id>`), so the
+ * "which client?" card, the "client set" line and the task lines for one forwarded message sit in one thread.
+ */
+export async function sendText(space: string, text: string, threadName?: string, threadKey?: string): Promise<string | null> {
+  const thread = threadName ? { name: threadName } : threadKey ? { threadKey } : undefined;
   const res = await chat().spaces.messages.create({
     parent: space,
-    messageReplyOption: threadName ? "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD" : undefined,
-    requestBody: { text, thread: threadName ? { name: threadName } : undefined },
+    messageReplyOption: thread ? "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD" : undefined,
+    requestBody: { text, thread },
   });
   return res.data.name ?? null;
 }
 
-export async function sendCard(space: string, card: chat_v1.Schema$GoogleAppsCardV1Card, fallbackText: string, cardId: string): Promise<{ name: string | null; thread: string | null }> {
+export async function sendCard(space: string, card: chat_v1.Schema$GoogleAppsCardV1Card, fallbackText: string, cardId: string, threadKey?: string): Promise<{ name: string | null; thread: string | null }> {
   const res = await chat().spaces.messages.create({
     parent: space,
-    requestBody: { text: fallbackText, cardsV2: [{ cardId, card }] },
+    messageReplyOption: threadKey ? "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD" : undefined,
+    requestBody: { text: fallbackText, cardsV2: [{ cardId, card }], thread: threadKey ? { threadKey } : undefined },
   });
   return { name: res.data.name ?? null, thread: res.data.thread?.name ?? null };
 }

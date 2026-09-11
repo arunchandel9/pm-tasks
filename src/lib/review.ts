@@ -75,7 +75,7 @@ export async function postReview(p: ReviewPost): Promise<void> {
       messageId: p.messageId, clientName, why: p.why, text: p.message.text, source: sourceLabel(p.message), permalink: p.message.permalink,
       clients: rows.map((r) => ({ id: String(r.id), name: String(r.name) })),
     });
-    const sent = await gchat.sendCard(space, card, `${clientName}: needs a person (${p.why})`, `human-${p.messageId}`);
+    const sent = await gchat.sendCard(space, card, `${clientName}: needs a person (${p.why})`, `human-${p.messageId}`, messageThreadKey(p.messageId));
     await rememberThread(sent.thread, { kind: "needs_human", messageId: p.messageId });
     if (sent.name) await sql()`insert into settings (key, value) values (${"gchat_card_for:" + p.messageId}, ${JSON.stringify(sent.name)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
     return;
@@ -110,12 +110,15 @@ export async function postP1Ping(p: { requestId: string; client: Client | null; 
 }
 
 /** Plain text to the review surface (daily summary, notices). */
-export async function postText(text: string): Promise<void> {
+/** Everything about one source message goes in one feed thread: key `msg-<messageId>`. */
+export const messageThreadKey = (messageId: string) => `msg-${messageId}`;
+
+export async function postText(text: string, opts: { threadKey?: string } = {}): Promise<void> {
   if (surface() === "slack" || !gchat.gchatConfigured()) {
     await (await slack.web(null)).chat.postMessage({ channel: process.env.SLACK_REVIEW_CHANNEL || "#pm-review", text });
     return;
   }
-  await gchat.sendText(gchat.reviewSpace(), text);
+  await gchat.sendText(gchat.reviewSpace(), text, undefined, opts.threadKey);
 }
 
 /**

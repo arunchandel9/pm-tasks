@@ -6,7 +6,7 @@ import { allClients, sql } from "@/lib/db";
 import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
 import { resolveClientFromText, stripClientPrefix } from "@/lib/resolve";
-import { postAck, postReview, postText, humanOutcome, threadTopic, closeNeedsHumanCard, type ThreadTopic } from "@/lib/review";
+import { postAck, postReview, postText, humanOutcome, threadTopic, closeNeedsHumanCard, messageThreadKey, type ThreadTopic } from "@/lib/review";
 import { transcribeAudio, isAudio, startLongTranscription, estimateMinutes } from "@/lib/transcribe";
 import type { Message } from "@/lib/types";
 
@@ -151,7 +151,7 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
           const job = await startLongTranscription(buf, a.contentType ?? "", a.contentName ?? "");
           const stored = await storeOnly({ ...baseMessage(msg, raw, sender, text, clients), text }, "transcribing");
           await sql()`insert into queue (kind, payload, next_run_at) values ('transcribe_poll', ${JSON.stringify({ messageId: stored.id, job, typed: text })}::jsonb, now() + interval '60 seconds')`;
-          await postText(`🎙️ Voice note from ${sender} received (about ${mins} min). Transcribing; the task lines will follow in a few minutes.`);
+          await postText(`🎙️ Voice note from ${sender} received (about ${mins} min). Transcribing; the task lines will follow in a few minutes.`, { threadKey: messageThreadKey(stored.id) });
           return;
         } catch (e) { transcriptNote = ` (long voice note could not be started: ${(e as Error).message.slice(0, 160)})`; }
       }
