@@ -20,12 +20,27 @@ function auth() {
 const speech = () => google.speech({ version: "v1p1beta1", auth: auth() });
 const storage = () => google.storage({ version: "v1", auth: auth() });
 
+/** WhatsApp voice notes arrive as "PTT-20260911-WA0014" (no extension) or "AUD-…"; Chat often labels them octet-stream. */
+const WHATSAPP_VOICE = /^(PTT|AUD)-\d{8}-WA\d+/i;
 export const isAudio = (contentType: string, fileName = "") =>
-  /^audio\//i.test(contentType) || /\.(ogg|opus|mp3|m4a|wav|flac|webm|aac|amr)$/i.test(fileName);
+  /^audio\//i.test(contentType) || /ogg|opus/i.test(contentType) || /\.(ogg|opus|mp3|m4a|wav|flac|webm|aac|amr)$/i.test(fileName) || WHATSAPP_VOICE.test(fileName);
 
-function encodingFor(contentType: string, fileName: string, sampleRateHertz?: number) {
+/** Look at the first bytes: "OggS" (ogg/opus), "ID3" or an MPEG frame (mp3), "RIFF" (wav), "fLaC". Null when unknown. */
+export function sniffAudio(buf: Buffer): "ogg" | "mp3" | "wav" | "flac" | null {
+  if (buf.length < 4) return null;
+  const head = buf.subarray(0, 4).toString("latin1");
+  if (head === "OggS") return "ogg";
+  if (head.startsWith("ID3") || (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0)) return "mp3";
+  if (head === "RIFF") return "wav";
+  if (head === "fLaC") return "flac";
+  return null;
+}
+
+function encodingFor(contentType: string, fileName: string, sampleRateHertz?: number, buf?: Buffer) {
   const ct = contentType.toLowerCase(), fn = fileName.toLowerCase();
-  if (ct.includes("ogg") || ct.includes("opus") || fn.endsWith(".ogg") || fn.endsWith(".opus")) return { encoding: "OGG_OPUS", sampleRateHertz: sampleRateHertz ?? 16000 };
+  const sniffed = buf ? sniffAudio(buf) : null;
+  if (sniffed === "ogg" || ct.includes("ogg") || ct.includes("opus") || fn.endsWith(".ogg") || fn.endsWith(".opus") || WHATSAPP_VOICE.test(fileName)) return { encoding: "OGG_OPUS", sampleRateHertz: sampleRateHertz ?? 16000 };
+  if (sniffed === "mp3") return { encoding: "MP3", sampleRateHertz: sampleRateHertz ?? 44100 };
   if (ct.includes("mpeg") || ct.includes("mp3") || fn.endsWith(".mp3")) return { encoding: "MP3", sampleRateHertz: sampleRateHertz ?? 44100 };
   if (ct.includes("webm")) return { encoding: "WEBM_OPUS", sampleRateHertz: sampleRateHertz ?? 48000 };
   return {}; // wav/flac/m4a: the service reads the header
@@ -39,7 +54,7 @@ export async function transcribeAudio(buf: Buffer, contentType: string, fileName
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_B64) return { error: "GOOGLE_NOT_CONFIGURED" };
   const attempt = async (rate?: number) => {
     const res = await speech().speech.recognize({
-      requestBody: { config: { ...encodingFor(contentType, fileName, rate), ...baseConfig }, audio: { content: buf.toString("base64") } },
+      requestBody: { config: { ...encodingFor(contentType, fileName, rate, buf), ...baseConfig }, audio: { content: buf.toString("base64") } },
     });
     return (res.data.results ?? []).map((r) => r.alternatives?.[0]?.transcript ?? "").join(" ").trim();
   };
@@ -85,7 +100,7 @@ export async function startLongTranscription(buf: Buffer, contentType: string, f
   await storage().objects.insert({ bucket, name: object, media: { mimeType: contentType || "application/octet-stream", body: Readable.from(buf) } });
   const gsUri = `gs://${bucket}/${object}`;
   const res = await speech().speech.longrunningrecognize({
-    requestBody: { config: { ...encodingFor(contentType, fileName, rate), ...baseConfig }, audio: { uri: gsUri } },
+    requestBody: { config: { ...encodingFor(contentType, fileName, rate, buf), ...baseConfig }, audio: { uri: gsUri } },
   });
   if (!res.data.name) throw new Error("longrunningrecognize returned no operation name");
   return { operation: res.data.name, gsUri, contentType, fileName, rate };

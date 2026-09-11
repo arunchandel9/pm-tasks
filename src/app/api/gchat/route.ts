@@ -7,7 +7,7 @@ import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
 import { resolveClientFromText, stripClientPrefix } from "@/lib/resolve";
 import { postAck, postText, humanOutcome, threadTopic, closeNeedsHumanCard, messageThreadKey, type ThreadTopic } from "@/lib/review";
-import { transcribeAudio, isAudio, startLongTranscription, estimateMinutes } from "@/lib/transcribe";
+import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, estimateMinutes } from "@/lib/transcribe";
 import { isAcknowledgement } from "@/lib/filter/noise";
 import { noise } from "@/lib/config";
 import type { Message } from "@/lib/types";
@@ -147,9 +147,12 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   }
 
   for (const a of msg.attachment ?? []) {
-    if (!a.attachmentDataRef?.resourceName || !isAudio(a.contentType ?? "", a.contentName ?? "")) continue;
+    // Audio by type or name, or any non-image file whose first bytes say it is audio (WhatsApp notes come without an extension).
+    if (!a.attachmentDataRef?.resourceName || /^image\//i.test(a.contentType ?? "")) continue;
+    const namedAudio = isAudio(a.contentType ?? "", a.contentName ?? "");
     try {
       const buf = await downloadAttachment(a.attachmentDataRef.resourceName);
+      if (!namedAudio && !sniffAudio(buf)) continue;
       const t = await transcribeAudio(buf, a.contentType ?? "", a.contentName ?? "");
       if ("text" in t && t.text) { text = [text, t.text].filter(Boolean).join("\n"); transcriptNote = " (voice note transcribed)"; }
       else if ("tooLong" in t) {
