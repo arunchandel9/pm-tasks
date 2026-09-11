@@ -21,7 +21,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | 1.8 | Email | Mail to intake@mangoeyesagency.com (read from arun@ via domain-wide delegation) is polled every minute. Forwarded mails are unwrapped, signatures stripped, each mail processed once (Message-ID dedupe), then labelled "Task Hub". | Live (one forwarded mail verified) |
 | 1.9 | Google Meet notes | Each organiser shares their Meet folder ("Meet Recordings" or "Google Meet", whichever Google made for them) with the service account once. Every 5 min the hub finds every "… Notes by Gemini" doc it can see, at any depth, shortcuts included. Only notes modified after the hub first looked (`meet_since`), never the backlog. | Live |
 | 1.10 | MCP `add_request` | A PM's own Claude or Codex files a request straight into the hub. | Built |
-| 1.11 | Unknown client | If no client can be matched, the hub asks in the DM thread, stores the message with reason `unknown_client`, lists it under "Needs a person" in the summary, and continues when the person replies with the client name. | Live |
+| 1.11 | Unknown client | If no client can be matched: from the DM, the hub asks in that thread and continues when the person replies with the name; from Slack, email or a meeting, a "which client?" card goes to the feed for anyone to answer. Either way the message is stored with reason `unknown_client` and listed under "Needs a person" in the summary until resolved. The feed carries finals only. | Live |
 | 1.12 | Kill switch | `INTAKE_PAUSED=1` in Vercel stops all intake without redeploying. | Built |
 
 ## 2. Understanding the request
@@ -60,7 +60,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | 4.1 | The feed space (Task Hub Feed, formerly PM Review) | One short line per task: client, title, department, priority, link to the card, source. All asks from one message in one post. No buttons. Everything about one source message sits in one thread: the "which client?" card, the "client set" line, the voice-note notice, the task lines. The hub knows the space by ID, so renaming it changes nothing. | Built (threading added 2026-09-11) |
 | 4.2 | Thread replies | Replying in a feed thread with a client name or a correction is picked up and applied. | Live |
 | 4.3 | Receipt rule | The feed line is the receipt. If no line appears within 2 minutes, send the message again. | Live |
-| 4.4 | Acknowledgement in the DM | The hub replies in the DM thread with what it did (created, noted on an existing card, nothing to do and why). | Live |
+| 4.4 | DM replies only when needed | The DM answers in the thread only when the sender must act ("Which client is this for?", "I can read text and voice notes, not images") or when nothing was created ("Nothing created: …"). When tasks were created, the feed line is the receipt and the DM stays quiet. | Built (tightened 2026-09-11) |
 | 4.5 | Reply nudges | If a client message has had no staff reply after the configured minutes, a nudge is posted. | Built |
 | 4.6 | Daily summary | 17:30 UTC weekdays to PM Review: Created, Waiting for a person (Staging / Needs scope), Moved, Completed, Overdue, Needs a person, Waiting on client, Updates with no task, Needs attention. Eight lines per section, then "and N more (ask the hub)". | Live |
 

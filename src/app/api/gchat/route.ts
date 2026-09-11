@@ -170,17 +170,16 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   const hit = m.clientId ? { client: clients.find((x) => x.id === m.clientId)! } : null;
   if (!m.text.trim() && !msg.attachment?.length) return;
   if (!m.text.trim()) {
-    await postReview({ kind: "needs_human", messageId: (await storeOnly(m, "attachment_only")).id, client: null, message: m, why: `attachment_only${transcriptNote}` });
+    await storeOnly(m, "attachment_only");
+    await say(`I can read text and voice notes, not images${transcriptNote}. Type what it asks for, with the client name.`);
     return;
   }
   const result = await processMessage(m, { skip: false, reason: null });
   const n = result.requestIds?.length ?? 0;
-  if (result.outcome === "review" && result.reason === "unknown_client") await say("Which client is this for? Reply here with the name.");
-  // When tasks were created, the feed lines are the acknowledgement; a second line would only add noise.
-  if (result.outcome === "review" && n && !transcriptNote) return;
-  const detail = result.outcome === "review" && n ? `${n} task${n > 1 ? "s" : ""} for ${hit?.client.name ?? "unknown client"} above${transcriptNote}`
-    : `${humanOutcome(result.outcome, result.reason)}${transcriptNote}`;
-  await postAck({ message: m, outcome: result.outcome, detail });
+  // The DM answers only when the sender must act or nothing was created; the feed lines are the receipt for created tasks.
+  if (result.outcome === "review" && result.reason === "unknown_client") { await say("Which client is this for? Reply here with the name."); return; }
+  if (result.outcome === "review" && n) { if (transcriptNote) await say(`Done: ${n} task${n > 1 ? "s" : ""} in the feed${transcriptNote}.`); return; }
+  await say(`Nothing created: ${humanOutcome(result.outcome, result.reason)}${transcriptNote}`);
 }
 
 /** The Message record for an Intake/DM post, with the client resolved from the text. */
