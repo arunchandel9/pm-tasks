@@ -54,8 +54,9 @@ function encodingFor(contentType: string, fileName: string, sampleRateHertz?: nu
   if (ct.includes("webm")) return { encoding: "WEBM_OPUS", sampleRateHertz: sampleRateHertz ?? 48000 };
   return {}; // wav/flac/m4a: the service reads the header
 }
-// Indian English first (the team's accent), British and American as alternatives; the enhanced model where offered.
-const baseConfig = { languageCode: "en-IN", alternativeLanguageCodes: ["en-GB", "en-US"], enableAutomaticPunctuation: true, model: "latest_long", useEnhanced: true };
+// British English with Indian and American alternatives (en-IN as primary with latest_long returns nothing on some notes).
+const baseConfig = { languageCode: "en-GB", alternativeLanguageCodes: ["en-IN", "en-US"], enableAutomaticPunctuation: true, model: "latest_long" };
+const plainConfig = { languageCode: "en-IN", enableAutomaticPunctuation: true }; // last resort: default model, one language
 const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 const isTooLong = (msg: string) => /too long|exceeds|longer than|duration|LongRunningRecognize/i.test(msg);
 const isRateIssue = (msg: string) => /sample rate|sample_rate/i.test(msg);
@@ -63,9 +64,9 @@ const isRateIssue = (msg: string) => /sample rate|sample_rate/i.test(msg);
 /** Short notes: instant. Returns `tooLong` when the service refuses the length, so the caller can go the long way. */
 export async function transcribeAudio(buf: Buffer, contentType: string, fileName = ""): Promise<{ text: string } | { tooLong: true } | { error: string }> {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_B64) return { error: "GOOGLE_NOT_CONFIGURED" };
-  const attempt = async (rate?: number) => {
+  const attempt = async (rate?: number, config: Record<string, unknown> = baseConfig) => {
     const res = await speech().speech.recognize({
-      requestBody: { config: { ...encodingFor(contentType, fileName, rate, buf), ...baseConfig }, audio: { content: buf.toString("base64") } },
+      requestBody: { config: { ...encodingFor(contentType, fileName, rate, buf), ...config }, audio: { content: buf.toString("base64") } },
     });
     return (res.data.results ?? []).map((r) => r.alternatives?.[0]?.transcript ?? "").join(" ").trim();
   };
@@ -77,6 +78,10 @@ export async function transcribeAudio(buf: Buffer, contentType: string, fileName
       const first = opusInputRate(buf) ?? 16000;
       try { const again = await attempt(first === 48000 ? 16000 : 48000); if (words(again) > words(text)) text = again; } catch { /* keep the first */ }
     }
+    if (seconds > 3 && !words(text)) {
+      try { const plain = await attempt(undefined, plainConfig); if (words(plain) > words(text)) text = plain; } catch { /* keep what we have */ }
+    }
+    if (!text) return { error: "no speech recognised" };
     return { text };
   } catch (e) {
     const msg = (e as Error).message || "";
