@@ -20,11 +20,13 @@ Split it into distinct asks. One message can contain several; each gets its own 
 Quote the sender's exact words for each ask. Do not invent asks that are not in the text.
 A stated problem is an ask: "the Book Now button is not working", "the form is broken", "leads stopped" each mean "fix this" and get one entry.
 If the message contains no actionable ask (an update, thanks, or a pure question), set is_request=false and asks=[].
-Be literal and brief. No advice, no extra commentary.`;
+Be literal and brief. No advice, no extra commentary.
+When the message is a voice-note transcript: words may be misheard. Keep to ONE ask unless the speaker clearly lists separate things.
+Never add details (colours, versions, dates, counts) that are not in the words. When unsure what was meant, keep the ask general ("fix the homepage images") rather than specific.`;
 
-export async function extract(opts: { text: string; channel: string; clientName: string | null; messageId: string | null }): Promise<Extraction> {
+export async function extract(opts: { text: string; channel: string; clientName: string | null; messageId: string | null; voice?: boolean }): Promise<Extraction> {
   const user = [
-    `Channel: ${opts.channel}`,
+    `Channel: ${opts.channel}${opts.voice ? " (voice-note transcript, may contain misheard words)" : ""}`,
     `Client: ${opts.clientName ?? "unknown"}`,
     "",
     "Message:",

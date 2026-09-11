@@ -7,7 +7,7 @@ import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
 import { resolveClientFromText, stripClientPrefix } from "@/lib/resolve";
 import { postAck, postText, humanOutcome, threadTopic, closeNeedsHumanCard, messageThreadKey, type ThreadTopic } from "@/lib/review";
-import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, estimateMinutes } from "@/lib/transcribe";
+import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, estimateMinutes, hintPhrases } from "@/lib/transcribe";
 import { isAcknowledgement } from "@/lib/filter/noise";
 import { noise } from "@/lib/config";
 import type { Message } from "@/lib/types";
@@ -153,13 +153,14 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
     try {
       const buf = await downloadAttachment(a.attachmentDataRef.resourceName);
       if (!namedAudio && !sniffAudio(buf)) continue;
-      const t = await transcribeAudio(buf, a.contentType ?? "", a.contentName ?? "");
+      const hints = hintPhrases(clients.flatMap((c) => [c.name, ...(c.aliases ?? [])]));
+      const t = await transcribeAudio(buf, a.contentType ?? "", a.contentName ?? "", hints);
       if ("text" in t && t.text) { text = [text, t.text].filter(Boolean).join("\n"); transcriptNote = " (voice note transcribed)"; }
       else if ("tooLong" in t) {
         // Long note: upload, start the long-running recognition, and let the minute tick finish the job.
         const mins = estimateMinutes(buf.length, a.contentType ?? "");
         try {
-          const job = await startLongTranscription(buf, a.contentType ?? "", a.contentName ?? "");
+          const job = await startLongTranscription(buf, a.contentType ?? "", a.contentName ?? "", undefined, hints);
           const stored = await storeOnly({ ...baseMessage(msg, raw, sender, text, clients), text }, "transcribing");
           await sql()`insert into queue (kind, payload, next_run_at) values ('transcribe_poll', ${JSON.stringify({ messageId: stored.id, job, typed: text })}::jsonb, now() + interval '60 seconds')`;
           await postText(`🎙️ Voice note from ${sender} received (about ${mins} min). Transcribing; the task lines will follow in a few minutes.`, { threadKey: messageThreadKey(stored.id) });
@@ -171,6 +172,7 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   }
 
   let m = baseMessage(msg, raw, sender, text, clients);
+  if (transcriptNote) m = { ...m, raw: { ...(m.raw as Record<string, unknown> | null ?? {}), voice: true } };
   if (!m.clientId && msg.thread?.name) {
     // A reply inside a thread belongs to that thread's client: "also broken on tablet" under the HOH forward is HOH.
     const root = await sql()`select client_id, scope from messages where thread_ref = ${msg.thread.name} and client_id is not null order by created_at asc limit 1`;

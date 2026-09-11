@@ -24,7 +24,15 @@ const storage = () => google.storage({ version: "v1", auth: auth() });
  * Speech-to-Text v2 (Chirp): decodes the file itself (no encoding or sample-rate guessing) and handles accents far
  * better than v1. Regional; SPEECH_LOCATION defaults to us-central1 where chirp_3 is offered. Sync limit: 60 s / 10 MB.
  */
-async function recognizeV2(buf: Buffer, model: string): Promise<string> {
+/** Words the recogniser should expect: client names and aliases plus the agency's vocabulary. */
+export const DOMAIN_HINTS = ["Book Now", "CTA", "call to action", "homepage", "home page", "landing page", "hero image", "hero section", "footer", "header", "banner", "pop-up", "popup", "form", "contact page", "pricing page", "before and after", "testimonial", "reel", "Instagram", "Google Ads", "Meta Ads", "SEO", "blog", "menu", "WhatsApp", "GoHighLevel", "CRM", "MangoEyes", "Pulp", "Task Hub"];
+export function hintPhrases(clientNames: string[]): string[] {
+  const set = new Set<string>();
+  for (const n of [...clientNames, ...DOMAIN_HINTS]) { const v = n.trim(); if (v && v.length <= 100) set.add(v); }
+  return [...set].slice(0, 500);
+}
+
+async function recognizeV2(buf: Buffer, model: string, hints: string[] = []): Promise<string> {
   const location = process.env.SPEECH_LOCATION || "us-central1";
   const project = credentials().project_id;
   const client = await auth().getClient();
@@ -33,7 +41,10 @@ async function recognizeV2(buf: Buffer, model: string): Promise<string> {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      config: { autoDecodingConfig: {}, languageCodes: [process.env.SPEECH_LANGUAGE || "en-IN"], model, features: { enableAutomaticPunctuation: true } },
+      config: {
+        autoDecodingConfig: {}, languageCodes: [process.env.SPEECH_LANGUAGE || "en-IN"], model, features: { enableAutomaticPunctuation: true },
+        ...(hints.length ? { adaptation: { phraseSets: [{ inlinePhraseSet: { phrases: hints.map((value) => ({ value, boost: 10 })) } }] } } : {}),
+      },
       content: buf.toString("base64"),
     }),
   });
@@ -92,12 +103,12 @@ async function noteVoice(d: Record<string, unknown>) {
 }
 
 /** Short notes: instant. Returns `tooLong` when the service refuses the length, so the caller can go the long way. */
-export async function transcribeAudio(buf: Buffer, contentType: string, fileName = ""): Promise<{ text: string } | { tooLong: true } | { error: string }> {
+export async function transcribeAudio(buf: Buffer, contentType: string, fileName = "", hints: string[] = []): Promise<{ text: string } | { tooLong: true } | { error: string }> {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_B64) return { error: "GOOGLE_NOT_CONFIGURED" };
   const diag: Record<string, unknown> = { file: fileName, contentType, bytes: buf.length, sniff: sniffAudio(buf), opusRate: opusInputRate(buf), errors: [] as string[] };
   const attempt = async (rate?: number, config: Record<string, unknown> = baseConfig) => {
     const res = await speech().speech.recognize({
-      requestBody: { config: { ...encodingFor(contentType, fileName, rate, buf), ...config }, audio: { content: buf.toString("base64") } },
+      requestBody: { config: { ...encodingFor(contentType, fileName, rate, buf), ...config, ...(hints.length ? { speechContexts: [{ phrases: hints, boost: 10 }] } : {}) }, audio: { content: buf.toString("base64") } },
     });
     return (res.data.results ?? []).map((r) => r.alternatives?.[0]?.transcript ?? "").join(" ").trim();
   };
@@ -107,7 +118,7 @@ export async function transcribeAudio(buf: Buffer, contentType: string, fileName
   if (seconds <= 58 && buf.length < 9_000_000 && process.env.SPEECH_V2 !== "off") {
     for (const model of [process.env.SPEECH_MODEL || "chirp_3", "long"]) {
       try {
-        const t = await recognizeV2(buf, model);
+        const t = await recognizeV2(buf, model, hints);
         if (words(t)) { await noteVoice({ ...diag, engine: `v2:${model}`, words: words(t), text: t.slice(0, 120) }); return { text: t }; }
         (diag.errors as string[]).push(`v2:${model}: empty`);
       } catch (e) { (diag.errors as string[]).push(`v2:${model}: ${(e as Error).message.slice(0, 160)}`); }
@@ -161,14 +172,14 @@ async function ensureBucket(): Promise<string> {
 export interface LongJob { operation: string; gsUri: string; contentType: string; fileName: string; rate?: number }
 
 /** Upload the audio and start a long-running recognition. Returns what the poll job needs. */
-export async function startLongTranscription(buf: Buffer, contentType: string, fileName = "", rate?: number): Promise<LongJob> {
+export async function startLongTranscription(buf: Buffer, contentType: string, fileName = "", rate?: number, hints: string[] = []): Promise<LongJob> {
   const bucket = await ensureBucket();
   const safe = (fileName || "voice-note").replace(/[^\w.\-]+/g, "_");
   const object = `voice/${new Date().toISOString().slice(0, 10)}/${Date.now()}-${safe}`;
   await storage().objects.insert({ bucket, name: object, media: { mimeType: contentType || "application/octet-stream", body: Readable.from(buf) } });
   const gsUri = `gs://${bucket}/${object}`;
   const res = await speech().speech.longrunningrecognize({
-    requestBody: { config: { ...encodingFor(contentType, fileName, rate, buf), ...baseConfig }, audio: { uri: gsUri } },
+    requestBody: { config: { ...encodingFor(contentType, fileName, rate, buf), ...baseConfig, ...(hints.length ? { speechContexts: [{ phrases: hints, boost: 10 }] } : {}) }, audio: { uri: gsUri } },
   });
   if (!res.data.name) throw new Error("longrunningrecognize returned no operation name");
   return { operation: res.data.name, gsUri, contentType, fileName, rate };
