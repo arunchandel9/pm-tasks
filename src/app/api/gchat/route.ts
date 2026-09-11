@@ -35,10 +35,10 @@ async function handle(ev: NormalisedEvent, raw: unknown, record: (extra: Record<
 
   if (ev.kind === "added") {
     const role = ev.space === reviewSpace() ? "This is the feed: one line per task, questions, alerts and the daily summary land here."
-      : ev.isDm ? "Send or forward anything here: a WhatsApp message, a voice note, a screenshot, a note to yourself. No mention needed. Start with the client name and a colon when you can, or type /task for the form."
+      : ev.isDm ? "Send or forward anything here. Start with the client name when you can."
       : ev.space === intakeSpace() ? "In a space I only receive messages that mention me (@Task Hub). For forwarding, open a direct message with me instead."
       : "Open a direct message with me to send requests. Add me to the feed space to post the daily summary.";
-    return reply("welcome", replyText(f, `Task Hub is here. ${role}`));
+    return reply("welcome", replyText(f, ev.isDm ? role : `Task Hub is here. ${role}`));
   }
 
   // Clicks first: a button click event also carries the original message (e.g. "/task"), which must not reopen the form.

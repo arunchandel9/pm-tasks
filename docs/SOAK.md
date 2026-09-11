@@ -5,7 +5,7 @@ Two hours of soak, one hour of handover. Every row in `docs/FEATURES.md` gets it
 Work top to bottom. Each check says who does it, what to do, and what "pass" looks like.
 
 Google Chat, decided 2026-09-11: the **DM with Task Hub** is the front door for everything (forward, type, voice
-note, screenshot, `/task`), no mention needed. The Intake space is retired. The review space stays, renamed by Arun,
+note, screenshot), no mention needed, no form. The Intake space is retired. The review space stays, renamed by Arun,
 and the hub knows it by ID. Every "Intake:" step below means "in the DM with Task Hub".
 
 Roles: **A** = Arun · **H** = the hub builder (me) · **PM** = one project manager · **C** = someone acting as a client
@@ -32,7 +32,7 @@ Roles: **A** = Arun · **H** = the hub builder (me) · **PM** = one project mana
 | A1 | 1.3 | A | DM: `HOH: the Book Now button on the contact page is not working on mobile` | Feed line in PM Review within 2 min, 🔴 P1, Dev, Staging card link. Ack in the Intake thread. |
 | A2 | 1.4 | A | DM with Task Hub: forward a WhatsApp text with no client name, nothing else typed | Hub asks for the client in the thread. Reply `Abela`. Feed line follows. |
 | A3 | 1.3 | PM | DM the Task Hub: `TED: please update the opening hours on the footer` | Feed line, Dev or Content, card. |
-| A4 | 1.5 | PM | `/task` in the DM, pick a client, title, details, submit | Ack in the dialog, feed line, card. |
+| A4 | 1.5 | — | Dropped: the form is not taught. | — |
 | A5 | 1.6 | A | DM with Task Hub: forward a 30-second voice note, say the client name in it | Feed line with the transcribed ask. |
 | A6 | 1.7 | A | DM with Task Hub: forward the long voice note from 0.5 | Ack says it is transcribing. Feed line within about 5 min. Audio visible in the bucket `mangoeyes-task-hub-task-hub-voice`. |
 | A7 | 1.8 | A | Email to intake@mangoeyesagency.com, subject `Abela: pricing page shows old prices`, two lines of body | Feed line within 2 min, label "Task Hub" on the mail. |
@@ -72,7 +72,7 @@ Roles: **A** = Arun · **H** = the hub builder (me) · **PM** = one project mana
 | C3 | 4.6 | A | `curl -H "Authorization: Bearer <secret>" "https://pm-tasks.vercel.app/api/eod?dry=1"` | Created lists block A; Waiting for a person shows Staging and Needs scope; Needs a person shows A13; Completed shows B5; Needs attention is empty. |
 | C4 | 4.5 | C | One more Slack line, and nobody replies for 5 min | 💬 line in PM Review after 5 min. Then a staff reply in the channel → no 1-hour line. |
 | C5 | 4.2 | A | In the feed thread of A13, reply `Perfect Skin` | Message processed, feed line follows. |
-| C6 | 4.3 | all | Agree the rule out loud: the feed line is the receipt; no line in 2 minutes → `/task` in the DM | In the guide. |
+| C6 | 4.3 | all | Agree the rule out loud: the feed line is the receipt; no line in 2 minutes → send it again | In the guide. |
 
 ## Block D — the hub in each PM's assistant (20 min)
 

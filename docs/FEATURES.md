@@ -13,9 +13,9 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 |---|---|---|---|
 | 1.1 | Client Slack channels | The Task Hub Slack app is installed in a client's workspace and invited to its channels. Every non-staff message is read; staff messages are ignored. Workspace T-id sits in the client's Config row (column D). | Live in Abela; other clients in the final round |
 | 1.2 | Google Chat: Intake space | Retired 2026-09-11: the DM with the app does everything with no mention. A group space still works if anyone wants one, with `@Task Hub` first (Google delivers a space message to an app only when mentioned). | Dropped |
-| 1.3 | Google Chat: DM with Task Hub | The front door. Each person opens a DM with the app once (Chat → + → search "Task Hub" under Apps). Forward a WhatsApp text, a voice note or a screenshot, type an ask, or run `/task`: no mention, delivered every time. Client name can follow in the same thread. Source label in the feed and the sheet: "Task Hub, <name>". | Live |
+| 1.3 | Google Chat: DM with Task Hub | The front door. Each person opens a DM with the app once (Chat → + → search "Task Hub" under Apps → Install). Forward a WhatsApp text, a voice note or a screenshot, or type an ask: no mention, delivered every time. Welcome text is one line. Client name can follow in the same thread. Source label in the feed and the sheet: "Task Hub, <name>". | Live |
 | 1.4 | Client name before or after | A forwarded message with no client name is held; the sender adds the client name in the same thread and processing continues. A prefix like "HOH: …" is stripped and used as the client. | Live |
-| 1.5 | `/task` form | Slash command in the DM opens a dialog: client dropdown, title, details. Submits straight into the pipeline. | Live |
+| 1.5 | `/task` form | Slash command that opens a dialog. Works, but not taught: Arun decided 2026-09-11 that the DM alone is simpler. Not in the guide, not in the welcome text. | Dropped from the guide (code kept) |
 | 1.6 | Voice notes, short | Audio attached in Chat is transcribed (Google Speech-to-Text) and processed like text. | Live |
 | 1.7 | Voice notes, long (up to 20 min) | Long audio goes to a Cloud Storage bucket and a long-running transcription; the hub polls until the text is ready, then processes it. | Built |
 | 1.8 | Email | Mail to intake@mangoeyesagency.com (read from arun@ via domain-wide delegation) is polled every minute. Forwarded mails are unwrapped, signatures stripped, each mail processed once (Message-ID dedupe), then labelled "Task Hub". | Live (one forwarded mail verified) |
@@ -59,7 +59,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 |---|---|---|---|
 | 4.1 | The feed space (Task Hub Feed, formerly PM Review) | One short line per task: client, title, department, priority, link to the card, source. All asks from one message in one post. No buttons. Everything about one source message sits in one thread: the "which client?" card, the "client set" line, the voice-note notice, the task lines. The hub knows the space by ID, so renaming it changes nothing. | Built (threading added 2026-09-11) |
 | 4.2 | Thread replies | Replying in a feed thread with a client name or a correction is picked up and applied. | Live |
-| 4.3 | Receipt rule | The feed line is the receipt. If no line appears within 2 minutes of a message, use `/task`. | Live |
+| 4.3 | Receipt rule | The feed line is the receipt. If no line appears within 2 minutes, send the message again. | Live |
 | 4.4 | Acknowledgement in the DM | The hub replies in the DM thread with what it did (created, noted on an existing card, nothing to do and why). | Live |
 | 4.5 | Reply nudges | If a client message has had no staff reply after the configured minutes, a nudge is posted. | Built |
 | 4.6 | Daily summary | 17:30 UTC weekdays to PM Review: Created, Waiting for a person (Staging / Needs scope), Moved, Completed, Overdue, Needs a person, Waiting on client, Updates with no task, Needs attention. Eight lines per section, then "and N more (ask the hub)". | Live |
