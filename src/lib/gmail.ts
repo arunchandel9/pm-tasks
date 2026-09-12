@@ -6,7 +6,7 @@ import { allClients, sql } from "./db";
 import { processMessage } from "./pipeline";
 import { postAck, humanOutcome } from "./review";
 import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, hintPhrases } from "./transcribe";
-import { fuzzyClientFromText } from "./resolve";
+import { fuzzyClientFromText, correctName } from "./resolve";
 import type { Message } from "./types";
 
 /**
@@ -221,10 +221,11 @@ export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> 
     ?? resolveClientFromText(senderEmail, clients)
     ?? resolveClientFromText(composed.slice(0, 400), clients)
     ?? (voice ? fuzzyClientFromText(composed.slice(0, 600), clients) : null);
+  const composedFixed = hit && "matched" in hit && typeof hit.matched === "string" ? correctName(composed, hit.matched, hit.client.name) : composed;
   const m: Message = {
     channel: "email", externalId: mail.id, teamId: null, clientId: hit?.client.id ?? null, scope: hit ? hit.client.scope : "unknown",
     sender: `${senderName} <${senderEmail}>`, senderIsStaff, sentAt: mail.date,
-    text: hit ? stripClientPrefix(composed, hit.client) : composed,
+    text: hit ? stripClientPrefix(composedFixed, hit.client) : composedFixed,
     permalink: `https://mail.google.com/mail/u/0/#all/${mail.id}`, threadRef: mail.threadId,
     raw: { gmail: { id: mail.id, messageId: rfcId, threadId: mail.threadId, subject: mail.subject, from: mail.from, to: mail.to, isForward: mail.isForward, originalFrom: mail.originalFrom }, ...(voice ? { voice: true } : {}) },
   };

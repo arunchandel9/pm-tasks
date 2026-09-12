@@ -16,9 +16,9 @@ function editDistance(a: string, b: string): number {
  * Voice transcripts mishear names: "a bella", "Abella", "the eye doctors". Compare every 1–3 word window of the text
  * with each client name and alias, letters only, and accept a close match (at most one edit per five letters).
  */
-export function fuzzyClientFromText(text: string, clients: Client[]): { client: Client; how: string } | null {
+export function fuzzyClientFromText(text: string, clients: Client[]): { client: Client; how: string; matched: string } | null {
   const words = text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean);
-  let best: { client: Client; score: number } | null = null;
+  let best: { client: Client; score: number; matched: string } | null = null;
   for (const c of clients.filter((x) => x.scope === "client")) {
     for (const name of [c.name, ...(c.aliases ?? [])]) {
       const target = letters(name);
@@ -28,11 +28,17 @@ export function fuzzyClientFromText(text: string, clients: Client[]): { client: 
         const window = letters(words.slice(i, i + n).join(""));
         if (Math.abs(window.length - target.length) > allowed) continue;
         const d = editDistance(window, target);
-        if (d <= allowed && (!best || d < best.score || (d === best.score && target.length > letters(best.client.name).length))) best = { client: c, score: d };
+        if (d <= allowed && (!best || d < best.score || (d === best.score && target.length > letters(best.client.name).length))) best = { client: c, score: d, matched: words.slice(i, i + n).join(" ") };
       }
     }
   }
-  return best ? { client: best.client, how: "fuzzy" } : null;
+  return best ? { client: best.client, how: "fuzzy", matched: best.matched } : null;
+}
+
+/** "Abell replace the images" → "Abela replace the images": the misheard name is written correctly in the stored text. */
+export function correctName(text: string, matched: string, name: string): string {
+  const pattern = matched.split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[\\s,.-]*");
+  return text.replace(new RegExp(pattern, "i"), name);
 }
 
 /**

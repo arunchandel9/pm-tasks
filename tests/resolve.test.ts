@@ -35,3 +35,11 @@ describe("fuzzy client match for voice transcripts", () => {
     expect(fuzzyClientFromText("the homepage images are not good", clients)).toBeNull();
   });
 });
+
+describe("correcting a misheard name", () => {
+  it("rewrites the matched words to the client name", async () => {
+    const { correctName } = await import("../src/lib/resolve");
+    expect(correctName("Abell Replace home page images.", "abell", "Abela")).toBe("Abela Replace home page images.");
+    expect(correctName("for a bella please change the hero", "a bella", "Abela")).toBe("for Abela please change the hero");
+  });
+});

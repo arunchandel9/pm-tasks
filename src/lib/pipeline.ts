@@ -61,16 +61,31 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     return { messageId, outcome: "review", reason: noiseVerdict.reason ?? "unknown_client" };
   }
 
-  // Short reply inside a thread that already became a request: attach, comment, no model call.
-  if (noiseVerdict.reason === "thread_followup" && m.threadRef) {
-    const root = await sql()`
-      select r.id as request_id, t.id as task_id from messages pm
-      join requests r on r.message_id = pm.id left join tasks t on t.request_id = r.id
-      where pm.channel = ${m.channel} and pm.external_id = ${m.threadRef} order by r.ask_index limit 1`;
+  // A short reply inside a thread that already became a task belongs to that task: comment on its card, no model call.
+  // Slack threads are keyed by the root message id; Chat DM threads by the thread name, following any merge to the card
+  // the root itself was attached to.
+  const shortReply = m.text.trim().split(/\s+/).length <= 12;
+  if (m.threadRef && (noiseVerdict.reason === "thread_followup" || (m.channel === "intake" && shortReply))) {
+    const root = m.channel === "intake"
+      ? await sql()`
+        select coalesce(r.merged_into, r.id) as request_id, t.id as task_id, pm.id as root_message_id,
+               coalesce(mt.draft->>'title', r.draft->>'title') as title
+        from messages pm join requests r on r.message_id = pm.id
+        left join requests mt on mt.id = r.merged_into
+        left join tasks t on t.request_id = coalesce(r.merged_into, r.id)
+        where pm.channel = 'intake' and pm.thread_ref = ${m.threadRef} and pm.id <> ${messageId}
+        order by pm.created_at asc, r.ask_index limit 1`
+      : await sql()`
+        select r.id as request_id, t.id as task_id, pm.id as root_message_id, r.draft->>'title' as title from messages pm
+        join requests r on r.message_id = pm.id left join tasks t on t.request_id = r.id
+        where pm.channel = ${m.channel} and pm.external_id = ${m.threadRef} order by r.ask_index limit 1`;
     if (root.length) {
       const chasing = /\b(any update|update on|status|eta|any news|when will|still waiting|following up|follow up)\b|\?\s*$/i.test(m.text);
       await postThreadFollowupComment({ taskId: root[0].task_id, requestId: root[0].request_id, message: m, flag: chasing ? "client_waiting" : undefined });
-      return { messageId, outcome: "attached", requestIds: [root[0].request_id] };
+      if (m.channel === "intake" && reviewMode() === "notify") {
+        await postText(followupLine({ client, existingTitle: String(root[0].title ?? "the task"), kind: "followup_change", message: m }), { threadKey: messageThreadKey(String(root[0].root_message_id)) });
+      }
+      return { messageId, outcome: "attached", requestIds: [String(root[0].request_id)] };
     }
   }
 

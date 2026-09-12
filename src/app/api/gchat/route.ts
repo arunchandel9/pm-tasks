@@ -5,7 +5,7 @@ import { normaliseChatEvent, replyText, replyUpdateMessage, replyDialog, replyDi
 import { allClients, sql } from "@/lib/db";
 import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
-import { resolveClientFromText, fuzzyClientFromText, stripClientPrefix } from "@/lib/resolve";
+import { resolveClientFromText, fuzzyClientFromText, correctName, stripClientPrefix } from "@/lib/resolve";
 import { postAck, postText, humanOutcome, threadTopic, closeNeedsHumanCard, messageThreadKey, type ThreadTopic } from "@/lib/review";
 import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, estimateMinutes, hintPhrases } from "@/lib/transcribe";
 import { isAcknowledgement } from "@/lib/filter/noise";
@@ -174,7 +174,10 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   let m = baseMessage(msg, raw, sender, text, clients);
   if (transcriptNote) {
     m = { ...m, raw: { ...(m.raw as Record<string, unknown> | null ?? {}), voice: true } };
-    if (!m.clientId) { const f = fuzzyClientFromText(text, clients); if (f) m = { ...m, clientId: f.client.id, scope: f.client.scope }; }
+    if (!m.clientId) {
+      const f = fuzzyClientFromText(text, clients);
+      if (f) m = { ...m, clientId: f.client.id, scope: f.client.scope, text: stripClientPrefix(correctName(m.text, f.matched, f.client.name), f.client) };
+    }
   }
   if (!m.clientId && msg.thread?.name) {
     // A reply inside a thread belongs to that thread's client: "also broken on tablet" under the HOH forward is HOH.
@@ -202,13 +205,19 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
     await say(`${transcriptNote ? `Heard: "${m.text.replace(/\s+/g, " ").slice(0, 200)}"\n` : ""}Which client is this for? Reply here with the name.`);
     return;
   }
-  if (result.outcome === "review" && n) {
-    // Short or uncertain asks: say what was filed and invite detail in the same thread (a reply there lands on the card).
-    const reqs = await sql()`select draft->>'title' as title, confidence from requests where id = any(${result.requestIds ?? []}::uuid[]) and status in ('pending_review','needs_scope')`;
+  const heard = transcriptNote ? `Heard: "${m.text.replace(/\s+/g, " ").slice(0, 200)}${m.text.length > 200 ? "…" : ""}"\n` : "";
+  if ((result.outcome === "review" || result.outcome === "attached") && n) {
+    // What happened to each ask: filed as a new card, or added to an existing card (merged). Say so only when it helps:
+    // a voice note (so the words can be checked), a short or uncertain ask, or an attach (the feed line alone is easy to miss).
+    const reqs = await sql()`
+      select r.status, coalesce(mt.draft->>'title', r.draft->>'title') as title, r.confidence
+      from requests r left join requests mt on mt.id = r.merged_into where r.id = any(${result.requestIds ?? []}::uuid[])`;
+    const filed = reqs.filter((r) => r.status !== "merged").map((r) => String(r.title));
+    const added = reqs.filter((r) => r.status === "merged").map((r) => String(r.title));
     const vague = m.text.trim().split(/\s+/).length < 10 || reqs.some((r) => Number(r.confidence) < 0.7);
-    const heard = transcriptNote ? `Heard: "${m.text.replace(/\s+/g, " ").slice(0, 200)}${m.text.length > 200 ? "…" : ""}"\n` : "";
-    if (vague && reqs.length) await say(`${heard}Filed: ${reqs.map((r) => String(r.title)).join("; ")}. Anything to add or correct (which page, a link, a deadline)? Reply here and it goes on the card.`);
-    else if (transcriptNote) await say(`${heard}Filed: ${reqs.map((r) => String(r.title)).join("; ")}. Reply here to correct or add anything.`);
+    const parts = [filed.length ? `Filed: ${filed.join("; ")}.` : "", added.length ? `Added to the existing card: ${added.join("; ")}.` : ""].filter(Boolean).join(" ");
+    if (result.outcome === "attached" && !reqs.length) { if (transcriptNote) await say(`${heard}Added to the existing card in this thread.`); return; }
+    if (transcriptNote || vague || added.length) await say(`${heard}${parts} Reply here to correct or add anything.`);
     return;
   }
   await say(`Nothing created: ${humanOutcome(result.outcome, result.reason)}${transcriptNote}`);
