@@ -24,9 +24,10 @@ Be literal and brief. No advice, no extra commentary.
 When the message is a voice-note transcript: words may be misheard. Keep to ONE ask unless the speaker clearly lists separate things.
 Never add details (colours, versions, dates, counts) that are not in the words. When unsure what was meant, keep the ask general ("fix the homepage images") rather than specific.`;
 
-export async function extract(opts: { text: string; channel: string; clientName: string | null; messageId: string | null; voice?: boolean }): Promise<Extraction> {
+export async function extract(opts: { text: string; channel: string; clientName: string | null; messageId: string | null; voice?: boolean; knownNames?: string[] }): Promise<Extraction> {
   const user = [
     `Channel: ${opts.channel}${opts.voice ? " (voice-note transcript, may contain misheard words)" : ""}`,
+    ...(opts.voice && opts.knownNames?.length ? [`Names the speaker may have said (possibly misheard): ${opts.knownNames.join(", ")}`] : []),
     `Client: ${opts.clientName ?? "unknown"}`,
     "",
     "Message:",

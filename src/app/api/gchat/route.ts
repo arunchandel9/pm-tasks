@@ -5,7 +5,7 @@ import { normaliseChatEvent, replyText, replyUpdateMessage, replyDialog, replyDi
 import { allClients, sql } from "@/lib/db";
 import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
-import { resolveClientFromText, stripClientPrefix } from "@/lib/resolve";
+import { resolveClientFromText, fuzzyClientFromText, stripClientPrefix } from "@/lib/resolve";
 import { postAck, postText, humanOutcome, threadTopic, closeNeedsHumanCard, messageThreadKey, type ThreadTopic } from "@/lib/review";
 import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, estimateMinutes, hintPhrases } from "@/lib/transcribe";
 import { isAcknowledgement } from "@/lib/filter/noise";
@@ -172,7 +172,10 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   }
 
   let m = baseMessage(msg, raw, sender, text, clients);
-  if (transcriptNote) m = { ...m, raw: { ...(m.raw as Record<string, unknown> | null ?? {}), voice: true } };
+  if (transcriptNote) {
+    m = { ...m, raw: { ...(m.raw as Record<string, unknown> | null ?? {}), voice: true } };
+    if (!m.clientId) { const f = fuzzyClientFromText(text, clients); if (f) m = { ...m, clientId: f.client.id, scope: f.client.scope }; }
+  }
   if (!m.clientId && msg.thread?.name) {
     // A reply inside a thread belongs to that thread's client: "also broken on tablet" under the HOH forward is HOH.
     const root = await sql()`select client_id, scope from messages where thread_ref = ${msg.thread.name} and client_id is not null order by created_at asc limit 1`;
@@ -195,13 +198,17 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   const result = await processMessage(m, { skip: false, reason: null });
   const n = result.requestIds?.length ?? 0;
   // The DM answers only when the sender must act or nothing was created; the feed lines are the receipt for created tasks.
-  if (result.outcome === "review" && result.reason === "unknown_client") { await say("Which client is this for? Reply here with the name."); return; }
+  if (result.outcome === "review" && result.reason === "unknown_client") {
+    await say(`${transcriptNote ? `Heard: "${m.text.replace(/\s+/g, " ").slice(0, 200)}"\n` : ""}Which client is this for? Reply here with the name.`);
+    return;
+  }
   if (result.outcome === "review" && n) {
     // Short or uncertain asks: say what was filed and invite detail in the same thread (a reply there lands on the card).
     const reqs = await sql()`select draft->>'title' as title, confidence from requests where id = any(${result.requestIds ?? []}::uuid[]) and status in ('pending_review','needs_scope')`;
     const vague = m.text.trim().split(/\s+/).length < 10 || reqs.some((r) => Number(r.confidence) < 0.7);
-    if (vague && reqs.length) await say(`Filed: ${reqs.map((r) => String(r.title)).join("; ")}${transcriptNote}. Anything to add (which page, a link, a deadline)? Reply here and it goes on the card.`);
-    else if (transcriptNote) await say(`Done: ${n} task${n > 1 ? "s" : ""} in the feed${transcriptNote}.`);
+    const heard = transcriptNote ? `Heard: "${m.text.replace(/\s+/g, " ").slice(0, 200)}${m.text.length > 200 ? "…" : ""}"\n` : "";
+    if (vague && reqs.length) await say(`${heard}Filed: ${reqs.map((r) => String(r.title)).join("; ")}. Anything to add or correct (which page, a link, a deadline)? Reply here and it goes on the card.`);
+    else if (transcriptNote) await say(`${heard}Filed: ${reqs.map((r) => String(r.title)).join("; ")}. Reply here to correct or add anything.`);
     return;
   }
   await say(`Nothing created: ${humanOutcome(result.outcome, result.reason)}${transcriptNote}`);

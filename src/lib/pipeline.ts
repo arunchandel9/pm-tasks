@@ -97,7 +97,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
 
   // Model call 1.
   const voice = !!(m.raw as { voice?: boolean } | null)?.voice;
-  const ex = await extract({ text: m.text, channel: m.channel, clientName: client?.name ?? null, messageId, voice });
+  const ex = await extract({ text: m.text, channel: m.channel, clientName: client?.name ?? null, messageId, voice, knownNames: voice ? clients.filter((c) => c.scope === "client").map((c) => c.name) : undefined });
   // Guard: a problem statement is always an ask, whatever the model said ("… is not working" → fix it).
   if ((!ex.is_request || ex.asks.length === 0) && PROBLEM.test(m.text) && m.text.trim().split(/\s+/).length >= 3) {
     ex.is_request = true;

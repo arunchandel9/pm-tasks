@@ -21,3 +21,17 @@ describe("resolve client from pasted text", () => {
   it("never resolves to internal", () => expect(resolveClientFromText("MangoEyes internal: idea for the newsletter", clients)).toBeNull());
   it("strips the prefix", () => expect(stripClientPrefix("Clinic X: booking button broken", clients[0])).toBe("booking button broken"));
 });
+
+describe("fuzzy client match for voice transcripts", () => {
+  it("accepts misheard names and rejects unrelated words", async () => {
+    const { fuzzyClientFromText } = await import("../src/lib/resolve");
+    const clients = [
+      { id: "abela", name: "Abela", scope: "client", aliases: [], slackChannels: [], emailDomains: [], whatsappNumbers: [], boards: {}, clientFacingAck: false },
+      { id: "ted", name: "The Eye Doctor", scope: "client", aliases: ["TED"], slackChannels: [], emailDomains: [], whatsappNumbers: [], boards: {}, clientFacingAck: false },
+    ] as unknown as import("../src/lib/types").Client[];
+    expect(fuzzyClientFromText("a bella needs new homepage images", clients)?.client.id).toBe("abela");
+    expect(fuzzyClientFromText("for Abella please change the hero", clients)?.client.id).toBe("abela");
+    expect(fuzzyClientFromText("the eye doctors footer hours", clients)?.client.id).toBe("ted");
+    expect(fuzzyClientFromText("the homepage images are not good", clients)).toBeNull();
+  });
+});
