@@ -32,17 +32,17 @@ export function hintPhrases(clientNames: string[]): string[] {
   return [...set].slice(0, 500);
 }
 
-async function recognizeV2(buf: Buffer, model: string, hints: string[] = []): Promise<string> {
-  const location = process.env.SPEECH_LOCATION || "us-central1";
+async function recognizeV2(buf: Buffer, model: string, hints: string[] = [], location = "us", language = "en-IN"): Promise<string> {
   const project = credentials().project_id;
   const client = await auth().getClient();
   const token = (await client.getAccessToken()).token;
-  const res = await fetch(`https://${location}-speech.googleapis.com/v2/projects/${project}/locations/${location}/recognizers/_:recognize`, {
+  const host = location === "global" ? "speech.googleapis.com" : `${location}-speech.googleapis.com`;
+  const res = await fetch(`https://${host}/v2/projects/${project}/locations/${location}/recognizers/_:recognize`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       config: {
-        autoDecodingConfig: {}, languageCodes: [process.env.SPEECH_LANGUAGE || "en-IN"], model, features: { enableAutomaticPunctuation: true },
+        autoDecodingConfig: {}, languageCodes: [language], model, features: { enableAutomaticPunctuation: true },
         ...(hints.length ? { adaptation: { phraseSets: [{ inlinePhraseSet: { phrases: hints.map((value) => ({ value, boost: 10 })) } }] } } : {}),
       },
       content: buf.toString("base64"),
@@ -116,12 +116,15 @@ export async function transcribeAudio(buf: Buffer, contentType: string, fileName
   // First choice: v2 with Chirp, then v2's long model. Both decode the file themselves. v1 below is the fallback.
   diag.seconds = Math.round(seconds);
   if (seconds <= 58 && buf.length < 9_000_000 && process.env.SPEECH_V2 !== "off") {
-    for (const model of [process.env.SPEECH_MODEL || "chirp_3", "long"]) {
+    // Chirp lives in the multi-region locations ("us", "eu"), not in single regions; "long" with Indian English is global.
+    const tries = (process.env.SPEECH_V2_TRIES || "us:chirp_3:en-IN,us:chirp_2:en-IN,global:long:en-IN,us:chirp_3:en-US").split(",").map((t) => t.trim().split(":"));
+    for (const [location, model, language] of tries) {
+      const label = `v2:${model}@${location}/${language}`;
       try {
-        const t = await recognizeV2(buf, model, hints);
-        if (words(t)) { await noteVoice({ ...diag, engine: `v2:${model}`, words: words(t), text: t.slice(0, 120) }); return { text: t }; }
-        (diag.errors as string[]).push(`v2:${model}: empty`);
-      } catch (e) { (diag.errors as string[]).push(`v2:${model}: ${(e as Error).message.slice(0, 160)}`); }
+        const t = await recognizeV2(buf, model, hints, location, language);
+        if (words(t)) { await noteVoice({ ...diag, engine: label, words: words(t), text: t.slice(0, 120) }); return { text: t }; }
+        (diag.errors as string[]).push(`${label}: empty`);
+      } catch (e) { (diag.errors as string[]).push(`${label}: ${(e as Error).message.slice(0, 160)}`); }
     }
   }
   try {
