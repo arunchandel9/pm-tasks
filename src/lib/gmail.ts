@@ -5,6 +5,8 @@ import { noise as noiseConfig } from "./config";
 import { allClients, sql } from "./db";
 import { processMessage } from "./pipeline";
 import { postAck, humanOutcome } from "./review";
+import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, hintPhrases } from "./transcribe";
+import { fuzzyClientFromText } from "./resolve";
 import type { Message } from "./types";
 
 /**
@@ -168,6 +170,18 @@ export async function markProcessed(id: string): Promise<void> {
 const staffDomains = () => (process.env.STAFF_EMAIL_DOMAINS ?? "mangoeyesagency.com").split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
 const isStaffEmail = (e: string) => staffDomains().some((d) => e.endsWith("@" + d));
 
+/** Attachments that are audio by type or name (WhatsApp voice notes shared to Gmail arrive as PTT-…, often octet-stream). */
+export function audioParts(payload: gmail_v1.Schema$MessagePart | undefined): Array<{ attachmentId: string; filename: string; mimeType: string }> {
+  const out: Array<{ attachmentId: string; filename: string; mimeType: string }> = [];
+  const walk = (p: gmail_v1.Schema$MessagePart) => {
+    const id = p.body?.attachmentId, name = p.filename ?? "", mime = (p.mimeType ?? "").toLowerCase();
+    if (id && name && !/^image\//.test(mime) && (isAudio(mime, name) || mime === "application/octet-stream")) out.push({ attachmentId: id, filename: name, mimeType: mime });
+    for (const c of p.parts ?? []) walk(c);
+  };
+  if (payload) walk(payload);
+  return out;
+}
+
 /** Turn one mail into a hub Message and run it. Returns a short outcome for the poll report. */
 export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> {
   const mail = parseMail(raw);
@@ -182,25 +196,50 @@ export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> 
   const senderName = (mail.originalFrom ?? mail.from).replace(/<[^>]+>/, "").replace(/"/g, "").trim() || senderEmail;
   const senderIsStaff = isStaffEmail(senderEmail);
   const subjectClean = mail.subject.replace(/^\s*((fwd?|fw|re)\s*:\s*)+/i, "").trim();
-  const composed = [subjectClean ? `Subject: ${subjectClean}` : "", mail.note, mail.body].filter(Boolean).join("\n\n").trim();
+
+  // Voice notes shared to the mailbox from a phone: transcribe them and treat the words as the body.
+  let voice = false, transcriptNote = "", longJob: import("./transcribe").LongJob | null = null;
+  const transcripts: string[] = [];
+  for (const a of audioParts(raw.payload)) {
+    try {
+      const att = await gmail().users.messages.attachments.get({ userId: "me", messageId: mail.id, id: a.attachmentId });
+      const buf = Buffer.from(String(att.data.data ?? ""), "base64");
+      if (!isAudio(a.mimeType, a.filename) && !sniffAudio(buf)) continue;
+      const hints = hintPhrases(clients.flatMap((c) => [c.name, ...(c.aliases ?? [])]));
+      const t = await transcribeAudio(buf, a.mimeType, a.filename, hints);
+      if ("text" in t && t.text) { transcripts.push(t.text); voice = true; }
+      else if ("tooLong" in t) { longJob = await startLongTranscription(buf, a.mimeType, a.filename, undefined, hints); voice = true; }
+      else transcriptNote = ` (voice note could not be transcribed: ${"error" in t ? t.error : "unknown"})`;
+    } catch (e) { transcriptNote = ` (voice note failed: ${(e as Error).message.slice(0, 120)})`; }
+  }
+  const composed = [subjectClean ? `Subject: ${subjectClean}` : "", mail.note, mail.body, ...transcripts].filter(Boolean).join("\n\n").trim();
 
   const verdict = emailNoise({ from: senderEmail, fromIsStaff: senderIsStaff, isForward: mail.isForward, headers: mail.headers, text: composed }, noiseConfig());
 
   // Client: the subject/note ("HOH: ...", "[PSS]"), the original sender's domain, then the forwarder's note text.
   const hit = resolveClientFromText(`${subjectClean}\n${mail.note}`, clients)
     ?? resolveClientFromText(senderEmail, clients)
-    ?? resolveClientFromText(composed.slice(0, 400), clients);
+    ?? resolveClientFromText(composed.slice(0, 400), clients)
+    ?? (voice ? fuzzyClientFromText(composed.slice(0, 600), clients) : null);
   const m: Message = {
     channel: "email", externalId: mail.id, teamId: null, clientId: hit?.client.id ?? null, scope: hit ? hit.client.scope : "unknown",
     sender: `${senderName} <${senderEmail}>`, senderIsStaff, sentAt: mail.date,
     text: hit ? stripClientPrefix(composed, hit.client) : composed,
     permalink: `https://mail.google.com/mail/u/0/#all/${mail.id}`, threadRef: mail.threadId,
-    raw: { gmail: { id: mail.id, messageId: rfcId, threadId: mail.threadId, subject: mail.subject, from: mail.from, to: mail.to, isForward: mail.isForward, originalFrom: mail.originalFrom } },
+    raw: { gmail: { id: mail.id, messageId: rfcId, threadId: mail.threadId, subject: mail.subject, from: mail.from, to: mail.to, isForward: mail.isForward, originalFrom: mail.originalFrom }, ...(voice ? { voice: true } : {}) },
   };
+  if (longJob) {
+    // Long voice note: store now, let the minute tick finish it (queue job transcribe_poll → process_message).
+    const stored = await sql()`insert into messages (channel, external_id, client_id, scope, sender, sender_is_staff, sent_at, text, text_hash, permalink, thread_ref, raw, skip_reason)
+      values ('email', ${m.externalId}, ${m.clientId}, ${m.scope}, ${m.sender}, ${m.senderIsStaff}, ${m.sentAt.toISOString()}, ${m.text}, ${m.externalId}, ${m.permalink}, ${m.threadRef}, ${JSON.stringify(m.raw)}::jsonb, 'transcribing')
+      on conflict (channel, external_id) do nothing returning id`;
+    if (stored.length) await sql()`insert into queue (kind, payload, next_run_at) values ('transcribe_poll', ${JSON.stringify({ messageId: stored[0].id, job: longJob, typed: m.text })}::jsonb, now() + interval '60 seconds')`;
+    return `${subjectClean.slice(0, 40)} → long voice note, transcribing`;
+  }
   const result = await processMessage(m, verdict);
   const n = result.requestIds?.length ?? 0;
   if (!(result.outcome === "review" && n) && !(result.outcome === "skipped" && verdict.skip)) {
-    await postAck({ message: { ...m, text: subjectClean || m.text }, outcome: result.outcome, detail: humanOutcome(result.outcome, result.reason) });
+    await postAck({ message: { ...m, text: subjectClean || m.text }, outcome: result.outcome, detail: `${humanOutcome(result.outcome, result.reason)}${transcriptNote}` });
   }
   return `${subjectClean.slice(0, 40)} → ${result.outcome}${result.reason ? ` (${result.reason})` : ""}`;
 }
