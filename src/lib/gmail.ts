@@ -140,13 +140,14 @@ async function labelId(): Promise<string> {
 
 /**
  * Mails to the intake address the hub has not seen, newest 20, oldest first. The database is the guard (ids already
- * stored are skipped); the Gmail label is a convenience for people. Sent copies are excluded: forwarding from the
- * mailbox to its own alias leaves one in Sent and one in the inbox.
+ * stored are skipped); the Gmail label is a convenience for people. Sent mail is NOT excluded: the intake address is
+ * an alias of this mailbox, so a mail the owner sends or forwards to it is ONE Gmail message carrying both the Sent
+ * and Inbox labels (Gmail keeps a single copy per Message-ID). Excluding Sent would drop every self-sent mail.
  */
 export async function fetchNewMails(): Promise<gmail_v1.Schema$Message[]> {
   const g = gmail();
   const addr = intakeAddress();
-  const q = `${addr ? `to:${addr} ` : ""}-label:"${LABEL}" -in:sent newer_than:3d -in:spam -in:trash`;
+  const q = `${addr ? `to:${addr} ` : ""}-label:"${LABEL}" newer_than:3d -in:spam -in:trash`;
   const list = await g.users.messages.list({ userId: "me", q, maxResults: 20 });
   const ids = (list.data.messages ?? []).map((m) => m.id!).reverse();
   if (!ids.length) return [];
