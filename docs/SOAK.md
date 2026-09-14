@@ -46,6 +46,8 @@ Roles: **A** = Arun · **H** = the hub builder (me) · **PM** = one project mana
 | A15 | 2.2 | A | DM: `HOH: two things - the blog page is slow, and can we get a reel for the new laser` | Two feed lines in one post, two cards (Dev and Video). |
 | A16 | 2.5 | covered by A1 | | |
 
+Progress (14 Sep): passed A1, A2, A3, A5, A13, A14, A15, and the thread-reply part of B10. Open: A6, A7, A8 (mail), A9, A10 (Slack, need 0.2), A11 (Meet, need 0.9), A12 (need PM keys).
+
 ## Block B — cards, approval, sheet (30 min)
 
 | # | Register | Who | Do | Pass |
