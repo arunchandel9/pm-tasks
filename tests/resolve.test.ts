@@ -18,6 +18,12 @@ describe("resolve client from pasted text", () => {
   it("email domain from a pasted email", () => expect(resolveClientFromText("From: Priya <priya@clinicx.co.uk>\nHi, can you swap the hero image", clients)?.how).toBe("email_domain"));
   it("whatsapp number", () => expect(resolveClientFromText("+447700900123: hi, the form isn't sending", clients)?.how).toBe("whatsapp_number"));
   it("unknown", () => expect(resolveClientFromText("someone said the site is slow", clients)).toBeNull());
+  it("tells a bare client name from a short ask", async () => {
+    const { isNameOnly } = await import("../src/lib/resolve");
+    const ted = c("ted", "The Eye Doctor", { aliases: ["TED", "Eye Doctor"] });
+    for (const t of ["TED", "ted", "The Eye Doctor", "this is for TED", "client: The Eye Doctor", "Eye Doctor please"]) expect(isNameOnly(t, ted), t).toBe(true);
+    for (const t of ["TED: update the footer hours", "TED fix popup", "The Eye Doctor site is down", "HOH"]) expect(isNameOnly(t, ted), t).toBe(false);
+  });
   it("alias only as a whole word, never inside another word", () => {
     const withTed = [...clients, c("ted", "The Eye Doctor", { aliases: ["TED", "Eye Doctor"] })];
     expect(resolveClientFromText("the reviews need to be reported and deleted", withTed)).toBeNull();

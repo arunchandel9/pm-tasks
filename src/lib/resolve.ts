@@ -90,6 +90,18 @@ export function resolveClientFromText(text: string, clients: Client[]): { client
   return null;
 }
 
+/**
+ * "HOH", "this is for PSS", "client: Abela" name a client and ask nothing. "HOH: fix the popup" is an ask.
+ * True when nothing but the client's name (or alias) and filler words is left.
+ */
+const NAME_FILLER = new Set(["this", "is", "for", "its", "it", "client", "the", "from", "message", "below", "above", "one", "that", "a", "an", "of", "and", "please", "re"]);
+export function isNameOnly(text: string, client: Client): boolean {
+  let t = text.toLowerCase();
+  for (const n of [client.name, client.id, ...(client.aliases ?? [])].sort((a, b) => b.length - a.length)) t = t.replace(wholeWord(norm(n)), " ");
+  const rest = t.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w && !NAME_FILLER.has(w));
+  return rest.length === 0;
+}
+
 /** Strip a leading "Client:" prefix so the model doesn't treat the label as part of the ask. */
 export function stripClientPrefix(text: string, client: Client): string {
   const names = [client.name, client.id, ...(client.aliases ?? [])].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));

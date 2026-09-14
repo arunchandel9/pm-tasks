@@ -6,7 +6,7 @@
  */
 import { allClients, sql } from "./db";
 import { processMessage } from "./pipeline";
-import { resolveClientFromText, fuzzyClientFromText, stripClientPrefix } from "./resolve";
+import { resolveClientFromText, fuzzyClientFromText, stripClientPrefix, isNameOnly } from "./resolve";
 import { postText, humanOutcome, closeNeedsHumanCard, messageThreadKey, askWhichClient, suggestedClientOf } from "./review";
 import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, estimateMinutes, hintPhrases } from "./transcribe";
 import { isAcknowledgement, isAffirmative } from "./filter/noise";
@@ -31,7 +31,7 @@ export async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space:
   // client for a message sent just before (same thread, or the last 30 minutes in a direct chat) or about to be sent (kept 15 min).
   const nameHit = resolveClientFromText(text, clients);
   const yes = !nameHit && isAffirmative(text);
-  if (((nameHit && text.split(/\s+/).length <= 5) || yes) && !msg.attachment?.length) {
+  if (((nameHit && isNameOnly(text, nameHit.client)) || yes) && !msg.attachment?.length) {
     const pending = await sql()`
       select id, raw from messages where channel = 'intake' and client_id is null and skip_reason in ('unknown_client', 'attachment_only')
         and (${msg.thread?.name ?? null}::text is not null and thread_ref = ${msg.thread?.name ?? null} or (${msg.thread?.name ?? null}::text is null and sender = ${sender} and created_at > now() - interval '30 minutes'))
