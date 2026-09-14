@@ -58,6 +58,9 @@ describe("email rules", () => {
     expect(emailNoise({ ...e, from: "arun@mangoeyesagency.com", fromIsStaff: true }, cfg).reason).toBe("staff_outgoing");
     expect(emailNoise({ ...e, from: "arun@mangoeyesagency.com", fromIsStaff: true, isForward: true }, cfg).skip).toBe(false);
   });
+  it("keeps staff mail addressed to the intake address (typed ask or shared voice note)", () => {
+    expect(emailNoise({ ...e, from: "arun@mangoeyesagency.com", fromIsStaff: true, toIntake: true }, cfg).skip).toBe(false);
+  });
   it("strips quoted history", () => {
     const t = "Please swap the hero image.\n\nOn Mon, 8 Sep 2026 at 10:00, Arun <arun@mangoeyesagency.com> wrote:\n> old stuff\n> more old stuff";
     expect(stripQuotedHistory(t).trim()).toBe("Please swap the hero image.");

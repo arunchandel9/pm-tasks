@@ -2,7 +2,7 @@ import { google, type gmail_v1 } from "googleapis";
 import { resolveClientFromText, stripClientPrefix } from "./resolve";
 import { emailNoise, stripQuotedHistory } from "./filter/noise";
 import { noise as noiseConfig } from "./config";
-import { allClients, sql } from "./db";
+import { allClients, enqueue, sql } from "./db";
 import { processMessage } from "./pipeline";
 import { postAck, humanOutcome } from "./review";
 import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, hintPhrases } from "./transcribe";
@@ -215,7 +215,7 @@ export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> 
   }
   const composed = [subjectClean ? `Subject: ${subjectClean}` : "", mail.note, mail.body, ...transcripts].filter(Boolean).join("\n\n").trim();
 
-  const verdict = emailNoise({ from: senderEmail, fromIsStaff: senderIsStaff, isForward: mail.isForward, headers: mail.headers, text: composed }, noiseConfig());
+  const verdict = emailNoise({ from: senderEmail, fromIsStaff: senderIsStaff, isForward: mail.isForward, toIntake: sentToIntake(mail.to), headers: mail.headers, text: composed }, noiseConfig());
 
   // Client: the subject/note ("HOH: ...", "[PSS]"), the original sender's domain, then the forwarder's note text.
   const hit = resolveClientFromText(`${subjectClean}\n${mail.note}`, clients)
@@ -246,10 +246,33 @@ export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> 
   return `${subjectClean.slice(0, 40)} → ${result.outcome}${result.reason ? ` (${result.reason})` : ""}`;
 }
 
+/** Is the intake address in the To line (not just Cc)? A staff mail addressed to the hub is an intake, not outgoing mail. */
+export function sentToIntake(to: string): boolean {
+  const addr = intakeAddress();
+  return !!addr && to.toLowerCase().includes(addr);
+}
+
+/**
+ * Self-heal: mails a person addressed to the hub that an older rule dropped as "staff outgoing" (before 2026-09-14) are
+ * re-run once. process_message deletes and re-inserts the row, so a re-run never repeats: the reason changes or a request appears.
+ */
+async function requeueDroppedIntakeMails(): Promise<number> {
+  const addr = intakeAddress();
+  if (!addr) return 0;
+  const rows = await sql()`select id from messages where channel = 'email' and skip_reason = 'staff_outgoing' and created_at > now() - interval '3 days'
+    and lower(coalesce(raw->'gmail'->>'to', '')) like ${"%" + addr + "%"} limit 20`;
+  for (const r of rows) {
+    await sql()`update messages set skip_reason = 'requeued' where id = ${r.id}`;
+    await enqueue("process_message", { messageId: String(r.id) }, 0);
+  }
+  return rows.length;
+}
+
 /** One poll: read new mails, process each, label it. Errors are per mail so one bad mail never blocks the rest. */
 export async function pollMailbox(): Promise<{ read: number; outcomes: string[]; errors: string[] }> {
   const outcomes: string[] = [], errors: string[] = [];
   let mails: gmail_v1.Schema$Message[] = [];
+  try { const n = await requeueDroppedIntakeMails(); if (n) outcomes.push(`${n} mail(s) to ${intakeAddress()} re-run (were dropped as staff outgoing)`); } catch (e) { errors.push(`requeue: ${(e as Error).message.slice(0, 120)}`); }
   try { mails = await fetchNewMails(); } catch (e) { return { read: 0, outcomes, errors: [(e as Error).message.slice(0, 200)] }; }
   for (const raw of mails) {
     try {

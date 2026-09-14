@@ -53,6 +53,8 @@ export interface EmailNoiseInput {
   from: string;
   fromIsStaff: boolean;
   isForward: boolean;
+  /** The intake address is in the To line: a person wrote to the hub on purpose (typed ask, shared voice note). */
+  toIntake?: boolean;
   headers: Record<string, string>;
   text: string;
 }
@@ -61,7 +63,8 @@ export function emailNoise(m: EmailNoiseInput, cfg: NoiseConfig): NoiseVerdict {
   const from = m.from.toLowerCase();
   const allow = cfg.email_allow_senders.some((s) => from.includes(s.toLowerCase()));
   if (!allow) {
-    if (m.fromIsStaff && !m.isForward) return { skip: true, reason: "staff_outgoing" };
+    // Staff mail is "outgoing" (a reply to a client that copies the hub) only when it is neither a forward nor addressed to the hub.
+    if (m.fromIsStaff && !m.isForward && !m.toIntake) return { skip: true, reason: "staff_outgoing" };
     if (cfg.email_skip_senders.some((s) => from.includes(s.toLowerCase()))) return { skip: true, reason: "automated_sender" };
     const h = Object.fromEntries(Object.entries(m.headers).map(([k, v]) => [k.toLowerCase(), v.toLowerCase()]));
     if (h["auto-submitted"] && h["auto-submitted"] !== "no") return { skip: true, reason: "auto_submitted" };
