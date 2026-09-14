@@ -55,9 +55,9 @@ Last updated: 2026-09-09 (build day 2).
   client name in that thread, or the next message in the DM within 30 min, sets the client and processes it; the PM
   Review card is replaced by one line. A name sent *before* the forward is kept 15 min (`client_hint:<sender>`) and
   applied to the next message without a client. Answering from PM Review (dropdown or thread reply) still works.
-- **Email intake** (built 2026-09-09). `intake@mangoeyesagency.com` is an alias of arun@mangoeyesagency.com, so
-  `GMAIL_MAILBOX=arun@mangoeyesagency.com` and `GMAIL_INTAKE_ADDRESS=intake@mangoeyesagency.com` (set in Vercel
-  2026-09-09). Domain-wide delegation added for service-account unique id 117215744015492300607 with gmail.readonly +
+- **Email intake** (built 2026-09-09). The intake address is an alias of arun@mangoeyesagency.com, so
+  `GMAIL_MAILBOX=arun@mangoeyesagency.com` and `GMAIL_INTAKE_ADDRESS=taskhub@mangoeyesagency.com,intake@mangoeyesagency.com`
+  (renamed 2026-09-14 on Arun's decision; comma-separated list, drop intake@ once the team has switched). Domain-wide delegation added for service-account unique id 117215744015492300607 with gmail.readonly +
   gmail.modify. Service account project role: Storage Admin only (for the voice bucket).
   Service account impersonates it via domain-wide delegation (scopes gmail.readonly + gmail.modify). Every minute:
   mails to the intake address without the Gmail label "Task Hub" (newer than 3 days) are parsed (forwards read from

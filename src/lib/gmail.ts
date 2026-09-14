@@ -21,7 +21,12 @@ export const gmailConfigured = () => !!process.env.GOOGLE_SERVICE_ACCOUNT_B64 &&
 /** The Google Workspace user the hub reads as. An alias is not a user: set the real mailbox that owns the alias. */
 export const mailbox = () => (process.env.GMAIL_MAILBOX ?? "").trim().toLowerCase();
 /** The address mails are sent to (the alias), used to filter the inbox. Defaults to the mailbox. */
-export const intakeAddress = () => (process.env.GMAIL_INTAKE_ADDRESS ?? process.env.GMAIL_MAILBOX ?? "").trim().toLowerCase();
+/** The intake addresses, comma-separated in GMAIL_INTAKE_ADDRESS (e.g. "taskhub@…,intake@…" while the team switches). */
+export const intakeAddresses = () => (process.env.GMAIL_INTAKE_ADDRESS ?? process.env.GMAIL_MAILBOX ?? "").split(",").map((a) => a.trim().toLowerCase()).filter(Boolean);
+/** The main intake address (the first one), for display. */
+export const intakeAddress = () => intakeAddresses()[0] ?? "";
+/** Gmail search clause matching any intake address in To/Cc. */
+export const toIntakeQuery = () => { const a = intakeAddresses(); return a.length ? `{${a.map((x) => `to:${x}`).join(" ")}} ` : ""; };
 
 let _gmail: gmail_v1.Gmail | null = null;
 export function gmail(): gmail_v1.Gmail {
@@ -146,10 +151,9 @@ async function labelId(): Promise<string> {
  */
 export async function fetchNewMails(): Promise<gmail_v1.Schema$Message[]> {
   const g = gmail();
-  const addr = intakeAddress();
   // -in:drafts: the phone's share sheet writes a draft (To, subject, no attachment yet) a few seconds before it sends;
   // a poll in that window would read the draft as a mail of its own.
-  const q = `${addr ? `to:${addr} ` : ""}-label:"${LABEL}" newer_than:3d -in:spam -in:trash -in:drafts`;
+  const q = `${toIntakeQuery()}-label:"${LABEL}" newer_than:3d -in:spam -in:trash -in:drafts`;
   const list = await g.users.messages.list({ userId: "me", q, maxResults: 20 });
   const ids = (list.data.messages ?? []).map((m) => m.id!).reverse();
   if (!ids.length) return [];
@@ -258,8 +262,8 @@ export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> 
 
 /** Is the intake address in the To line (not just Cc)? A staff mail addressed to the hub is an intake, not outgoing mail. */
 export function sentToIntake(to: string): boolean {
-  const addr = intakeAddress();
-  return !!addr && to.toLowerCase().includes(addr);
+  const t = to.toLowerCase();
+  return intakeAddresses().some((a) => t.includes(a));
 }
 
 /**
@@ -267,15 +271,15 @@ export function sentToIntake(to: string): boolean {
  * re-run once. process_message deletes and re-inserts the row, so a re-run never repeats: the reason changes or a request appears.
  */
 async function requeueDroppedIntakeMails(): Promise<number> {
-  const addr = intakeAddress();
-  if (!addr) return 0;
-  const rows = await sql()`select id from messages where channel = 'email' and skip_reason = 'staff_outgoing' and created_at > now() - interval '3 days'
-    and lower(coalesce(raw->'gmail'->>'to', '')) like ${"%" + addr + "%"} limit 20`;
-  for (const r of rows) {
+  const addrs = intakeAddresses();
+  if (!addrs.length) return 0;
+  const rows = await sql()`select id, raw->'gmail'->>'to' as to_line from messages where channel = 'email' and skip_reason = 'staff_outgoing' and created_at > now() - interval '3 days' limit 50`;
+  const hits = rows.filter((r) => sentToIntake(String(r.to_line ?? "")));
+  for (const r of hits) {
     await sql()`update messages set skip_reason = 'requeued' where id = ${r.id}`;
     await enqueue("process_message", { messageId: String(r.id) }, 0);
   }
-  return rows.length;
+  return hits.length;
 }
 
 /** One poll: read new mails, process each, label it. Errors are per mail so one bad mail never blocks the rest. */

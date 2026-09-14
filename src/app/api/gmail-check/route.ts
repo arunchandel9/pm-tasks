@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cronAuthorized } from "@/lib/auth";
-import { gmail, gmailConfigured, mailbox, intakeAddress, parseMail } from "@/lib/gmail";
+import { gmail, gmailConfigured, mailbox, intakeAddresses, toIntakeQuery, parseMail } from "@/lib/gmail";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,14 +16,13 @@ export async function GET(req: Request) {
   try {
     const g = gmail();
     const profile = (await g.users.getProfile({ userId: "me" })).data;
-    const addr = intakeAddress();
-    const list = await g.users.messages.list({ userId: "me", q: `${addr ? `to:${addr} ` : ""}newer_than:7d -in:spam -in:trash`, maxResults: 5 });
+    const list = await g.users.messages.list({ userId: "me", q: `${toIntakeQuery()}newer_than:7d -in:spam -in:trash`, maxResults: 5 });
     const mails = [];
     for (const m of list.data.messages ?? []) {
       const p = parseMail((await g.users.messages.get({ userId: "me", id: m.id!, format: "full" })).data);
       mails.push({ subject: p.subject, from: p.from, isForward: p.isForward, originalFrom: p.originalFrom, date: p.date, note: p.note.slice(0, 120), body: p.body.slice(0, 200) });
     }
-    return NextResponse.json({ ok: true, readsAs: mailbox(), intakeAddress: addr, profileEmail: profile.emailAddress, messagesTotal: profile.messagesTotal, recent: mails });
+    return NextResponse.json({ ok: true, readsAs: mailbox(), intakeAddresses: intakeAddresses(), profileEmail: profile.emailAddress, messagesTotal: profile.messagesTotal, recent: mails });
   } catch (e) {
     const msg = (e as Error).message;
     const hint = /unauthorized_client|invalid_grant|Not Authorized|403/.test(msg)
