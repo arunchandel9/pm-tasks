@@ -147,7 +147,9 @@ async function labelId(): Promise<string> {
 export async function fetchNewMails(): Promise<gmail_v1.Schema$Message[]> {
   const g = gmail();
   const addr = intakeAddress();
-  const q = `${addr ? `to:${addr} ` : ""}-label:"${LABEL}" newer_than:3d -in:spam -in:trash`;
+  // -in:drafts: the phone's share sheet writes a draft (To, subject, no attachment yet) a few seconds before it sends;
+  // a poll in that window would read the draft as a mail of its own.
+  const q = `${addr ? `to:${addr} ` : ""}-label:"${LABEL}" newer_than:3d -in:spam -in:trash -in:drafts`;
   const list = await g.users.messages.list({ userId: "me", q, maxResults: 20 });
   const ids = (list.data.messages ?? []).map((m) => m.id!).reverse();
   if (!ids.length) return [];
@@ -155,7 +157,9 @@ export async function fetchNewMails(): Promise<gmail_v1.Schema$Message[]> {
   const out: gmail_v1.Schema$Message[] = [];
   for (const id of ids) {
     if (seen.has(id)) { markProcessed(id).catch(() => { /* label is best effort */ }); continue; }
-    out.push((await g.users.messages.get({ userId: "me", id, format: "full" })).data);
+    const full = (await g.users.messages.get({ userId: "me", id, format: "full" })).data;
+    if ((full.labelIds ?? []).includes("DRAFT")) continue; // belt and braces: search results can lag the label
+    out.push(full);
   }
   return out;
 }
