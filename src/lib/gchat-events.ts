@@ -12,6 +12,8 @@ export interface NormalisedEvent {
   format: "classic" | "addon";
   kind: "added" | "message" | "command" | "click" | "dialog_submit" | "other";
   space: string;
+  /** The space's display name, when Google sends it (added-to-space events do). */
+  spaceName?: string;
   /** Direct message with the app: every message is delivered, no mention needed. Treated like the Intake space. */
   isDm: boolean;
   user: { email?: string; displayName?: string };
@@ -38,7 +40,7 @@ export function normaliseChatEvent(ev: any, fnHint?: string | null): NormalisedE
     const c = ev.chat;
     const user = { email: c.user?.email, displayName: c.user?.displayName };
     const isDm = dmOf(c.addedToSpacePayload?.space ?? c.appCommandPayload?.space ?? c.buttonClickedPayload?.space ?? c.messagePayload?.space ?? c.messagePayload?.message?.space);
-    if (c.addedToSpacePayload) return { format: "addon", kind: "added", space: c.addedToSpacePayload.space?.name ?? "", isDm, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
+    if (c.addedToSpacePayload) return { format: "addon", kind: "added", space: c.addedToSpacePayload.space?.name ?? "", spaceName: c.addedToSpacePayload.space?.displayName ?? undefined, isDm, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
     if (c.appCommandPayload) {
       const meta = c.appCommandPayload.appCommandMetadata ?? {};
       return { format: "addon", kind: "command", space: c.appCommandPayload.space?.name ?? c.appCommandPayload.message?.space?.name ?? "", isDm, user, message: c.appCommandPayload.message ?? null, commandId: meta.appCommandId != null ? String(meta.appCommandId) : null, invokedFunction, parameters, formInputs };
@@ -58,7 +60,7 @@ export function normaliseChatEvent(ev: any, fnHint?: string | null): NormalisedE
   const user = { email: ev.user?.email, displayName: ev.user?.displayName };
   const space: string = ev.space?.name ?? ev.message?.space?.name ?? "";
   const isDm = dmOf(ev.space ?? ev.message?.space);
-  if (ev.type === "ADDED_TO_SPACE") return { format: "classic", kind: "added", space, isDm, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
+  if (ev.type === "ADDED_TO_SPACE") return { format: "classic", kind: "added", space, spaceName: ev.space?.displayName ?? undefined, isDm, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
   if (ev.isDialogEvent && ev.dialogEventType === "SUBMIT") return { format: "classic", kind: "dialog_submit", space, isDm, user, message: ev.message ?? null, commandId: null, invokedFunction, parameters, formInputs };
   if (ev.type === "CARD_CLICKED") return { format: "classic", kind: "click", space, isDm, user, message: ev.message ?? null, commandId: null, invokedFunction, parameters, formInputs };
   if (ev.type === "MESSAGE") {

@@ -23,6 +23,11 @@ Last updated: 2026-09-09 (build day 2).
   (share sheet showed only the service-account contact, "Direct message couldn't be created"). Reinstalling the app
   fixed it. The `task-hub@…` contact in Chat is the service account (from Drive sharing), never the app. Marketplace admin push
   considered 2026-09-11 and not done (three console prompts exist in the session if ever wanted). Guide step 1.
+  **Correction 2026-09-14:** the share-sheet failure was not the visibility box. Google's "Send to" sheet lists spaces
+  and directory people; an app's DM appears only while it is fresh in the phone's cache (proved: open the DM, send
+  "test", and the app is back in the list). So the phone path is the space **Task Hub Drop** (register row 1.13),
+  read by the hub itself every minute as Arun; the DM stays for typing on a computer. Space avatars are emoji only:
+  Drop 📥, Feed 📋, both on the orange background.
 
 - **Shape.** One Next.js app on Vercel (project `mangoeyes-task-hub`, domain `pm-tasks.vercel.app`, branch
   `claude/mangowise-task-automation-3qnd3k`), Neon Postgres via the Vercel integration (variable `storage_DATABASE_URL`,

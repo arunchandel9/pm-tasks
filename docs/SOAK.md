@@ -23,6 +23,7 @@ Roles: **A** = Arun · **H** = the hub builder (me) · **PM** = one project mana
 | 0.6 | Housekeeping in Pulp: archive the duplicate "To Do" lists; delete or drag the five meeting-made Staging cards | Done |
 | 0.7 | Housekeeping in the sheet: delete the HOH test row from milestone B | Done |
 | 0.8 | Everyone who will use the hub is a member of the feed space and has opened a DM with Task Hub (Chat app visibility set for the domain in the Cloud Console) | Confirmed |
+| 0.10 | Task Hub Drop space: created, the app and `all.team@` added, and the scope `https://www.googleapis.com/auth/chat.messages.readonly` authorised for the service account under domain-wide delegation | `chat_inbox_last` on hub_status shows the space and no errors |
 | 0.9 | Every meeting organiser (Arun, Saurav, each PM who hosts client calls) shares the Meet folder they own ("Meet Recordings" and "Google Meet", whichever exist in their My Drive, plain folder icon, not the ones with a person icon) with `task-hub@mangoeyes-task-hub.iam.gserviceaccount.com` as Viewer | `/api/meet-check` lists each organiser under `organisersCovered` |
 
 ## Block A — intake, every channel (40 min)
@@ -33,8 +34,9 @@ Roles: **A** = Arun · **H** = the hub builder (me) · **PM** = one project mana
 | A2 | 1.4 | A | DM with Task Hub: forward a WhatsApp text with no client name, nothing else typed | Hub asks for the client in the DM thread only. Reply `Abela`. One feed thread with the task line follows; no question card in the feed. |
 | A3 | 1.3 | PM | DM the Task Hub: `TED: please update the opening hours on the footer` | Feed line, Dev or Content, card. |
 | A4 | 1.5 | — | Dropped: the form is not taught. | — |
-| A5 | 1.6 | A | Forward a 30-second voice note, say the client name in it: on a computer drop it in the Task Hub chat; from the phone share it to Gmail → intake@ | Feed line with the transcribed ask. |
-| A6 | 1.7 | A | From the phone: WhatsApp → Share → Gmail → intake@mangoeyesagency.com, the long voice note from 0.5 (the phone share sheet cannot target the app DM; on a computer, drop it in the Task Hub chat) | Ack says it is transcribing. Feed line within about 5 min. Audio visible in the bucket `mangoeyes-task-hub-task-hub-voice`. |
+| A5 | 1.6 | A | Forward a 30-second voice note, say the client name in it: from the phone WhatsApp → Share → Chat → **Task Hub Drop**; on a computer drop it in the Task Hub DM | Feed line with the transcribed ask. |
+| A6 | 1.7 | A | From the phone: WhatsApp → Share → Chat → Task Hub Drop, a voice note over 2 minutes (Gmail → intake@ also works) | "Received, transcribing" line in the feed. Task line within about 5 min. Audio visible in the bucket `mangoeyes-task-hub-task-hub-voice`. |
+| A5b | 1.13 | A | Share a text into Task Hub Drop with no client name | Hub asks "which client?" in that message's thread within 2 min. Reply the name there; feed line follows. |
 | A7 | 1.8 | A | Email to intake@mangoeyesagency.com, subject `Abela: pricing page shows old prices`, two lines of body | Feed line within 2 min, label "Task Hub" on the mail. |
 | A8 | 1.8 | A | Forward a real client email to intake@ with the client name as the first line | Feed line, signature and quoted history not in the card. |
 | A9 | 1.1 | C | One line in an Abela Slack channel the app is in: `can you add the new offer banner to the home page` | Feed line, card with the Abela label. Staff replies in that channel produce nothing. |

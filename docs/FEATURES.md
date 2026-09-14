@@ -12,7 +12,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | # | Feature | How it works | Status |
 |---|---|---|---|
 | 1.1 | Client Slack channels | The Task Hub Slack app is installed in a client's workspace and invited to its channels. Every non-staff message is read; staff messages are ignored. Workspace T-id sits in the client's Config row (column D). | Live in Abela; other clients in the final round |
-| 1.2 | Google Chat: Intake space | Retired 2026-09-11: the DM with the app does everything with no mention. A group space still works if anyone wants one, with `@Task Hub` first (Google delivers a space message to an app only when mentioned). | Dropped |
+| 1.2 | Google Chat: Intake space | Retired 2026-09-11: the DM with the app does everything with no mention. Superseded by 1.13 (the Drop space, read by the hub itself, so no mention there either). | Dropped |
 | 1.3 | Google Chat: DM with Task Hub | The front door. Each person opens a DM with the app once (Chat → + → search "Task Hub" under Apps → Install). Forward a WhatsApp text, a voice note or a screenshot, or type an ask: no mention, delivered every time. On the phone, the share sheet lists Task Hub in its suggestions without typing; never search there (search covers people and spaces only) and never pick the `task-hub@…` service-account contact. If Task Hub ever vanishes from the share list, reinstall it: Chat → New chat → Apps → Task Hub → Install. Welcome text is one line. Client name can follow in the same thread. Source label in the feed and the sheet: "Task Hub, <name>". | Live |
 | 1.4 | Client name before or after | A forwarded message with no client name is held; the sender adds the client name in the same thread and processing continues. A prefix like "HOH: …" is stripped and used as the client. Any later reply in that thread belongs to the same client, so "also broken on tablet" needs no name. | Live |
 | 1.5 | `/task` form | Slash command that opens a dialog. Works, but not taught: Arun decided 2026-09-11 that the DM alone is simpler. Not in the guide, not in the welcome text. | Dropped from the guide (code kept) |
@@ -23,6 +23,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | 1.10 | MCP `add_request` | A PM's own Claude or Codex files a request straight into the hub. | Built |
 | 1.11 | Unknown client | If no client can be matched: from the DM, the hub asks in that thread and continues when the person replies with the name; from Slack, email or a meeting, a "which client?" card goes to the feed for anyone to answer. In the DM, "yes" accepts the hub's suggested client (voice notes), any client name overrides it. Either way the message is stored with reason `unknown_client` and listed under "Needs a person" in the summary until resolved. The feed carries finals only. | Live |
 | 1.12 | Kill switch | `INTAKE_PAUSED=1` in Vercel stops all intake without redeploying. | Built |
+| 1.13 | "Task Hub Drop" space (phone share) | The phone's share sheet lists spaces reliably but shows the app's DM only while it is fresh in the phone's cache (confirmed 2026-09-14). So the team shares text and voice notes into the space **Task Hub Drop**, no mention needed. Google does not push unmentioned space messages to an app, so the hub reads the space itself every minute as Arun (domain-wide delegation, scope `chat.messages.readonly`, same service account as the mailbox) and hands each new message to the same handler as a DM: same client rules, same voice path, same question in the message's thread, same feed lines. The space is found by name among the spaces the app is a member of (`GCHAT_INBOX_NAME`, default "Task Hub Drop"); only messages after the hub first looked are read; a mention in that space is ignored so nothing runs twice. Diagnostics: `chat_inbox_last` on health and hub_status. | Built 2026-09-14, awaiting the scope + first phone test |
 
 ## 2. Understanding the request
 
@@ -136,6 +137,8 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | `src/lib/tasks.ts`, `src/lib/pulp.ts` | 3.1, 3.2, 3.3, 3.8, 3.9 |
 | `src/lib/sheets.ts`, `src/lib/sheet-sync.ts`, `src/lib/sheet-cards.ts` | 3.4, 3.5, 3.6, 3.7, 6.5, 6.6, 7.1 |
 | `src/lib/review.ts`, `src/lib/gchat.ts`, `src/lib/gchat-events.ts` | 1.2–1.5, 4.1–4.4 |
+| `src/lib/chat-intake.ts` | 1.3, 1.4, 1.6, 1.11, 4.4 — one Chat message from a person, DM or Drop space |
+| `src/lib/chat-inbox.ts` | 1.13 — reads the Drop space every minute |
 | `src/lib/slack.ts`, `src/lib/normalize/slack.ts` | 1.1 |
 | `src/lib/gmail.ts` | 1.8 |
 | `src/lib/transcribe.ts` | 1.6, 1.7 |

@@ -31,6 +31,39 @@ export function fnName(invoked: string | null | undefined): string {
   return m ? decodeURIComponent(m[1]) : invoked;
 }
 
+/**
+ * The hub reading Chat as a person (domain-wide delegation, same service account and user as the mailbox): needed to
+ * read a space without being mentioned. Scope to authorise in the Admin console: chat.messages.readonly.
+ */
+export const chatReader = () => (process.env.CHAT_READER ?? process.env.GMAIL_MAILBOX ?? "").trim().toLowerCase();
+let _chatUser: chat_v1.Chat | null = null;
+export function chatAsUser(): chat_v1.Chat {
+  if (_chatUser) return _chatUser;
+  const c = credentials() as { client_email: string; private_key: string };
+  if (!chatReader()) throw new Error("CHAT_READER_NOT_CONFIGURED");
+  const auth = new google.auth.JWT({ email: c.client_email, key: c.private_key, subject: chatReader(), scopes: ["https://www.googleapis.com/auth/chat.messages.readonly"] });
+  _chatUser = google.chat({ version: "v1", auth });
+  return _chatUser;
+}
+
+/** The space people share into from the phone. Found by name among the spaces the app is a member of. */
+export const inboxSpaceName = () => (process.env.GCHAT_INBOX_NAME ?? "Task Hub Drop").trim();
+export async function rememberInboxSpace(space: string): Promise<void> {
+  const { sql } = await import("./db");
+  await sql()`insert into settings (key, value) values ('chat_inbox_space', ${JSON.stringify(space)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+}
+/** Every space the app has been added to (app credentials). */
+export async function appSpaces(): Promise<Array<{ name: string; displayName: string; spaceType: string }>> {
+  const out: Array<{ name: string; displayName: string; spaceType: string }> = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await chat().spaces.list({ pageSize: 100, pageToken });
+    for (const s of res.data.spaces ?? []) out.push({ name: s.name ?? "", displayName: s.displayName ?? "", spaceType: s.spaceType ?? "" });
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return out;
+}
+
 export const gchatConfigured = () => !!process.env.GOOGLE_SERVICE_ACCOUNT_B64 && !!process.env.GCHAT_REVIEW_SPACE && !!process.env.GOOGLE_PROJECT_NUMBER;
 export const reviewSpace = () => normSpace(process.env.GCHAT_REVIEW_SPACE ?? "");
 export const intakeSpace = () => normSpace(process.env.GCHAT_INTAKE_SPACE ?? "");
@@ -95,8 +128,15 @@ export async function updateMessageText(messageName: string, text: string): Prom
 }
 
 export async function downloadAttachment(resourceName: string): Promise<Buffer> {
-  const res = await chat().media.download({ resourceName, alt: "media" }, { responseType: "arraybuffer" });
-  return Buffer.from(res.data as ArrayBuffer);
+  try {
+    const res = await chat().media.download({ resourceName, alt: "media" }, { responseType: "arraybuffer" });
+    return Buffer.from(res.data as ArrayBuffer);
+  } catch (e) {
+    // A file shared into the Drop space was not delivered to the app; read it as the person the hub reads Chat as.
+    if (!chatReader()) throw e;
+    const res = await chatAsUser().media.download({ resourceName, alt: "media" }, { responseType: "arraybuffer" });
+    return Buffer.from(res.data as ArrayBuffer);
+  }
 }
 
 // ---- card builders (Cards v2) ----
