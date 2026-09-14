@@ -60,26 +60,27 @@ function buildHandler(owner: McpKeyOwner) {
       }, async (a) => text(await recentMessages(a)));
 
       server.registerTool("daily_summary", {
-        title: "Daily summary", description: "The PM summary: created, in Staging, moved, completed, overdue, needs a person, waiting on client, updates. days=1 is today; 7 for the week.",
+        title: "Daily summary", description: "The full day or week in text: created, in Staging, moved, completed, overdue, needs a person, waiting on client, updates. days=1 is today; 7 for the week. (The feed gets a shorter brief at 23:00.)",
         inputSchema: z.object({ days: z.number().int().positive().max(31).optional() }),
       }, async ({ days }) => text(await dailySummaryText(days ?? 1)));
 
       server.registerTool("add_request", {
-        title: "Add a request", description: "File a client request as if typed into Intake. It goes through the normal pipeline: a card in Staging for a PM to approve, one line in PM Review. Use the client's words.",
+        title: "Add a request", description: "File a client request. It goes through the normal pipeline: a card in Staging for a PM to approve, one line in the Task Hub Feed. Use the client's words. This assistant account may be shared by several people, so `by` (the name of the person asking you) is required: ask them if you do not know it, never guess it.",
         inputSchema: z.object({
           client: z.string().describe("Client name, id or alias"),
           request: z.string().describe("What was asked, as close to the original words as possible"),
+          by: z.string().min(2).describe("The name of the person asking you to file this. Ask if you do not know. Never guess."),
           priority: z.enum(["P1", "P2", "P3"]).optional(),
           source: z.string().optional().describe("Where it came from: WhatsApp, phone, meeting…"),
         }),
-      }, async ({ client, request, priority, source }) => {
+      }, async ({ client, request, by, priority, source }) => {
         const clients = await allClients();
         const c = clients.find((x) => x.id.toLowerCase() === client.toLowerCase() || x.name.toLowerCase() === client.toLowerCase() || (x.aliases ?? []).some((a) => a.toLowerCase() === client.toLowerCase()));
         if (!c) return text({ error: `unknown client "${client}"; call list_clients` });
         const body = [request, source ? `\nCame via: ${source}` : "", priority === "P1" ? "\nMarked urgent (P1) by the team." : priority === "P2" ? "\nMarked important by the team." : ""].join("");
         const m: Message = {
           channel: "task_cmd", externalId: `mcp:${owner.email}:${Date.now()}`, teamId: null, clientId: c.id, scope: c.scope,
-          sender: `${owner.name} (via assistant)`, senderIsStaff: true, sentAt: new Date(), text: body, permalink: null, threadRef: null, raw: { mcp: true, by: owner.email },
+          sender: `${by.trim()} (${owner.name})`, senderIsStaff: true, sentAt: new Date(), text: body, permalink: null, threadRef: null, raw: { mcp: true, by: by.trim(), account: owner.email },
         };
         const r = await processMessage(m, { skip: false, reason: null });
         const n = r.requestIds?.length ?? 0;
