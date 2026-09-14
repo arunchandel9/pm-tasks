@@ -191,4 +191,4 @@ export const pulp = {
   },
 };
 
-const LABEL_COLOURS: Record<string, string> = { P1: "red", P2: "orange", P3: "green", "NEEDS SCOPE": "purple", "CLIENT WAITING": "yellow" };
+const LABEL_COLOURS: Record<string, string> = { P1: "red", P2: "orange", P3: "green", "NEEDS SCOPE": "purple", "CLIENT WAITING": "yellow", "TASK HUB": "sky" };

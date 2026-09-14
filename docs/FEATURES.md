@@ -42,7 +42,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 
 | # | Feature | How it works | Status |
 |---|---|---|---|
-| 3.1 | Staging card | Every approved-type ask becomes a real card in the **Staging** list of the right department board, with the client label, priority label, description, original quote, source link and due date. | Live |
+| 3.1 | Staging card | Every approved-type ask becomes a real card in the **Staging** list of the right department board, with the labels "Task Hub" (on every hub card, created on a board if missing; added 2026-09-14), client and priority, plus description, original quote, source link and due date. | Live |
 | 3.2 | Needs scope card | New page and new feature asks go to the **Needs scope** list on the Development board instead, for a person to scope first. | Built |
 | 3.3 | Drag = approval | A PM drags the card out of Staging (or Needs scope) to wherever it belongs. The hub sees the move within a minute, marks the request approved, and writes the sheet row. No buttons, no second step. | Live |
 | 3.4 | Sheet row with stamp | The row lands in the client's tab with title, department, priority, assignee, Pulp link, source link, created and due dates. The Comments cell reads "Task assigned. Added by Task Hub · approved by drag in Pulp · 9 Sep 2026, 14:30 IST · from Slack, Dr Mehta". | Live |

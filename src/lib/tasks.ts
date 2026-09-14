@@ -7,6 +7,9 @@ import type { Client, Draft, Message, RouteDecision } from "./types";
 
 export interface TaskRow { id: string; pulpCardId: string | null; boardId: string | null }
 
+/** Every card the hub creates carries this label, so hub cards can be told from hand-made ones on any board. Created on a board if missing. */
+export const HUB_LABEL = "Task Hub";
+
 /**
  * Where a new card waits for a person: "Staging" for ordinary asks, "Needs scope" for gated types (new page, new feature).
  * Both are hold lists: dragging the card out of either is the approval.
@@ -46,7 +49,7 @@ export async function createStagingCard(p: { requestId: string; client: Client |
       listId = await pulp.ensureList(boardId, holdListName(p.route));
       const card = await pulp.createCard({
         // Department sprint boards hold every client's cards; the client label is how the team tells them apart.
-        boardId, listId, title: p.draft.title, description, labels: [...(p.client?.name ? [p.client.name] : []), ...p.draft.labels],
+        boardId, listId, title: p.draft.title, description, labels: [HUB_LABEL, ...(p.client?.name ? [p.client.name] : []), ...p.draft.labels],
         assignee: p.route.assignee, dueAt: p.route.dueAt,
       });
       pulpCardId = card.id;
@@ -84,7 +87,7 @@ export async function createCardForTask(taskId: string): Promise<boolean> {
   const listId = await pulp.ensureList(boardId, holdList);
   const description = [draft.description ?? "", "", `Original (${x.channel}, ${x.sender}):`, `> ${x.quote ?? ""}`, x.permalink ? `Source: ${x.permalink}` : "", `(card created on retry)`].filter((l) => l !== "").join("\n");
   const card = await pulp.createCard({
-    boardId, listId, title: String(x.title), description, labels: [...(x.client_name ? [String(x.client_name)] : []), ...(draft.labels ?? []), String(x.priority)],
+    boardId, listId, title: String(x.title), description, labels: [HUB_LABEL, ...(x.client_name ? [String(x.client_name)] : []), ...(draft.labels ?? []), String(x.priority)],
     assignee: (x.assignee as string | null) ?? null, dueAt: x.due_at ? new Date(x.due_at as string) : null,
   });
   await sql()`update tasks set pulp_card_id = ${card.id}, board_id = ${boardId}, list_id = ${listId}, staging = true where id = ${taskId}`;
