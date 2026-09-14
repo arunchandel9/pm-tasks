@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/tick", "schedule": "* * * * *" },
+    { "path": "/api/inbox-tick", "schedule": "* * * * *" },
     { "path": "/api/eod", "schedule": "30 17 * * 1-5" }
   ]
 }

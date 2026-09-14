@@ -99,6 +99,11 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     await sql()`update messages set skip_reason = ${dd.kind} where id = ${messageId}`;
     await addReaction(m, "repeat");
     await postThreadFollowupComment({ taskId: dd.taskId, requestId: dd.requestId, message: m });
+    if (m.channel === "intake" && reviewMode() === "notify") {
+      // The feed is the team's record: a repeat that was noted on its card gets a line too, not only the sender's thread.
+      const t = await sql()`select coalesce(draft->>'title', '') as title from requests where id = ${dd.requestId}`;
+      await postText(followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m }), { threadKey: messageThreadKey(messageId) });
+    }
     return { messageId, outcome: "attached", reason: dd.kind, requestIds: [dd.requestId] };
   }
 

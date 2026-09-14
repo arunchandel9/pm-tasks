@@ -51,13 +51,7 @@ export async function GET(req: Request) {
     }
   }
 
-  // 1c. The Drop space (shared from the phone, read without a mention)
-  {
-    const { inboxConfigured, pollInbox } = await import("@/lib/chat-inbox");
-    if (inboxConfigured()) {
-      try { report.inbox = await pollInbox(); } catch (e) { report.inbox = { error: (e as Error).message }; }
-    }
-  }
+  // 1c. The Drop space is read by /api/inbox-tick (three times a minute), not here.
 
   // 2. Queue
   const due = await sql()`select id, kind, payload, attempts from queue where done_at is null and next_run_at <= now() order by next_run_at limit 20`;
