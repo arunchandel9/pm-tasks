@@ -147,6 +147,19 @@ export function humanOutcome(outcome: string, reason?: string | null): string {
   return r ? r.replace(/_/g, " ") : outcome;
 }
 
+/** A client name a voice note may have contained, misheard: stored on the message as a suggestion, never used as a decision. */
+export type SuggestedClient = { id: string; name: string; heard: string };
+export const suggestedClientOf = (raw: unknown): SuggestedClient | null => ((raw as { suggestedClient?: SuggestedClient } | null)?.suggestedClient ?? null);
+
+/** The DM question when no client is certain: quote what was heard, offer the suggestion if any, ask for the name. */
+export function askWhichClient(p: { text: string; raw: unknown }): string {
+  const voice = !!(p.raw as { voice?: boolean } | null)?.voice;
+  const s = suggestedClientOf(p.raw);
+  const heard = voice ? `Heard: "${p.text.replace(/\s+/g, " ").slice(0, 200)}${p.text.length > 200 ? "…" : ""}"\n` : "";
+  const ask = s ? `Which client is this for? I heard "${s.heard}", is it ${s.name}? Reply "yes", or the client name.` : "Which client is this for? Reply here with the name.";
+  return heard + ask;
+}
+
 export async function postAck(p: { message: Message; outcome: string; detail?: string }): Promise<void> {
   const short = p.message.text.replace(/\s+/g, " ").slice(0, 120);
   const icon = p.outcome.startsWith("draft") ? "✅" : p.outcome === "attached" ? "🔗" : p.outcome === "review" ? "❓" : p.outcome === "paused" ? "⏸️" : "ℹ️";

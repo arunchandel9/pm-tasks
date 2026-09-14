@@ -24,7 +24,7 @@ export function fuzzyClientFromText(text: string, clients: Client[]): { client: 
   for (const c of clients.filter((x) => x.scope === "client")) {
     for (const name of [c.name, ...(c.aliases ?? [])]) {
       const target = letters(name);
-      if (target.length < 4) continue;
+      if (target.length < 5) continue; // one edit in four letters is too loose ("skin" ~ Skyn, "and" ~ Anil)
       const allowed = Math.max(1, Math.floor(target.length / 5));
       for (let i = 0; i < words.length; i++) for (let n = 1; n <= 3 && i + n <= words.length; n++) {
         const window = letters(words.slice(i, i + n).join(""));

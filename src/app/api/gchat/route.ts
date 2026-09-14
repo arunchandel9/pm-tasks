@@ -5,10 +5,10 @@ import { normaliseChatEvent, replyText, replyUpdateMessage, replyDialog, replyDi
 import { allClients, sql } from "@/lib/db";
 import { processMessage } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
-import { resolveClientFromText, fuzzyClientFromText, correctName, stripClientPrefix } from "@/lib/resolve";
-import { postAck, postText, humanOutcome, threadTopic, closeNeedsHumanCard, messageThreadKey, type ThreadTopic } from "@/lib/review";
+import { resolveClientFromText, fuzzyClientFromText, stripClientPrefix } from "@/lib/resolve";
+import { postAck, postText, humanOutcome, threadTopic, closeNeedsHumanCard, messageThreadKey, askWhichClient, suggestedClientOf, type ThreadTopic } from "@/lib/review";
 import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, estimateMinutes, hintPhrases } from "@/lib/transcribe";
-import { isAcknowledgement } from "@/lib/filter/noise";
+import { isAcknowledgement, isAffirmative } from "@/lib/filter/noise";
 import { noise } from "@/lib/config";
 import type { Message } from "@/lib/types";
 
@@ -119,30 +119,35 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   let transcriptNote = "";
   const say = (t: string) => sendText(space, t, msg.thread?.name).catch((e) => console.error("say failed", (e as Error).message));
 
+  // A message that is only a client name ("HOH", "this is for PSS"), or a "yes" to the hub's suggestion: it names the
+  // client for a message sent just before (same thread, or the last 30 minutes in a direct chat) or about to be sent (kept 15 min).
+  const nameHit = resolveClientFromText(text, clients);
+  const yes = !nameHit && isAffirmative(text);
+  if (((nameHit && text.split(/\s+/).length <= 5) || yes) && !msg.attachment?.length) {
+    const pending = await sql()`
+      select id, raw from messages where channel = 'intake' and client_id is null and skip_reason in ('unknown_client', 'attachment_only')
+        and (${msg.thread?.name ?? null}::text is not null and thread_ref = ${msg.thread?.name ?? null} or (${msg.thread?.name ?? null}::text is null and sender = ${sender} and created_at > now() - interval '30 minutes'))
+      order by created_at desc limit 1`;
+    const suggested = pending.length ? suggestedClientOf(pending[0].raw) : null;
+    const chosen = nameHit?.client ?? (suggested ? clients.find((x) => x.id === suggested.id) ?? null : null);
+    if (pending.length && chosen) {
+      const id = String(pending[0].id);
+      await sql()`update messages set client_id = ${chosen.id}, scope = ${chosen.scope}, skip_reason = null where id = ${id}`;
+      await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: id })}::jsonb)`;
+      await closeNeedsHumanCard(id, `👤 Client set to ${chosen.name} by ${sender}; processing.`);
+      await say(`Got it: ${chosen.name}. Processing the message above.`);
+      return;
+    }
+    if (nameHit) {
+      await sql()`insert into settings (key, value) values (${"client_hint:" + sender}, ${JSON.stringify({ clientId: nameHit.client.id, at: Date.now() })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+      await say(`Noted: ${nameHit.client.name}. Forward the message now and I will file it under that client.`);
+      return;
+    }
+  }
+
   // "ok thanks", "👍", "great": nothing to do and nothing to say. Stored as skipped so it is still on record.
   if (!msg.attachment?.length && isAcknowledgement(text, noise())) {
     await storeOnly(baseMessage(msg, raw, sender, text, clients), "acknowledgement");
-    return;
-  }
-
-  // A message that is only a client name ("HOH", "this is for PSS"): it names the client for a forwarded message,
-  // sent just before (same thread, or the last 30 minutes in a direct chat) or about to be sent (kept for 15 minutes).
-  const nameHit = resolveClientFromText(text, clients);
-  if (nameHit && text.split(/\s+/).length <= 5 && !msg.attachment?.length) {
-    const pending = await sql()`
-      select id from messages where channel = 'intake' and client_id is null and skip_reason in ('unknown_client', 'attachment_only')
-        and (${msg.thread?.name ?? null}::text is not null and thread_ref = ${msg.thread?.name ?? null} or (${msg.thread?.name ?? null}::text is null and sender = ${sender} and created_at > now() - interval '30 minutes'))
-      order by created_at desc limit 1`;
-    if (pending.length) {
-      const id = String(pending[0].id);
-      await sql()`update messages set client_id = ${nameHit.client.id}, scope = ${nameHit.client.scope}, skip_reason = null where id = ${id}`;
-      await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: id })}::jsonb)`;
-      await closeNeedsHumanCard(id, `👤 Client set to ${nameHit.client.name} by ${sender}; processing.`);
-      await say(`Got it: ${nameHit.client.name}. Processing the message above.`);
-      return;
-    }
-    await sql()`insert into settings (key, value) values (${"client_hint:" + sender}, ${JSON.stringify({ clientId: nameHit.client.id, at: Date.now() })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
-    await say(`Noted: ${nameHit.client.name}. Forward the message now and I will file it under that client.`);
     return;
   }
 
@@ -175,8 +180,9 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   if (transcriptNote) {
     m = { ...m, raw: { ...(m.raw as Record<string, unknown> | null ?? {}), voice: true } };
     if (!m.clientId) {
+      // A name the recogniser may have misheard ("a bell" ~ Abela) is only a suggestion: the sender confirms it in the thread.
       const f = fuzzyClientFromText(text, clients);
-      if (f) m = { ...m, clientId: f.client.id, scope: f.client.scope, text: stripClientPrefix(correctName(m.text, f.matched, f.client.name), f.client) };
+      if (f) m = { ...m, raw: { ...(m.raw as Record<string, unknown>), suggestedClient: { id: f.client.id, name: f.client.name, heard: f.matched } } };
     }
   }
   if (!m.clientId && msg.thread?.name) {
@@ -202,7 +208,7 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
   const n = result.requestIds?.length ?? 0;
   // The DM answers only when the sender must act or nothing was created; the feed lines are the receipt for created tasks.
   if (result.outcome === "review" && result.reason === "unknown_client") {
-    await say(`${transcriptNote ? `Heard: "${m.text.replace(/\s+/g, " ").slice(0, 200)}"\n` : ""}Which client is this for? Reply here with the name.`);
+    await say(askWhichClient({ text: m.text, raw: m.raw }));
     return;
   }
   const heard = transcriptNote ? `Heard: "${m.text.replace(/\s+/g, " ").slice(0, 200)}${m.text.length > 200 ? "…" : ""}"\n` : "";

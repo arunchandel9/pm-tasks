@@ -23,6 +23,12 @@ export function isAcknowledgement(text: string, cfg: NoiseConfig): boolean {
   return words.every((w) => vocab.has(w));
 }
 
+/** "yes", "yeah, that's right", "correct 👍": a confirmation of the hub's suggestion (which client a voice note was for). */
+export function isAffirmative(text: string): boolean {
+  const t = text.trim().toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, " ").replace(/\s+/g, " ").trim();
+  return /^(yes|yeah|yep|yup|ya|haan|correct|right|exactly|sure|ok|okay)( (yes|yeah|yep|correct|right|please|that'?s (right|it|correct|the one)|it is|please do|go ahead))*$/.test(t) || /^that'?s (right|it|correct|the one)$/.test(t);
+}
+
 export interface SlackNoiseInput {
   subtype?: string;
   botId?: string;

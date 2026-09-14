@@ -6,7 +6,7 @@ import { allClients, enqueue, sql } from "./db";
 import { processMessage } from "./pipeline";
 import { postAck, humanOutcome } from "./review";
 import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, hintPhrases } from "./transcribe";
-import { fuzzyClientFromText, correctName } from "./resolve";
+import { fuzzyClientFromText } from "./resolve";
 import type { Message } from "./types";
 
 /**
@@ -220,15 +220,19 @@ export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> 
   // Client: the subject/note ("HOH: ...", "[PSS]"), the original sender's domain, then the forwarder's note text.
   const hit = resolveClientFromText(`${subjectClean}\n${mail.note}`, clients)
     ?? resolveClientFromText(senderEmail, clients)
-    ?? resolveClientFromText(composed.slice(0, 400), clients)
-    ?? (voice ? fuzzyClientFromText(composed.slice(0, 600), clients) : null);
-  const composedFixed = hit && "matched" in hit && typeof hit.matched === "string" ? correctName(composed, hit.matched, hit.client.name) : composed;
+    ?? resolveClientFromText(composed.slice(0, 400), clients);
+  // A misheard name in a voice note is a suggestion on the "which client?" card, never a decision.
+  const fuzzy = !hit && voice ? fuzzyClientFromText(composed.slice(0, 600), clients) : null;
   const m: Message = {
     channel: "email", externalId: mail.id, teamId: null, clientId: hit?.client.id ?? null, scope: hit ? hit.client.scope : "unknown",
     sender: `${senderName} <${senderEmail}>`, senderIsStaff, sentAt: mail.date,
-    text: hit ? stripClientPrefix(composedFixed, hit.client) : composedFixed,
+    text: hit ? stripClientPrefix(composed, hit.client) : composed,
     permalink: `https://mail.google.com/mail/u/0/#all/${mail.id}`, threadRef: mail.threadId,
-    raw: { gmail: { id: mail.id, messageId: rfcId, threadId: mail.threadId, subject: mail.subject, from: mail.from, to: mail.to, isForward: mail.isForward, originalFrom: mail.originalFrom }, ...(voice ? { voice: true } : {}) },
+    raw: {
+      gmail: { id: mail.id, messageId: rfcId, threadId: mail.threadId, subject: mail.subject, from: mail.from, to: mail.to, isForward: mail.isForward, originalFrom: mail.originalFrom },
+      ...(voice ? { voice: true } : {}),
+      ...(fuzzy ? { suggestedClient: { id: fuzzy.client.id, name: fuzzy.client.name, heard: fuzzy.matched } } : {}),
+    },
   };
   if (longJob) {
     // Long voice note: store now, let the minute tick finish it (queue job transcribe_poll → process_message).

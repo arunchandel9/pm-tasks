@@ -255,7 +255,9 @@ async function runJob(kind: string, payload: Record<string, unknown>) {
           if (threadRef) {
             // The sender's own DM thread, same as the live path: the feed carries finals only.
             const { sendText } = await import("@/lib/gchat");
-            await sendText(threadRef.split("/threads/")[0], `Nothing created: ${humanOutcome(result.outcome, result.reason)}`, threadRef);
+            const { askWhichClient } = await import("@/lib/review");
+            const line = result.reason === "unknown_client" ? askWhichClient({ text: String(m.text), raw: m.raw }) : `Nothing created: ${humanOutcome(result.outcome, result.reason)}`;
+            await sendText(threadRef.split("/threads/")[0], line, threadRef);
           } else await postAck({ message: m, outcome: result.outcome, detail: humanOutcome(result.outcome, result.reason) });
         }
       }

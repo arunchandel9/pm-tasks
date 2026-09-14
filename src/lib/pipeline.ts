@@ -7,7 +7,7 @@ import { classify } from "./llm/classify";
 import { route } from "./route";
 import type { Message, Client } from "./types";
 import { addReaction, postThreadFollowupComment } from "./slack";
-import { postReview, postP1Ping, postText, reviewMode, draftLine, followupLine, messageThreadKey } from "./review";
+import { postReview, postP1Ping, postText, reviewMode, draftLine, followupLine, messageThreadKey, suggestedClientOf } from "./review";
 import { createStagingCard } from "./tasks";
 
 export interface ProcessResult {
@@ -57,7 +57,9 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     await sql()`update messages set skip_reason = ${noiseVerdict.reason ?? "unknown_client"} where id = ${messageId}`;
     // A DM sender is asked in their own thread (gchat route); the feed only carries finals. Other channels have no
     // thread to ask in, so the question goes to the feed as a card.
-    if (m.channel !== "intake") await postReview({ kind: "needs_human", messageId, client, message: m, why: noiseVerdict.reason ?? "unknown_client" });
+    const s = suggestedClientOf(m.raw);
+    const why = noiseVerdict.reason ?? (s ? `unknown client, maybe ${s.name} (heard "${s.heard}")` : "unknown_client");
+    if (m.channel !== "intake") await postReview({ kind: "needs_human", messageId, client, message: m, why });
     return { messageId, outcome: "review", reason: noiseVerdict.reason ?? "unknown_client" };
   }
 

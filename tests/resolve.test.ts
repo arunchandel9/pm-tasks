@@ -39,6 +39,9 @@ describe("fuzzy client match for voice transcripts", () => {
     expect(fuzzyClientFromText("for Abella please change the hero", clients)?.client.id).toBe("abela");
     expect(fuzzyClientFromText("the eye doctors footer hours", clients)?.client.id).toBe("ted");
     expect(fuzzyClientFromText("the homepage images are not good", clients)).toBeNull();
+    // Short aliases never fuzz: "skin" is not Skyn, "and" is not Anil, "reported" is not TED.
+    const short = [...clients, c("skynology", "Skynology", { aliases: ["Skyn"] }), c("dranil", "Dr Anil", { aliases: ["Anil"] })];
+    expect(fuzzyClientFromText("the skin page and the reviews need to be reported", short)).toBeNull();
   });
 });
 

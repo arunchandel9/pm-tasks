@@ -47,6 +47,7 @@ Roles: **A** = Arun · **H** = the hub builder (me) · **PM** = one project mana
 | A16 | 2.5 | covered by A1 | | |
 
 Progress (14 Sep): passed A1, A2, A3, A5, A7, A13, A14, A15, and the thread-reply part of B10. A7 needed two mail fixes first (self-sent mail was excluded as Sent; staff mail addressed To intake@ was dropped as outgoing). Open: A6, A8 (mail), A9, A10 (Slack, need 0.2), A11 (Meet, need 0.9), A12 (need PM keys).
+Client-matching audit (14 Sep, after a voice note with no client name was filed under TED because "TED" sat inside "reported"): names and aliases now match whole words only; fuzzy (misheard) matches are suggestions the sender confirms with "yes", never decisions; aliases under 5 letters never fuzz. Remaining certain sources, in order: "Client:" prefix, whole-word name or alias, client email domain, WhatsApp number, the thread's client, a name typed in the last 15 minutes. Anything else asks.
 
 ## Block B — cards, approval, sheet (30 min)
 
