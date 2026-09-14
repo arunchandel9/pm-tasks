@@ -45,9 +45,10 @@ export function draftLine(p: { client: Client | null; title: string; department:
 }
 
 /** One feed line for a message that belongs to an existing task: noted on that card, nothing new created. */
-export function followupLine(p: { client: Client | null; existingTitle: string; kind: "possible_duplicate" | "followup_change"; message: Message }): string {
+export function followupLine(p: { client: Client | null; existingTitle: string; kind: "possible_duplicate" | "followup_change"; message: Message; pulpLink?: string | null }): string {
   const what = p.kind === "possible_duplicate" ? "same as" : "update to";
-  return `🔁 *${p.client?.name ?? "Unknown client"}* · "${clip(p.message.text.replace(/\s+/g, " "), 80)}" · ${what} *${clip(p.existingTitle, 60)}* · noted on its card`;
+  const card = p.pulpLink ? `noted on <${p.pulpLink}|its card>` : "noted on its card";
+  return `🔁 *${p.client?.name ?? "Unknown client"}* · "${clip(p.message.text.replace(/\s+/g, " "), 80)}" · ${what} *${clip(p.existingTitle, 60)}* · ${card}`;
 }
 
 export async function postReview(p: ReviewPost): Promise<void> {

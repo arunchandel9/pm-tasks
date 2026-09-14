@@ -23,6 +23,13 @@ export interface ProcessResult {
  */
 export const PROBLEM = /\b(not working|isn'?t working|doesn'?t work|broken|down|error|bug|issue|missing|stopped|failing|fails|crash|wrong|please fix|fix)\b/i;
 
+/** The Pulp link of a task's card, for feed lines that point at an existing card. */
+async function cardLink(taskId: string | null | undefined): Promise<string | null> {
+  if (!taskId) return null;
+  const t = await sql()`select board_id, pulp_card_id from tasks where id = ${taskId}`;
+  return t.length && t[0].pulp_card_id ? pulp.cardUrl(String(t[0].board_id ?? ""), String(t[0].pulp_card_id)) : null;
+}
+
 export async function processMessage(m: Message, noiseVerdict: { skip: boolean; reason: string | null }): Promise<ProcessResult> {
   const hash = textHash(m.text);
 
@@ -87,7 +94,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
       const chasing = /\b(any update|update on|status|eta|any news|when will|still waiting|following up|follow up)\b|\?\s*$/i.test(m.text);
       await postThreadFollowupComment({ taskId: root[0].task_id, requestId: root[0].request_id, message: m, flag: chasing ? "client_waiting" : undefined });
       if (m.channel === "intake" && reviewMode() === "notify") {
-        await postText(followupLine({ client, existingTitle: String(root[0].title ?? "the task"), kind: "followup_change", message: m }), { threadKey: messageThreadKey(String(root[0].root_message_id)) });
+        await postText(followupLine({ client, existingTitle: String(root[0].title ?? "the task"), kind: "followup_change", message: m, pulpLink: await cardLink(root[0].task_id as string | null) }), { threadKey: messageThreadKey(String(root[0].root_message_id)) });
       }
       return { messageId, outcome: "attached", requestIds: [String(root[0].request_id)] };
     }
@@ -102,7 +109,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     if (m.channel === "intake" && reviewMode() === "notify") {
       // The feed is the team's record: a repeat that was noted on its card gets a line too, not only the sender's thread.
       const t = await sql()`select coalesce(draft->>'title', '') as title from requests where id = ${dd.requestId}`;
-      await postText(followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m }), { threadKey: messageThreadKey(messageId) });
+      await postText(followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m, pulpLink: await cardLink(dd.taskId) }), { threadKey: messageThreadKey(messageId) });
     }
     return { messageId, outcome: "attached", reason: dd.kind, requestIds: [dd.requestId] };
   }
@@ -180,7 +187,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
         // If the PM disagrees, /task in Intake makes it a separate task.
         await sql()`update requests set status = 'merged', merged_into = ${target.id}, decided_by = 'system:same_thread' where id = ${requestId}`;
         await postThreadFollowupComment({ taskId: target.taskId, requestId: target.id, message: m });
-        feed.push(followupLine({ client, existingTitle: target.title, kind, message: m }));
+        feed.push(followupLine({ client, existingTitle: target.title, kind, message: m, pulpLink: await cardLink(target.taskId) }));
         continue;
       }
       await postReview({ kind, requestId, client, message: m, duplicateOf: target.id });

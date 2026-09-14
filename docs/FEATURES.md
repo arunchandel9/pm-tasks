@@ -34,7 +34,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | 2.3 | Classify | Each ask gets a request type, department, priority with reason, and a card title and description. Prompt caching keeps cost low; every call is logged with tokens and cost. | Live |
 | 2.4 | Deterministic routing | `config/routing.yaml` decides board, list, labels, SLA due date and P1 keywords. The model never decides these. | Live |
 | 2.5 | P1 keywords | "site down", "form not working", "ad disapproved", "hacked" and the rest force P1 with a 4-hour due time. | Live |
-| 2.6 | Dedupe and follow-ups | A message that matches an open task (same thread, or similar text within the window) is noted as a comment on that card instead of creating a new one. The feed shows a 🔁 line, for exact repeats from the DM or Drop space too (added 2026-09-14: the feed is the record, the sender's thread is not enough). | Live |
+| 2.6 | Dedupe and follow-ups | A message that matches an open task (same thread, or similar text within the window) is noted as a comment on that card instead of creating a new one. The feed shows a 🔁 line with the card link, for exact repeats from the DM or Drop space too (added 2026-09-14: the feed is the record, the sender's thread is not enough). | Live |
 | 2.7 | Meeting sorter | Each notes doc is split into actions, ideas, decisions and discussion. Client actions become requests under that client; MangoEyes-internal items stay internal. Ideas and decisions are stored and searchable. | Live |
 | 2.8 | Daily model cap | A per-client daily cap on model calls stops a runaway thread from spending money. | Built |
 
