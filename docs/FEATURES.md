@@ -63,7 +63,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | 4.3 | Receipt rule | The feed line is the receipt. If no line appears within 2 minutes, send the message again. | Live |
 | 4.4 | DM replies only when needed | The DM answers in the thread only when the sender must act ("Which client is this for?", "I can read text and voice notes, not images"), when nothing was created ("Nothing created: …"), or when a short or uncertain ask was filed ("Filed: … Anything to add? Reply here and it goes on the card"). A reply in that thread becomes a comment on the card. Otherwise the feed line is the receipt and the DM stays quiet. | Built (tightened 2026-09-11) |
 | 4.5 | Reply nudges | If a client message has had no staff reply after the configured minutes, a nudge is posted. | Built |
-| 4.6 | Daily summary | 17:30 UTC weekdays to PM Review: Created, Waiting for a person (Staging / Needs scope), Moved, Completed, Overdue, Needs a person, Waiting on client, Updates with no task, Needs attention. Eight lines per section, then "and N more (ask the hub)". | Live |
+| 4.6 | Daily brief | 23:00 India time, weekdays, in the feed: one headline line ("📋 Daily brief · Mon 14 Sep · 6 new · 3 waiting on you · 1 issue · 2 overdue · 4 done") and the detail as a reply in that line's thread, so the feed is not flooded. Sections only when non-empty: New today (with card links), Waiting on you (Staging cards older than a day, questions nobody answered), Waiting on a client, Issues (failed messages, cards not created, abandoned jobs, a read that failed, a stale minute loop), Overdue (hub cards only, P1 first), Done today. No "moved" log, no sheet history counted as today, stray one-word test messages ignored. A quiet day is one line. Rebuilt 2026-09-14 from Arun's review of the first one. `/api/eod?dry=1` previews it. | Built |
 
 ## 5. The hub (ask it from your own assistant)
 
@@ -115,7 +115,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 |---|---|---|
 | `/api/tick` | The minute loop: client map, sheet mirror (every 10 min), meeting notes (every 5 min), mailbox, retry queue, Pulp poll for hub cards, hand-made card check, watchdog (every 10 min), heartbeat. | Vercel Cron, every minute |
 | `/api/inbox-tick` | Reads the Task Hub Drop space three times a minute (0 s, 20 s, 40 s), so a phone share is answered within about 20 seconds. | Vercel Cron, every minute |
-| `/api/eod` | Posts the daily summary to PM Review. `?dry=1` returns it without posting. | Vercel Cron, 17:30 UTC weekdays |
+| `/api/eod` | Posts the daily brief to the feed (headline + thread). `?dry=1` returns it without posting. | Vercel Cron, 17:30 UTC weekdays |
 | `/api/gchat` | Google Chat events: Intake and DM messages, `/task` dialog, button clicks, feed-thread replies. | Google Chat |
 | `/api/slack/events`, `/api/slack/install`, `/api/slack/oauth` | Slack messages from client channels; app install and OAuth for a new client workspace. | Slack |
 | `/api/mcp/[key]` | The MCP hub for a PM's own Claude or Codex. | PMs' assistants |
@@ -144,7 +144,8 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | `src/lib/gmail.ts` | 1.8 |
 | `src/lib/transcribe.ts` | 1.6, 1.7 |
 | `src/lib/meet.ts` | 1.9, 2.7 |
-| `src/lib/hub.ts`, `src/lib/mcp-keys.ts` | 1.10, 4.6, section 5 |
+| `src/lib/hub.ts`, `src/lib/mcp-keys.ts` | 1.10, section 5 (the MCP `daily_summary` text) |
+| `src/lib/brief.ts` | 4.6 — the daily brief in the feed |
 | `src/lib/db.ts`, `src/lib/schema.ts`, `src/lib/schema-split.ts`, `src/lib/auth.ts`, `src/lib/types.ts` | storage, schema apply, cron secret check, shared types |
 
 ## Rule
