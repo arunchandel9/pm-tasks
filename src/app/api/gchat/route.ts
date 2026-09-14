@@ -212,8 +212,9 @@ async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space: string
     const reqs = await sql()`
       select r.status, coalesce(mt.draft->>'title', r.draft->>'title') as title, r.confidence
       from requests r left join requests mt on mt.id = r.merged_into where r.id = any(${result.requestIds ?? []}::uuid[])`;
-    const filed = reqs.filter((r) => r.status !== "merged").map((r) => String(r.title));
-    const added = reqs.filter((r) => r.status === "merged").map((r) => String(r.title));
+    // An "attached" outcome points at the card the reply was added to; its request is not merged, so treat all as added.
+    const filed = result.outcome === "attached" ? [] : reqs.filter((r) => r.status !== "merged").map((r) => String(r.title));
+    const added = result.outcome === "attached" ? reqs.map((r) => String(r.title)) : reqs.filter((r) => r.status === "merged").map((r) => String(r.title));
     const vague = m.text.trim().split(/\s+/).length < 10 || reqs.some((r) => Number(r.confidence) < 0.7);
     const parts = [filed.length ? `Filed: ${filed.join("; ")}.` : "", added.length ? `Added to the existing card: ${added.join("; ")}.` : ""].filter(Boolean).join(" ");
     if (result.outcome === "attached" && !reqs.length) { if (transcriptNote) await say(`${heard}Added to the existing card in this thread.`); return; }
