@@ -17,7 +17,11 @@ Last updated: 2026-09-09 (build day 2).
   mention). The Intake space is retired (a space app only gets mentioned messages; the Workspace Events API could
   change that later, about an hour plus admin scopes, not for go-live). The review space stays, renamed by Arun
   (hub knows it by ID `AAQAjieDBM4`). Source label for DM messages: "Task Hub, <name>". Feed wording: "the feed". Feed space renamed "Task Hub Feed".
-  App install: manual, one click per person (Chat → + → Apps → Task Hub → Install). Marketplace admin push
+  App install: manual, one click per person (Chat → + → Apps → Task Hub → Install). Chat app visibility box (Cloud
+  Console → Chat API → Configuration) holds the Google Group `all.team@mangoeyesagency.com`; do not edit it again:
+  each change re-evaluates the app for every account and on 2026-09-14 it detached the app from Arun's phone
+  (share sheet showed only the service-account contact, "Direct message couldn't be created"). Reinstalling the app
+  fixed it. The `task-hub@…` contact in Chat is the service account (from Drive sharing), never the app. Marketplace admin push
   considered 2026-09-11 and not done (three console prompts exist in the session if ever wanted). Guide step 1.
 
 - **Shape.** One Next.js app on Vercel (project `mangoeyes-task-hub`, domain `pm-tasks.vercel.app`, branch
