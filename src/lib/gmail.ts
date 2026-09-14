@@ -244,8 +244,10 @@ export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> 
   }
   const result = await processMessage(m, verdict);
   const n = result.requestIds?.length ?? 0;
-  if (!(result.outcome === "review" && n) && !(result.outcome === "skipped" && verdict.skip)) {
-    await postAck({ message: { ...m, text: subjectClean || m.text }, outcome: result.outcome, detail: `${humanOutcome(result.outcome, result.reason)}${transcriptNote}` });
+  // A "which client?" / "attachment only" card is already the feed post for this mail: no extra line.
+  const askedOnCard = result.outcome === "review" && n === 0 && /^(unknown_client|attachment_only)$/.test(result.reason ?? "");
+  if (!(result.outcome === "review" && n) && !(result.outcome === "skipped" && verdict.skip) && !askedOnCard) {
+    await postAck({ message: { ...m, text: subjectClean || m.text }, outcome: result.outcome, detail: `${humanOutcome(result.outcome, result.reason)}${transcriptNote}`, messageId: result.messageId || null });
   }
   return `${subjectClean.slice(0, 40)} → ${result.outcome}${result.reason ? ` (${result.reason})` : ""}`;
 }

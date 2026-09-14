@@ -75,7 +75,10 @@ export async function postReview(p: ReviewPost): Promise<void> {
       messageId: p.messageId, clientName, why: p.why, text: p.message.text, source: sourceLabel(p.message), permalink: p.message.permalink,
       clients: rows.map((r) => ({ id: String(r.id), name: String(r.name) })),
     });
-    const sent = await gchat.sendCard(space, card, `${clientName}: needs a person (${p.why})`, `human-${p.messageId}`, messageThreadKey(p.messageId));
+    // The text shows above the card (and in phone notifications): one useful line, not a code.
+    const snippet = p.message.text.replace(/^Subject:\s*/i, "").replace(/\s+/g, " ").slice(0, 60);
+    const line = p.why.startsWith("unknown") ? `❓ Which client? · ${sourceLabel(p.message).replace(" · ", ", ")} · "${snippet}${p.message.text.length > 60 ? "…" : ""}"` : `❓ Needs a person (${p.why.replace(/_/g, " ")}) · ${sourceLabel(p.message).replace(" · ", ", ")}`;
+    const sent = await gchat.sendCard(space, card, line, `human-${p.messageId}`, messageThreadKey(p.messageId));
     await rememberThread(sent.thread, { kind: "needs_human", messageId: p.messageId });
     if (sent.name) await sql()`insert into settings (key, value) values (${"gchat_card_for:" + p.messageId}, ${JSON.stringify(sent.name)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
     return;
@@ -160,9 +163,9 @@ export function askWhichClient(p: { text: string; raw: unknown }): string {
   return heard + ask;
 }
 
-export async function postAck(p: { message: Message; outcome: string; detail?: string }): Promise<void> {
+export async function postAck(p: { message: Message; outcome: string; detail?: string; messageId?: string | null }): Promise<void> {
   const short = p.message.text.replace(/\s+/g, " ").slice(0, 120);
   const icon = p.outcome.startsWith("draft") ? "✅" : p.outcome === "attached" ? "🔗" : p.outcome === "review" ? "❓" : p.outcome === "paused" ? "⏸️" : "ℹ️";
   const line = `${icon} From ${sourceLabel(p.message).replace(" · ", ", ")}: "${short}${p.message.text.length > 120 ? "…" : ""}" → ${p.detail ?? humanOutcome(p.outcome)}`;
-  await postText(line);
+  await postText(line, p.messageId ? { threadKey: messageThreadKey(p.messageId) } : {});
 }
