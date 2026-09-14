@@ -3,6 +3,8 @@ import type { Client, Scope } from "./types";
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 const digits = (s: string) => s.replace(/\D/g, "");
 const letters = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+/** `name` bounded by non-letters on both sides, so "ted" matches "TED:" and "for TED" but not "reported". */
+const wholeWord = (name: string) => new RegExp(`(^|[^\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^\\p{L}\\p{N}])`, "iu");
 
 function editDistance(a: string, b: string): number {
   const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...new Array(b.length).fill(0)]);
@@ -59,12 +61,13 @@ export function resolveClientFromText(text: string, clients: Client[]): { client
     }
   }
 
-  // 2. name or alias anywhere (longest match wins, so "Clinic X London" beats "Clinic X")
+  // 2. name or alias anywhere, as whole words (longest match wins, so "Clinic X London" beats "Clinic X").
+  //    Whole words only: the alias "TED" must not match inside "reported" or "deleted".
   let best: { client: Client; len: number } | null = null;
   for (const c of candidates) {
     for (const name of [c.name, ...(c.aliases ?? [])]) {
       const n = norm(name);
-      if (n.length >= 3 && t.includes(n) && (!best || n.length > best.len)) best = { client: c, len: n.length };
+      if (n.length >= 3 && wholeWord(n).test(t) && (!best || n.length > best.len)) best = { client: c, len: n.length };
     }
   }
   if (best) return { client: best.client, how: "name" };

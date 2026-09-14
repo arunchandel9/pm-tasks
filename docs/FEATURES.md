@@ -89,7 +89,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 
 | # | What | Where |
 |---|---|---|
-| 7.1 | Clients: name, aliases, Slack T-id, sheet tab, board overrides | Config tab of the PM Overview sheet, refreshed every minute |
+| 7.1 | Clients: name, aliases, Slack T-id, sheet tab, board overrides | Config tab of the PM Overview sheet, refreshed every minute. A name or alias matches only as a whole word ("TED:" yes, "reported" no; fixed 2026-09-14). |
 | 7.2 | Department boards, Staging and Needs scope lists, card URL shape | `config/boards.yaml` |
 | 7.3 | Request types, SLA days, labels, gating, P1 keywords | `config/routing.yaml` |
 | 7.4 | Sheet columns, stamp wording, timezone, status values | `config/sheet.yaml` |

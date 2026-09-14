@@ -18,6 +18,12 @@ describe("resolve client from pasted text", () => {
   it("email domain from a pasted email", () => expect(resolveClientFromText("From: Priya <priya@clinicx.co.uk>\nHi, can you swap the hero image", clients)?.how).toBe("email_domain"));
   it("whatsapp number", () => expect(resolveClientFromText("+447700900123: hi, the form isn't sending", clients)?.how).toBe("whatsapp_number"));
   it("unknown", () => expect(resolveClientFromText("someone said the site is slow", clients)).toBeNull());
+  it("alias only as a whole word, never inside another word", () => {
+    const withTed = [...clients, c("ted", "The Eye Doctor", { aliases: ["TED", "Eye Doctor"] })];
+    expect(resolveClientFromText("the reviews need to be reported and deleted", withTed)).toBeNull();
+    expect(resolveClientFromText("TED: fix the footer", withTed)?.client.id).toBe("ted");
+    expect(resolveClientFromText("call from the eye doctor today", withTed)?.client.id).toBe("ted");
+  });
   it("never resolves to internal", () => expect(resolveClientFromText("MangoEyes internal: idea for the newsletter", clients)).toBeNull());
   it("strips the prefix", () => expect(stripClientPrefix("Clinic X: booking button broken", clients[0])).toBe("booking button broken"));
 });
