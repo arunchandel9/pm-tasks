@@ -24,6 +24,16 @@ export async function GET(req: Request) {
       notesDocsLast14Days: docs.map((d) => ({ name: d.name, modified: d.modifiedTime, owner: d.owner, folder: d.folder })),
     };
     const params = new URL(req.url).searchParams;
+    // ?since=now (or an ISO time): only notes docs changed after this moment are read on their own. Use it when a
+    // newly shared folder carries older meetings that should stay unread; ?reread=<doc> still reads any one doc.
+    const since = params.get("since");
+    if (since) {
+      const at = since === "now" ? new Date() : new Date(since);
+      if (isNaN(at.getTime())) return NextResponse.json({ ok: false, error: "since must be 'now' or an ISO time" }, { status: 400 });
+      const { sql } = await import("@/lib/db");
+      await sql()`insert into settings (key, value) values ('meet_since', ${JSON.stringify(at.toISOString())}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+      out.since = at.toISOString();
+    }
     const reread = params.get("reread");
     if (reread) out.reread = await rereadNoteDoc(reread.replace(/^.*\/d\/([^/]+).*$/, "$1"));
     if (params.get("run") === "1") out.run = await pollMeetings();
