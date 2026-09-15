@@ -9,7 +9,7 @@ Read this first when resuming. It is the operational memory of the project: what
 what is verified, what is open. `PLAN.md` holds the design rationale; this file holds the live state.
 Keep it updated with every change.
 
-Last updated: 2026-09-15 (soak, handover pages written).
+Last updated: 2026-09-15 (go-live: soak closed, Slack rebuilt, clean start done, handover pages written; `CLAUDE.md` is the entry point).
 
 ## Decisions finalised
 
@@ -195,31 +195,16 @@ Last updated: 2026-09-15 (soak, handover pages written).
   send "we want a new landing page for Botox" in Intake, expect the card under Needs scope on Development.
 - Unit tests: 73 passing (`npm test`). Build clean.
 
-## Open items (owner: Arun)
+## Open items (as of 2026-09-15, go-live day)
 
-1. ~~Config tab~~ done: 15 client rows, sheet_tab at AB, link headers set (Template renamed; Dr Anil, MangoEyes blank header filled).
-2. ~~Google Chat live tests~~ all passed 2026-09-09: Intake message → feed + Staging cards; drag → sheet row; Done →
-   row below divider; `/task` form opens, submits, acks. Add-on facts learned: caller is the gsuiteaddons service
-   agent; dialogs open with `action.navigations[].pushCard` and close with `endNavigation CLOSE_DIALOG`; every
-   button/dropdown `function` must be the endpoint URL (hub uses `…/api/gchat?fn=<name>`); click events carry the
-   original message so clicks are handled before the `/task` text check. Left: delete the test cards and HOH test row.
-3. Install Slack app into one client workspace; put its T-id in that client's Config row (column D).
-5. Name the mailbox for email intake (blocking the email build's test); run `/api/setup?remove_client=test-client`;
-   archive the four duplicate "To Do" lists.
-4. ~~Pulp API~~ connected and verified 2026-09-09. Left: archive the duplicate "To Do" lists the hub created on
-   Development, Writers, Graphics, Onboarding & Automations (keep the boards' own "To-Do").
-6. Slack: Abela workspace linked 2026-09-10 (`slack_team:abela=T0APH26RDK3`). Left: `/invite @Task Hub` in each Abela
-   channel; install in the other client workspaces during the final round.
-7. ~~New-page chain~~ decided 2026-09-10: not built. Uptime monitor already set by Arun.
-   Handover rule (Arun, 2026-09-10): a card someone creates directly in Pulp gets its row and card link added to the
-   client tab by hand. From then on the hub tracks it too (feature 3.6 in FEATURES.md, `src/lib/sheet-cards.ts`):
-   40 such cards are checked per minute in rotation, Status is written only when the card moves list, Done closes
-   the row. Filing the extra card through `/task` or Claude's add_request avoids even the manual row.
-   Ads / CRM / Search Console / analytics stay connected to each PM's own Claude or Codex, not to the hub (decided
-   2026-09-10); the hub is the task and conversation record only.
-8. Final round (Arun's call to defer): MangoEyes board override `c898e940-b4df-4467-baf6-272f5acbc24a` in Config;
-   two Claude checks ("last meeting with The Eye Doctor", "Abela last 30 days"); review or delete the three
-   meeting-created Staging cards.
+Everything from the build and soak is closed. What remains proves itself on real traffic: the first client message in
+a Slack channel (feed line, card, reply reminders), the next real Meet call with Gemini notes, a voice note over 10
+minutes, and the first daily brief. Arun's remaining housekeeping: remove the old `intake@` alias once the team uses
+`taskhub@`; rename the Pulp list "Dependancy" to "Dependency". Ideas for later are in `docs/POST-LAUNCH.md`.
+
+Older items, all done: Config tab (15 clients), Chat live tests, Pulp key and Staging lists, duplicate To Do lists
+archived, mailbox named, Slack installed per client workspace by Arun, new-page chain dropped, uptime monitor set,
+board override kept but unused (decision: department boards only), test cards, rows and records purged before go-live.
 
 ## Phases (agreed 2026-09-09; six phases, timings set by Arun)
 
@@ -236,10 +221,16 @@ After go-live, one hour each when wanted: weekly per-client digest, approval-loo
 
 ## Environment variables in Vercel (names only)
 
-`storage_DATABASE_URL` (Neon), `ANTHROPIC_API_KEY`, `LLM_MODEL` (optional), `CRON_SECRET`, `SLACK_CLIENT_ID`,
-`SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`, `GOOGLE_SERVICE_ACCOUNT_B64`, `GOOGLE_PROJECT_NUMBER`, `PM_SHEET_ID`,
-`GCHAT_REVIEW_SPACE`, `GCHAT_INTAKE_SPACE`, `REVIEW_SURFACE=gchat`. Optional: `STAFF_EMAILS`, `RAW_RETENTION_DAYS`,
-`INTAKE_PAUSED`, `PULP_TOKEN` (required for cards), `PULP_BASE_URL` (only if not `<base_url>/api/v1`), `REVIEW_MODE`.
+Required: `storage_DATABASE_URL` (Neon; any `*_DATABASE_URL` or `POSTGRES_URL` is accepted), `ANTHROPIC_API_KEY`,
+`CRON_SECRET`, `GOOGLE_SERVICE_ACCOUNT_B64`, `GOOGLE_PROJECT_NUMBER`, `PM_SHEET_ID`, `GCHAT_REVIEW_SPACE` (the feed),
+`PULP_TOKEN`, `GMAIL_MAILBOX` (arun@), `GMAIL_INTAKE_ADDRESS` (comma-separated intake aliases), `SLACK_CLIENT_ID`,
+`SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`.
+Optional, with defaults: `LLM_MODEL` (claude-sonnet-5), `REVIEW_SURFACE` (gchat), `REVIEW_MODE` (notify),
+`GCHAT_INBOX_NAME` ("Task Hub Drop"), `CHAT_READER` (defaults to `GMAIL_MAILBOX`; the account the Drop space is read as),
+`GCHAT_ENDPOINT_URL`, `GCHAT_INTAKE_SPACE` (retired space), `PM_SHEET_CONFIG_TAB` (Config), `PULP_BASE_URL`,
+`STAFF_EMAIL_DOMAINS` (mangoeyesagency.com), `STAFF_EMAILS`, `VOICE_BUCKET`, `VOICE_BUCKET_LOCATION`, `SPEECH_V2` (off = v1 engine only), `SPEECH_V2_TRIES`,
+`SLACK_BOT_TOKEN` (fallback only), `SLACK_REVIEW_CHANNEL`, `SLACK_INTAKE_CHANNEL`, `SLACK_P1_CHANNEL`,
+`RAW_RETENTION_DAYS` (0 = keep everything), `INTAKE_PAUSED` (the kill switch).
 
 ## Useful commands (replace the secret with the real CRON_SECRET)
 
