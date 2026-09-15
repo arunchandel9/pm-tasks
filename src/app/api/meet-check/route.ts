@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cronAuthorized } from "@/lib/auth";
-import { drive, findNoteDocs, meetConfigured, pollMeetings, rereadNoteDoc } from "@/lib/meet";
+import { drive, findNoteDocs, meetConfigured, pollMeetings, rereadNoteDoc, forgetMeetingCards } from "@/lib/meet";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,8 +34,11 @@ export async function GET(req: Request) {
       await sql()`insert into settings (key, value) values ('meet_since', ${JSON.stringify(at.toISOString())}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
       out.since = at.toISOString();
     }
+    const docId = (v: string) => v.replace(/^.*\/d\/([^/]+).*$/, "$1");
+    const forget = params.get("forget_cards");
+    if (forget) out.forget_cards = await forgetMeetingCards(docId(forget));
     const reread = params.get("reread");
-    if (reread) out.reread = await rereadNoteDoc(reread.replace(/^.*\/d\/([^/]+).*$/, "$1"));
+    if (reread) out.reread = await rereadNoteDoc(docId(reread));
     if (params.get("run") === "1") out.run = await pollMeetings();
     return NextResponse.json(out);
   } catch (e) {

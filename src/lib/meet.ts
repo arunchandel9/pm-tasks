@@ -308,6 +308,31 @@ export async function rereadNoteDoc(fileId: string): Promise<string> {
   return processNoteDoc(doc);
 }
 
+/**
+ * Keep a meeting's summary, ideas and decisions but forget every card and request the hub made from it (the person
+ * deletes the cards in Pulp). The actions stay on record as "noted", the headline tally is rewritten, pending jobs go.
+ */
+export async function forgetMeetingCards(fileId: string): Promise<string> {
+  const meetings = await sql()`select id from meetings where drive_file_id = ${fileId}`;
+  const msgs = await sql()`select id from messages where channel = 'meet' and external_id like ${"meet:" + fileId + ":%"}`;
+  const mids = msgs.map((r) => String(r.id));
+  const tasks = await sql()`select t.id from tasks t join requests r on r.id = t.request_id where r.message_id = any(${mids}::uuid[])`;
+  const tids = tasks.map((r) => String(r.id));
+  await sql()`delete from status_events where task_id = any(${tids}::uuid[])`;
+  await sql()`delete from settings where key = any(${tids.flatMap((id) => [`sheet_stage:${id}`, `sheet_tab:${id}`])}::text[])`;
+  await sql()`delete from tasks where id = any(${tids}::uuid[])`;
+  await sql()`update llm_calls set message_id = null where message_id = any(${mids}::uuid[])`;
+  await sql()`update requests set merged_into = null where merged_into in (select id from requests where message_id = any(${mids}::uuid[]))`;
+  await sql()`delete from requests where message_id = any(${mids}::uuid[])`;
+  await sql()`delete from queue where done_at is null and ((kind = 'process_message' and payload->>'messageId' = any(${mids})) or (kind = 'meet_group' and payload->>'docId' = ${fileId}))`;
+  await sql()`delete from messages where id = any(${mids}::uuid[])`;
+  for (const m of meetings) {
+    await sql()`update meeting_items set outcome = 'noted' where meeting_id = ${m.id} and kind = 'action' and outcome in ('task', 'on_existing_card', 'pending')`;
+    await refreshMeetingHeadline(String(m.id));
+  }
+  return `${meetings.length} meeting kept, ${tids.length} cards and ${mids.length} action messages forgotten; delete the cards in Pulp by hand`;
+}
+
 /** Meetings are read from the moment the hub first looked (settings `meet_since`), never the backlog before that. */
 async function meetSince(): Promise<Date> {
   const r = await sql()`select value from settings where key = 'meet_since'`;
