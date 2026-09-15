@@ -24,6 +24,7 @@ export const surface = (): "gchat" | "slack" => ((process.env.REVIEW_SURFACE ?? 
 export const reviewMode = (): "notify" | "approve" => ((process.env.REVIEW_MODE ?? "notify").toLowerCase() === "approve" ? "approve" : "notify");
 
 export function sourceLabel(m: Message): string {
+  if (m.channel === "task_cmd" && /via Claude/i.test(m.sender)) return m.sender; // "Anuj via Claude-Arun": the person, then the account
   const where = { slack: "Slack", intake: "Task Hub", email: "Email", task_cmd: "Claude", meet: "Meeting" }[m.channel] ?? m.channel;
   return `${where} · ${m.sender}`;
 }

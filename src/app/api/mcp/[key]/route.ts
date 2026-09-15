@@ -76,7 +76,7 @@ function buildHandler(owner: McpKeyOwner) {
         }),
       }, async ({ client, request, by, priority, source }) => {
         const who = by.trim();
-        const label = who.toLowerCase() === owner.name.trim().toLowerCase() ? who : `${who} (${owner.name})`;
+        const label = `${who} via Claude-${owner.name.trim()}`; // the person, then the Claude account it came through
         const clients = await allClients();
         const c = clients.find((x) => x.id.toLowerCase() === client.toLowerCase() || x.name.toLowerCase() === client.toLowerCase() || (x.aliases ?? []).some((a) => a.toLowerCase() === client.toLowerCase()));
         if (!c) return text({ error: `unknown client "${client}"; call list_clients` });
