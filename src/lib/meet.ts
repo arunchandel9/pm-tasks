@@ -110,21 +110,53 @@ function clientByName(name: string | null | undefined, clients: Client[]): Clien
     ?? (/mango\s*eyes|internal/i.test(n) ? clients.find((c) => c.scope === "internal") ?? null : null);
 }
 
+/**
+ * Gemini creates the notes doc when the call ends and fills it in over the next minutes; the transcript can lag
+ * further. A doc read too early looks empty or says the notes are still being generated. Such a doc is not recorded:
+ * it is tried again (every 30 minutes, for up to 6 hours after its last change) until it has real content, so a
+ * meeting is never written off as "nothing to act on" because the hub was quicker than Gemini.
+ */
+const NOT_READY = /\b(still (being )?(generat|process|transcrib|prepar)|will (be|appear) (available|here|shortly)|notes? (are|is) (being|not yet)|transcript(ion)? (is )?(in progress|pending|not (yet )?available|failed|unavailable)|transcription (issue|problem|error)|no usable|no (content|transcript|notes)\b|not captured|could not be (captured|transcribed))/i;
+export function notesNotReady(notes: string, summary: string[] = [], items = 0): boolean {
+  const t = notes.trim();
+  if (t.length < 400) return true;
+  if (NOT_READY.test(t.slice(0, 1500))) return true;
+  return items === 0 && summary.some((s) => NOT_READY.test(s));
+}
+const RETRY_MINUTES = 30, GIVE_UP_HOURS = 6;
+
 export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   const exists = await sql()`select id from meetings where drive_file_id = ${doc.id}`;
   if (exists.length) return `${doc.name}: already read`;
+  // Not before the retry gap, so a doc that is still being written is not exported every five minutes.
+  const retryKey = `meet_retry:${doc.id}`;
+  const last = await sql()`select value from settings where key = ${retryKey}`;
+  if (last.length && Date.now() - new Date(String(last[0].value)).getTime() < RETRY_MINUTES * 60_000) return `${doc.name}: waiting for Gemini to finish`;
   const notes = await docText(doc.id);
-  if (notes.length < 40) return `${doc.name}: empty`;
   const clients = await allClients();
   const title = meetingTitle(doc.name);
   const attendees = await attendeesOf(doc.id);
   const heldAt = heldAtFrom(notes, doc.modifiedTime);
   const docUrl = `https://docs.google.com/document/d/${doc.id}/edit`;
+  const ageHours = (Date.now() - new Date(doc.modifiedTime).getTime()) / 3_600_000;
+  const notReady = async (why: string) => {
+    if (ageHours < GIVE_UP_HOURS) {
+      await sql()`insert into settings (key, value) values (${retryKey}, ${JSON.stringify(new Date().toISOString())}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+      return `${doc.name}: ${why}, will read again later`;
+    }
+    await sql()`insert into meetings (drive_file_id, title, held_at, organiser, attendees, client_id, scope, doc_url, notes, summary)
+      values (${doc.id}, ${title}, ${heldAt.toISOString()}, ${doc.owner}, ${JSON.stringify(attendees)}::jsonb, null, 'unknown', ${docUrl}, ${notes}, ${JSON.stringify([`No notes were produced for this meeting (${why}).`])}::jsonb) on conflict (drive_file_id) do nothing`;
+    await sql()`delete from settings where key = ${retryKey}`;
+    return `${doc.name}: ${why} after ${GIVE_UP_HOURS} hours, recorded as no notes`;
+  };
+  if (notesNotReady(notes)) return notReady(notes.trim().length < 400 ? "notes not written yet" : "Gemini still writing");
 
   // Meeting-level client: title, attendee domains, then the sorter's own view.
   const byTitle = resolveClientFromText(title, clients)?.client ?? null;
   const byAttendee = attendees.map((e) => resolveClientFromText(e, clients)?.client ?? null).find(Boolean) ?? null;
   const sorted = await sortMeeting({ title, notes, attendees, clients: clients.map((c) => `${c.name}${c.aliases?.length ? `; ${c.aliases.join(", ")}` : ""}`) });
+  if (notesNotReady(notes, sorted.summary ?? [], sorted.items.length)) return notReady("no usable content yet");
+  await sql()`delete from settings where key = ${retryKey}`;
   const internal = clients.find((c) => c.scope === "internal") ?? null;
   const meetingClient = byTitle ?? byAttendee ?? clientByName(sorted.meeting_client, clients) ?? null;
 
@@ -185,6 +217,19 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   const summary = (sorted.summary ?? []).slice(0, 4).map((x) => `• ${x}`).join("\n");
   await postDetail([summary ? `*In short*\n${summary}` : "", ideaLines.length ? `*Raised*\n${ideaLines.join("\n")}` : ""].filter(Boolean).join("\n\n"), threadKey);
   return `${title}: ${tally}`;
+}
+
+/** Forget one meeting and read its notes doc again now (a doc read before Gemini finished, or notes edited by hand). */
+export async function rereadNoteDoc(fileId: string): Promise<string> {
+  const meta = await drive().files.get({ fileId, fields: "id,name,modifiedTime,owners(emailAddress),parents", supportsAllDrives: true });
+  const doc: NoteDoc = { id: fileId, name: meta.data.name ?? fileId, modifiedTime: meta.data.modifiedTime ?? new Date().toISOString(), owner: meta.data.owners?.[0]?.emailAddress ?? null, folder: null };
+  const old = await sql()`select id from meetings where drive_file_id = ${fileId}`;
+  for (const m of old) {
+    await sql()`delete from meeting_items where meeting_id = ${m.id}`;
+    await sql()`delete from meetings where id = ${m.id}`;
+  }
+  await sql()`delete from settings where key = ${"meet_retry:" + fileId}`;
+  return processNoteDoc(doc);
 }
 
 /** Meetings are read from the moment the hub first looked (settings `meet_since`), never the backlog before that. */

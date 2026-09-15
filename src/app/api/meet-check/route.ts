@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cronAuthorized } from "@/lib/auth";
-import { drive, findNoteDocs, meetConfigured, pollMeetings } from "@/lib/meet";
+import { drive, findNoteDocs, meetConfigured, pollMeetings, rereadNoteDoc } from "@/lib/meet";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const maxDuration = 120;
 
 /**
  * What the hub can see in Drive: folders shared with it (by owner), and notes docs from the last 14 days at any depth. Add ?run=1 to read
- * any new docs now instead of waiting for the 5-minute tick.
+ * any new docs now instead of waiting for the 5-minute tick; ?reread=<doc id> forgets one meeting and reads its doc again.
  *   curl -H "Authorization: Bearer $CRON_SECRET" "https://pm-tasks.vercel.app/api/meet-check?run=1"
  */
 export async function GET(req: Request) {
@@ -23,7 +23,10 @@ export async function GET(req: Request) {
       organisersCovered: [...new Set((folders.data.files ?? []).map((f) => f.owners?.[0]?.emailAddress).filter(Boolean))],
       notesDocsLast14Days: docs.map((d) => ({ name: d.name, modified: d.modifiedTime, owner: d.owner, folder: d.folder })),
     };
-    if (new URL(req.url).searchParams.get("run") === "1") out.run = await pollMeetings();
+    const params = new URL(req.url).searchParams;
+    const reread = params.get("reread");
+    if (reread) out.reread = await rereadNoteDoc(reread.replace(/^.*\/d\/([^/]+).*$/, "$1"));
+    if (params.get("run") === "1") out.run = await pollMeetings();
     return NextResponse.json(out);
   } catch (e) {
     return NextResponse.json({ ok: false, error: (e as Error).message.slice(0, 300) }, { status: 500 });

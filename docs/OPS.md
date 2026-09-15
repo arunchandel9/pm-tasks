@@ -81,7 +81,7 @@ The app's avatar is an image URL in Cloud Console → Google Chat API → Config
 - Chat app visibility (Cloud Console → Chat API → Configuration) holds `all.team@mangoeyesagency.com`. Every edit re-evaluates the app for every account; leave it.
 - Domain-wide delegation for service account `task-hub@mangoeyes-task-hub.iam.gserviceaccount.com` (client id 117215744015492300607): Gmail read/modify (mailbox `arun@`), Chat messages read-only (the Drop space, read as you). Removing either scope silently stops that channel.
 - Intake address: `taskhub@mangoeyesagency.com`, an alias of arun@. `GMAIL_INTAKE_ADDRESS` in Vercel lists the addresses read. Remove the old `intake@` alias only after the team has switched.
-- Meet: each organiser shares their "Meet Recordings" / "Google Meet" folder with the service account as Viewer, once. `https://pm-tasks.vercel.app/api/meet-check` (with the secret) lists who is covered.
+- Meet: each organiser shares their "Meet Recordings" / "Google Meet" folder with the service account as Viewer, once. `https://pm-tasks.vercel.app/api/meet-check` (with the secret) lists who is covered; `?run=1` reads new docs now; `?reread=<doc id or URL>` forgets one meeting and reads its notes again (a doc read before Gemini finished, or notes edited by hand).
 
 ## Costs
 
