@@ -10,8 +10,12 @@ features:
   bot_user:
     display_name: Task Hub
     always_online: true
-  # No slash command: the app sits in client workspaces, and anything it lists under "/" is visible to clients.
-  # The team files asks through Task Hub Drop, the DM and taskhub@ (removed 2026-09-15).
+  # The app sits in client workspaces, and anything it lists under "/" is visible to clients: the command says only its name.
+  slash_commands:
+    - command: /task
+      url: https://pm-tasks.vercel.app/api/slack/events
+      description: Task Hub
+      should_escape: false
 oauth_config:
   redirect_urls:
     - https://pm-tasks.vercel.app/api/slack/oauth
@@ -26,6 +30,7 @@ oauth_config:
       - reactions:read
       - users:read
       - users:read.email
+      - commands
       - team:read
       - files:read
 settings:

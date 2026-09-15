@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 const SCOPES = [
   "channels:history", "channels:read", "groups:history", "groups:read",
-  "chat:write", "reactions:write", "reactions:read", "users:read", "users:read.email", "team:read",
+  "chat:write", "reactions:write", "reactions:read", "users:read", "users:read.email", "commands", "team:read",
   "files:read", // voice clips a client shares are transcribed like DM voice notes
 ];
 
