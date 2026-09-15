@@ -10,7 +10,7 @@ import { normList } from "./pulp";
  * up the Assigned To a PM filled in.
  */
 
-export interface SyncReport { tabs: Record<string, { rows: number; imported: number; updated: number; hubRows: number }>; errors: string[]; at: string }
+export interface SyncReport { tabs: Record<string, { rows: number; imported: number; updated: number; hubRows: number; removed: number }>; errors: string[]; at: string }
 
 const MONTHS: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
 
@@ -71,7 +71,7 @@ function departmentKey(label: string): string | null {
 interface Row { key: string; cardId: string | null; boardId: string | null; title: string; priority: string; assignee: string | null; due: string | null; status: string | null; dept: string | null; notes: string | null; sheetRow: number; created: string; completed: string | null }
 
 /** Mirror one client's tab. Two sheet reads and four database statements, whatever the row count. */
-export async function syncClientTab(client: { id: string; name: string; sheetTab?: string | null }, tab: string): Promise<{ rows: number; imported: number; updated: number; hubRows: number }> {
+export async function syncClientTab(client: { id: string; name: string; sheetTab?: string | null }, tab: string): Promise<{ rows: number; imported: number; updated: number; hubRows: number; removed: number }> {
   const cfg = sheetConfig();
   const headers = await tabHeaders(tab);
   const map = mapHeaders(headers, cfg);
@@ -143,7 +143,22 @@ export async function syncClientTab(client: { id: string; name: string; sheetTab
         as v(k, c, bd, t, pr, a, d, sr, co, st, dp, n)
       where t.sheet_key = v.k and t.origin = 'sheet'`;
   }
-  return { rows: parsed.length, imported: ins.length, updated: upd.length, hubRows: parsed.length - mine.length };
+  // The sheet is the PMs' record: a row that is no longer in the tab (deleted, or re-keyed because its serial or title
+  // changed) leaves the hub too, or every edit would leave a ghost behind and answers would list one task many times.
+  // A tab that reads back empty is left alone: that is a read problem, not a cleared tab.
+  let removed = 0;
+  if (parsed.length) {
+    const keep = parsed.map((p) => p.key);
+    const gone = await sql()`select id from tasks where origin = 'sheet' and sheet_tab = ${tab} and (sheet_key is null or sheet_key <> all(${keep}::text[]))`;
+    if (gone.length) {
+      const ids = gone.map((g) => String(g.id));
+      await sql()`delete from status_events where task_id = any(${ids}::uuid[])`;
+      await sql()`delete from settings where key = any(${ids.flatMap((id) => [`sheet_stage:${id}`, `sheet_tab:${id}`])}::text[])`;
+      await sql()`delete from tasks where id = any(${ids}::uuid[])`;
+      removed = ids.length;
+    }
+  }
+  return { rows: parsed.length, imported: ins.length, updated: upd.length, hubRows: parsed.length - mine.length, removed };
 }
 
 /** All clients (or one, by id). Progress is saved per tab so a timeout still leaves a readable report. */

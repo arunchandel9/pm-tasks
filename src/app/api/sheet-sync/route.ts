@@ -10,6 +10,6 @@ export const maxDuration = 120;
 export async function GET(req: Request) {
   if (!cronAuthorized(req)) return new NextResponse("unauthorized", { status: 401 });
   const r = await syncSheet(new URL(req.url).searchParams.get("client"));
-  const totals = Object.values(r.tabs).reduce((a, t) => ({ rows: a.rows + t.rows, imported: a.imported + t.imported, updated: a.updated + t.updated, hubRows: a.hubRows + t.hubRows }), { rows: 0, imported: 0, updated: 0, hubRows: 0 });
+  const totals = Object.values(r.tabs).reduce((a, t) => ({ rows: a.rows + t.rows, imported: a.imported + t.imported, updated: a.updated + t.updated, hubRows: a.hubRows + t.hubRows, removed: a.removed + (t.removed ?? 0) }), { rows: 0, imported: 0, updated: 0, hubRows: 0, removed: 0 });
   return NextResponse.json({ ok: r.errors.length === 0, totals, ...r });
 }
