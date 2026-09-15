@@ -20,7 +20,7 @@ export function holdListName(route: { gated: boolean; list: string | null; stagi
 
 /** "Slack, Dr Mehta" / "Task Hub, Priya" (DM with the app) / "/task, Priya" — the origin stamped into the sheet's Comments cell. */
 export function sourceText(channel: string, sender: string): string {
-  const where = { slack: "Slack", intake: "Task Hub", email: "Email", task_cmd: "Assistant", meet: "Meeting" }[channel] ?? channel;
+  const where = { slack: "Slack", intake: "Task Hub", email: "Email", task_cmd: "Claude", meet: "Meeting" }[channel] ?? channel;
   return sender ? `${where}, ${sender}` : where;
 }
 
