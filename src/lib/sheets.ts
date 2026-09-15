@@ -306,12 +306,16 @@ export async function moveRowBelowDivider(tab: string, rowNumber: number): Promi
   return dividerIdx + 1; // after the move the row sits right under the divider (1-based)
 }
 
-/** Update only bot-owned status cells of an existing row: Status, Date Completed, Pulp link. Never priority, assignee or comments. */
-export async function updateTaskCells(tab: string, rowNumber: number, f: { stage?: string; completed?: Date | null; pulp_link?: string }): Promise<void> {
+/**
+ * Update only bot-owned cells of an existing row: Status, Date Completed, Pulp link, and Task only to fill a cell a PM
+ * left blank next to a card link. Never priority, assignee or comments.
+ */
+export async function updateTaskCells(tab: string, rowNumber: number, f: { stage?: string; completed?: Date | null; pulp_link?: string; title?: string }): Promise<void> {
   const cfg = sheetConfig();
   const map = mapHeaders(await tabHeaders(tab), cfg);
   const data: sheets_v4.Schema$ValueRange[] = [];
   const put = (field: string, v: string | undefined) => { const idx = map[field]; if (idx !== undefined && v !== undefined) data.push({ range: `'${tab}'!${colLetter(idx)}${rowNumber}`, values: [[v]] }); };
+  put("title", f.title);
   put("stage", f.stage);
   put("completed", f.completed === undefined ? undefined : formatDate(f.completed, cfg.date_format));
   put("pulp_link", f.pulp_link);

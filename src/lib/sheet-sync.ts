@@ -35,6 +35,23 @@ function utc(y: number, mo: number, d: number): Date | null {
 
 const cardIdFrom = (link: string) => link.match(/[?&]card=([0-9a-f-]{8,})/i)?.[1] ?? link.match(/\/card\/([0-9a-f-]{8,})/i)?.[1] ?? null;
 const boardIdFrom = (link: string) => link.match(/\/board\/([0-9a-f-]{8,})/i)?.[1] ?? null;
+
+/**
+ * A row with a Pulp link but an empty Task cell is still a task (a PM pasted the card link first and left the title for
+ * later). It is mirrored under this placeholder; the hand-made card check then copies the card's title into the row and
+ * into the Task cell. The placeholder never overwrites a real title once one is known.
+ */
+export const UNTITLED_PREFIX = "(untitled card ";
+export const untitledCard = (cardId: string) => `${UNTITLED_PREFIX}${cardId.slice(0, 8)})`;
+export const isUntitled = (title: string) => title.startsWith(UNTITLED_PREFIX);
+
+/** The title a sheet row is mirrored under, or null when the row is not a task (blank line, the DONE divider). */
+export function rowTitle(typed: string, cardId: string | null): string | null {
+  const t = typed.trim();
+  if (normList(t) === "done") return null;
+  if (t) return t;
+  return cardId ? untitledCard(cardId) : null;
+}
 const isDoneStatus = (s: string) => /^(done|completed?|closed|live|delivered)\b/i.test(s.trim());
 const normTitle = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().slice(0, 80);
 
@@ -67,10 +84,10 @@ export async function syncClientTab(client: { id: string; name: string; sheetTab
   for (let i = cfg.header_row; i < rows.length; i++) {
     const r = rows[i];
     if (i === divider) continue;
-    const title = cell(r, "title");
-    if (!title || normList(title) === "done") continue;
     const link = cell(r, "pulp_link");
     const cardId = link ? cardIdFrom(link) : null;
+    const title = rowTitle(cell(r, "title"), cardId);
+    if (!title) continue;
     const serial = cell(r, "serial");
     const status = cell(r, "stage");
     const belowDivider = divider >= 0 && i > divider;
@@ -113,13 +130,13 @@ export async function syncClientTab(client: { id: string; name: string; sheetTab
       from unnest(${col(b, "cardId")}::text[], ${col(b, "boardId")}::text[], ${col(b, "title")}::text[], ${col(b, "priority")}::text[], ${col(b, "assignee")}::text[], ${col(b, "due")}::text[],
                   ${b.map((p) => p.sheetRow)}::int[], ${col(b, "created")}::text[], ${col(b, "completed")}::text[], ${col(b, "key")}::text[], ${col(b, "status")}::text[], ${col(b, "dept")}::text[], ${col(b, "notes")}::text[])
         as v(c, bd, t, pr, a, d, sr, cr, co, k, st, dp, n)
-      on conflict (sheet_key) where sheet_key is not null do update set title = excluded.title, priority = excluded.priority, assignee = excluded.assignee,
+      on conflict (sheet_key) where sheet_key is not null do update set title = case when excluded.title like ${UNTITLED_PREFIX + "%"} then tasks.title else excluded.title end, priority = excluded.priority, assignee = excluded.assignee,
         due_at = excluded.due_at, sheet_row = excluded.sheet_row, sheet_tab = excluded.sheet_tab, sheet_status = excluded.sheet_status,
         department = excluded.department, notes = excluded.notes, completed_at = excluded.completed_at, client_id = excluded.client_id`;
   }
   for (let i = 0; i < upd.length; i += 300) {
     const b = upd.slice(i, i + 300);
-    await sql()`update tasks t set title = v.t, priority = v.pr, assignee = v.a, due_at = v.d::timestamptz, sheet_status = v.st, department = v.dp, notes = v.n, sheet_row = v.sr, sheet_tab = ${tab},
+    await sql()`update tasks t set title = case when v.t like ${UNTITLED_PREFIX + "%"} then t.title else v.t end, priority = v.pr, assignee = v.a, due_at = v.d::timestamptz, sheet_status = v.st, department = v.dp, notes = v.n, sheet_row = v.sr, sheet_tab = ${tab},
         completed_at = v.co::timestamptz, pulp_card_id = coalesce(t.pulp_card_id, v.c), board_id = coalesce(t.board_id, v.bd)
       from unnest(${col(b, "key")}::text[], ${col(b, "cardId")}::text[], ${col(b, "boardId")}::text[], ${col(b, "title")}::text[], ${col(b, "priority")}::text[], ${col(b, "assignee")}::text[], ${col(b, "due")}::text[],
                   ${b.map((p) => p.sheetRow)}::int[], ${col(b, "completed")}::text[], ${col(b, "status")}::text[], ${col(b, "dept")}::text[], ${col(b, "notes")}::text[])

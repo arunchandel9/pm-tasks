@@ -1,6 +1,7 @@
 import { sql } from "./db";
 import { pulp, isDoneList, normList } from "./pulp";
 import { sheetsConfigured, sheetConfig, tabHeaders, tabRows, mapHeaders, updateTaskCells, moveRowBelowDivider } from "./sheets";
+import { isUntitled } from "./sheet-sync";
 
 /**
  * Cards people create by hand in Pulp and link in the PM sheet themselves.
@@ -23,8 +24,8 @@ export function sheetCardAction(p: { lastListId: string | null; cardListId: stri
 
 const cardIdIn = (link: string) => link.match(/[?&]card=([0-9a-f-]{8,})/i)?.[1] ?? link.match(/\/card\/([0-9a-f-]{8,})/i)?.[1] ?? null;
 
-/** Row number (1-based) whose Pulp link carries this card id, or null. One sheet read. */
-export async function locateRowByCardId(tab: string, cardId: string): Promise<number | null> {
+/** The row (1-based) whose Pulp link carries this card id, with what its Task cell says, or null. One sheet read. */
+export async function locateRow(tab: string, cardId: string): Promise<{ row: number; title: string } | null> {
   const cfg = sheetConfig();
   const map = mapHeaders(await tabHeaders(tab), cfg);
   if (map.pulp_link === undefined) return null;
@@ -32,15 +33,16 @@ export async function locateRowByCardId(tab: string, cardId: string): Promise<nu
   const want = cardId.toLowerCase();
   for (let i = cfg.header_row; i < rows.length; i++) {
     const id = cardIdIn((rows[i][map.pulp_link] ?? "").trim());
-    if (id && id.toLowerCase() === want) return i + 1;
+    if (id && id.toLowerCase() === want) return { row: i + 1, title: map.title === undefined ? "" : (rows[i][map.title] ?? "").trim() };
   }
   return null;
 }
+export const locateRowByCardId = async (tab: string, cardId: string): Promise<number | null> => (await locateRow(tab, cardId))?.row ?? null;
 
-export interface SheetCardsReport { checked: number; baselined: number; written: number; closed: number; errors: string[] }
+export interface SheetCardsReport { checked: number; baselined: number; written: number; closed: number; titled: number; errors: string[] }
 
 export async function pollSheetCards(limit = 40): Promise<SheetCardsReport> {
-  const report: SheetCardsReport = { checked: 0, baselined: 0, written: 0, closed: 0, errors: [] };
+  const report: SheetCardsReport = { checked: 0, baselined: 0, written: 0, closed: 0, titled: 0, errors: [] };
   if (!pulp.configured() || !sheetsConfigured()) return report;
   const rows = await sql()`
     select id, pulp_card_id, board_id, list_id, title, sheet_tab, sheet_row, sheet_status
@@ -54,6 +56,15 @@ export async function pollSheetCards(limit = 40): Promise<SheetCardsReport> {
       const msg = (e as Error).message;
       if (!/→ 404/.test(msg)) report.errors.push(`${String(t.title).slice(0, 40)}: ${msg.slice(0, 120)}`);
       continue; // 404: archived or deleted in Pulp; the row stays as the PM left it
+    }
+    // A row mirrored from a link with no Task text: give it the card's title, in the hub and in the sheet's blank cell.
+    if (isUntitled(String(t.title)) && card.title.trim()) {
+      try {
+        const loc = await locateRow(String(t.sheet_tab), String(t.pulp_card_id));
+        if (loc && !loc.title) await updateTaskCells(String(t.sheet_tab), loc.row, { title: card.title.trim() });
+        await sql()`update tasks set title = ${card.title.trim()} where id = ${t.id}`;
+        report.titled++;
+      } catch (e) { report.errors.push(`title ${String(t.pulp_card_id).slice(0, 8)}: ${(e as Error).message.slice(0, 160)}`); }
     }
     const listName = card.listName ?? (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
     const done = isDoneList(listName);
