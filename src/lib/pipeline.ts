@@ -7,7 +7,7 @@ import { classify } from "./llm/classify";
 import { route } from "./route";
 import type { Message, Client } from "./types";
 import { addReaction, postThreadFollowupComment } from "./slack";
-import { postReview, postP1Ping, postText, postFeed, wordsLine, reviewMode, draftLine, followupLine, messageThreadKey, suggestedClientOf, sourceLabel } from "./review";
+import { postReview, postP1Ping, postText, postFeed, wordsLine, reviewMode, draftLine, followupLine, messageThreadKey, suggestedClientOf, sourceLabel, feedThreadKeyOf, inSharedThread } from "./review";
 import { createStagingCard } from "./tasks";
 
 export interface ProcessResult {
@@ -122,10 +122,11 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     await sql()`update messages set skip_reason = ${dd.kind} where id = ${messageId}`;
     await addReaction(m, "repeat");
     await postThreadFollowupComment({ taskId: dd.taskId, requestId: dd.requestId, message: m });
-    if (m.channel === "intake" && reviewMode() === "notify") {
+    if ((m.channel === "intake" || inSharedThread(m)) && reviewMode() === "notify") {
       // The feed is the team's record: a repeat that was noted on its card gets a line too, not only the sender's thread.
       const t = await sql()`select coalesce(draft->>'title', '') as title from requests where id = ${dd.requestId}`;
-      await postFeed({ headline: followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m, pulpLink: await cardLink(dd.taskId) }), detail: wordsLine(m.text), threadKey: messageThreadKey(messageId) });
+      if (inSharedThread(m)) await postText(followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m, pulpLink: await cardLink(dd.taskId) }), { threadKey: feedThreadKeyOf(m, messageId) });
+      else await postFeed({ headline: followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m, pulpLink: await cardLink(dd.taskId) }), detail: wordsLine(m.text), threadKey: messageThreadKey(messageId) });
     }
     return { messageId, outcome: "attached", reason: dd.kind, requestIds: [dd.requestId] };
   }
@@ -238,7 +239,10 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     if (r.priority === "P1") await postP1Ping({ requestId, client, title: cl.title, message: m, reason: r.priorityReason });
   }
 
-  if (feed.length) {
+  if (feed.length && inSharedThread(m)) {
+    // Part of a bigger post (a meeting): the card lines are replies in that thread; the meeting headline carries the counts.
+    await postText(feed.join("\n"), { threadKey: feedThreadKeyOf(m, messageId) });
+  } else if (feed.length) {
     // One line in the feed per message. One card: its line is the headline and the words sit in the thread.
     // Several cards: a count line on top, the per-card lines with links in the thread.
     const src = sourceLabel(m).replace(" · ", ", ");

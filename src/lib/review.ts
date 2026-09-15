@@ -58,6 +58,27 @@ export function wordsLine(text: string): string {
   return own ? `"${clip(own, 400)}"` : "";
 }
 
+/** A message can ask to be reported inside another feed thread (a meeting's), instead of its own. */
+export const feedThreadKeyOf = (m: { raw: unknown }, messageId: string): string => ((m.raw as { feedThreadKey?: string } | null)?.feedThreadKey ?? messageThreadKey(messageId));
+export const inSharedThread = (m: { raw: unknown }): boolean => !!(m.raw as { feedThreadKey?: string } | null)?.feedThreadKey;
+
+/** Post a headline and return its message name so it can be edited once the counts are known. */
+export async function postHeadline(text: string, threadKey: string): Promise<string | null> {
+  if (surface() === "slack" || !gchat.gchatConfigured()) { await postText(text, { threadKey }); return null; }
+  return gchat.sendText(gchat.reviewSpace(), text, undefined, threadKey);
+}
+export async function editHeadline(name: string | null, text: string): Promise<void> {
+  if (!name) return;
+  try { await gchat.updateMessageText(name, text); } catch (e) { console.error("headline edit failed", (e as Error).message); }
+}
+/** The boxed note under a headline, on its own (postFeed posts both). */
+export async function postDetail(detail: string, threadKey: string): Promise<void> {
+  if (!detail.trim()) return;
+  if (surface() === "slack" || !gchat.gchatConfigured()) { await postText(detail, { threadKey }); return; }
+  const card = { sections: [{ widgets: [{ textParagraph: { text: toCardHtml(detail) } }] }] };
+  await gchat.sendCard(gchat.reviewSpace(), card, "", `detail-${threadKey}-${Date.now()}`, threadKey);
+}
+
 /**
  * The feed rule: one line at the top level per message, everything else inside that line's thread.
  * The headline is the ledger entry; the detail (the words, per-card links, a card with buttons) opens on demand.
@@ -107,8 +128,9 @@ export async function postReview(p: ReviewPost): Promise<void> {
     });
     // One headline line in the feed; the words and the card with the dropdown sit in its thread.
     const head = p.why.startsWith("unknown") ? `❓ *Which client?* · ${sourceLabel(p.message).replace(" · ", ", ")} · ${clip(wordsLine(p.message.text), 70)}` : `❓ *Needs a person* · ${p.why.replace(/_/g, " ")} · ${sourceLabel(p.message).replace(" · ", ", ")}`;
-    const headName = await gchat.sendText(space, head, undefined, messageThreadKey(p.messageId));
-    const sent = await gchat.sendCard(space, card, "Pick the client below, or reply here with the name.", `human-${p.messageId}`, messageThreadKey(p.messageId));
+    const tk = feedThreadKeyOf(p.message, p.messageId);
+    const headName = await gchat.sendText(space, head, undefined, tk);
+    const sent = await gchat.sendCard(space, card, "Pick the client below, or reply here with the name.", `human-${p.messageId}`, tk);
     await rememberThread(sent.thread, { kind: "needs_human", messageId: p.messageId });
     await sql()`insert into settings (key, value) values (${"gchat_card_for:" + p.messageId}, ${JSON.stringify({ card: sent.name, head: headName })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
     return;

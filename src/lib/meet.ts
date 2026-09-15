@@ -3,7 +3,7 @@ import { sql, allClients } from "./db";
 import { resolveClientFromText } from "./resolve";
 import { sortMeeting } from "./llm/meeting";
 import { processMessage } from "./pipeline";
-import { postText } from "./review";
+import { postHeadline, editHeadline, postDetail } from "./review";
 import type { Client, Message } from "./types";
 
 /**
@@ -151,15 +151,18 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
     if (it.kind === "decision") { counts.decisions++; if (ideaLines.length < 6) ideaLines.push(`📌 *${c?.name ?? "Unassigned"}* · ${it.text}`); }
   }
 
-  const header = `📝 *Meeting* · ${title} · ${heldAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" })} · ${meetingClient?.name ?? "Internal / unclear"} · <${docUrl}|notes>`;
-  await postText(header);
+  // One headline in the feed per meeting; the cards, ideas, decisions and summary all go inside its thread.
+  const threadKey = `meet-${meetingId}`;
+  const who = meetingClient ? meetingClient.name : sorted.meeting_client?.toLowerCase().includes("mango") ? "MangoEyes internal" : "client unclear";
+  const day = heldAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+  const headName = await postHeadline(`📝 *Meeting · ${who}* · ${day} · reading the notes… · <${docUrl}|notes>`, threadKey);
 
   for (const [, g] of groups) {
     const text = g.items.map((it) => `- ${it.text}${it.owner ? ` (${it.owner})` : ""}${it.due ? ` — ${it.due}` : ""}`).join("\n");
     const m: Message = {
       channel: "meet", externalId: `meet:${doc.id}:${g.client?.id ?? "unassigned"}`, teamId: null, clientId: g.client?.id ?? null, scope: g.client ? g.client.scope : "unknown",
       sender: doc.owner ?? "meeting", senderIsStaff: true, sentAt: heldAt, text: `Action items from the meeting "${title}":\n${text}`, permalink: docUrl, threadRef: null,
-      raw: { meeting: { id: meetingId, driveFileId: doc.id, title } },
+      raw: { meeting: { id: meetingId, driveFileId: doc.id, title }, feedThreadKey: threadKey },
     };
     const r = await processMessage(m, { skip: false, reason: null });
     const n = r.requestIds?.length ?? 0;
@@ -172,12 +175,16 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
     }
   }
 
-  const tail = [
-    `${counts.tasks} to Staging`, counts.onCard ? `${counts.onCard} on existing cards` : null, counts.ideas ? `${counts.ideas} ideas` : null,
-    counts.decisions ? `${counts.decisions} decisions` : null, counts.unclear ? `${counts.unclear} actions with no clear client (card above)` : null,
-  ].filter(Boolean).join(" · ");
-  if (ideaLines.length || tail) await postText([tail ? `↳ ${tail}` : null, ...ideaLines].filter(Boolean).join("\n"));
-  return `${title}: ${tail || "nothing actionable"}`;
+  const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
+  const tally = [
+    counts.tasks ? n(counts.tasks, "card") : null, counts.onCard ? `${counts.onCard} on existing cards` : null,
+    counts.ideas ? n(counts.ideas, "idea") : null, counts.decisions ? n(counts.decisions, "decision") : null,
+    counts.unclear ? `${counts.unclear} with no clear client` : null,
+  ].filter(Boolean).join(" · ") || "nothing to act on";
+  await editHeadline(headName, `📝 *Meeting · ${who}* · ${day} · ${tally} · <${docUrl}|notes>`);
+  const summary = (sorted.summary ?? []).slice(0, 4).map((x) => `• ${x}`).join("\n");
+  await postDetail([summary ? `*In short*\n${summary}` : "", ideaLines.length ? `*Raised*\n${ideaLines.join("\n")}` : ""].filter(Boolean).join("\n\n"), threadKey);
+  return `${title}: ${tally}`;
 }
 
 /** Meetings are read from the moment the hub first looked (settings `meet_since`), never the backlog before that. */
