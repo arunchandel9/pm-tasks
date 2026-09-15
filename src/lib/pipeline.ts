@@ -128,7 +128,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
   }
 
   // Dedupe before any model call.
-  const dd = await dedupe(m.clientId, latestPart(m.text), hash);
+  const dd = await dedupe(m.clientId, latestPart(m.text), hash, messageId);
   if (dd.kind === "exact_duplicate" || dd.kind === "likely_duplicate") {
     await sql()`update messages set skip_reason = ${dd.kind} where id = ${messageId}`;
     await addReaction(m, "repeat");

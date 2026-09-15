@@ -195,12 +195,20 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   const summary = (sorted.summary ?? []).slice(0, 4).map((x) => `• ${x}`).join("\n");
   await postDetail([summary ? `*In short*\n${summary}` : "", ideaLines.length ? `*Raised*\n${ideaLines.join("\n")}` : ""].filter(Boolean).join("\n\n"), threadKey);
 
+  // Five action items per job: each ask costs a model call and a card, and a job must finish well inside a minute.
+  let jobs = 0;
   for (const [, g] of groups) {
-    const text = g.items.map((it) => `- ${it.text}${it.owner ? ` (${it.owner})` : ""}${it.due ? ` — ${it.due}` : ""}`).join("\n");
-    await enqueue("meet_group", { meetingId, docId: doc.id, docUrl, title, owner: doc.owner, heldAt: heldAt.toISOString(), clientId: g.client?.id ?? null, text, threadKey });
+    const parts: (typeof g.items)[] = [];
+    for (let i = 0; i < g.items.length; i += ACTIONS_PER_JOB) parts.push(g.items.slice(i, i + ACTIONS_PER_JOB));
+    for (let p = 0; p < parts.length; p++) {
+      const text = parts[p].map((it) => `- ${it.text}${it.owner ? ` (${it.owner})` : ""}${it.due ? ` — ${it.due}` : ""}`).join("\n");
+      await enqueue("meet_group", { meetingId, docId: doc.id, docUrl, title, owner: doc.owner, heldAt: heldAt.toISOString(), clientId: g.client?.id ?? null, text, threadKey, part: parts.length > 1 ? p + 1 : 0, items: parts[p].map((it) => it.text) });
+      jobs++;
+    }
   }
-  return `${title}: ${groups.size ? `${groups.size} action group${groups.size > 1 ? "s" : ""} queued` : await tallyText(meetingId)}`;
+  return `${title}: ${jobs ? `${jobs} action job${jobs > 1 ? "s" : ""} queued` : await tallyText(meetingId)}`;
 }
+const ACTIONS_PER_JOB = 5;
 
 /** The headline tally from what is recorded: cards made, on existing cards, ideas, decisions, actions without a client. */
 export async function tallyText(meetingId: string): Promise<string> {
@@ -232,18 +240,19 @@ export async function refreshMeetingHeadline(meetingId: string): Promise<void> {
  * The `meet_group` queue job: one client's action items from one meeting through the normal pipeline (dedupe, Staging
  * cards, feed lines inside the meeting's thread). Re-run safe: the message is upserted, so a retry never doubles cards.
  */
-export async function runMeetGroup(p: { meetingId: string; docId: string; docUrl: string; title: string; owner: string | null; heldAt: string; clientId: string | null; text: string; threadKey: string }): Promise<string> {
+export async function runMeetGroup(p: { meetingId: string; docId: string; docUrl: string; title: string; owner: string | null; heldAt: string; clientId: string | null; text: string; threadKey: string; part?: number; items?: string[] }): Promise<string> {
   const clients = await allClients();
   const client = p.clientId ? clients.find((c) => c.id === p.clientId) ?? null : null;
   const m: Message = {
-    channel: "meet", externalId: `meet:${p.docId}:${client?.id ?? "unassigned"}`, teamId: null, clientId: client?.id ?? null, scope: client ? client.scope : "unknown",
+    channel: "meet", externalId: `meet:${p.docId}:${client?.id ?? "unassigned"}${p.part ? `:${p.part}` : ""}`, teamId: null, clientId: client?.id ?? null, scope: client ? client.scope : "unknown",
     sender: p.owner ?? "meeting", senderIsStaff: true, sentAt: new Date(p.heldAt), text: `Action items from the meeting "${p.title}":\n${p.text}`, permalink: p.docUrl, threadRef: null,
     raw: { meeting: { id: p.meetingId, driveFileId: p.docId, title: p.title }, feedThreadKey: p.threadKey },
   };
   const r = await processMessage(m, { skip: false, reason: null }, { rerun: true });
   const made = r.outcome === "review" ? (r.requestIds?.length ?? 0) : 0;
   const outcome = made ? "task" : r.outcome === "attached" ? "on_existing_card" : "noted";
-  await sql()`update meeting_items set outcome = ${outcome} where meeting_id = ${p.meetingId} and kind = 'action' and outcome = 'pending' and client_id is not distinct from ${client?.id ?? null}`;
+  if (p.items?.length) await sql()`update meeting_items set outcome = ${outcome} where meeting_id = ${p.meetingId} and kind = 'action' and outcome = 'pending' and client_id is not distinct from ${client?.id ?? null} and text = any(${p.items}::text[])`;
+  else await sql()`update meeting_items set outcome = ${outcome} where meeting_id = ${p.meetingId} and kind = 'action' and outcome = 'pending' and client_id is not distinct from ${client?.id ?? null}`;
   await refreshMeetingHeadline(p.meetingId);
   return `${client?.name ?? "unassigned"}: ${outcome}`;
 }
