@@ -1,6 +1,6 @@
 # Ask the hub from your own assistant (MCP)
 
-Each PM gets a personal link. Add it to Claude, Codex or Cursor once, then ask in plain language:
+One link per Claude account (accounts are shared, so the hub asks who is filing a request). Add it to Claude, Codex or Cursor once, then ask in plain language:
 "what is open for HOH", "anything overdue this week", "what did Dr Mehta ask on Tuesday", "summarise today",
 "add a request for PSS: the gallery page shows old photos". Answers come from the hub's database, not from a model
 guessing. Filing a request goes through the normal pipeline: a Staging card for a PM to approve.

@@ -9,9 +9,18 @@ Read this first when resuming. It is the operational memory of the project: what
 what is verified, what is open. `PLAN.md` holds the design rationale; this file holds the live state.
 Keep it updated with every change.
 
-Last updated: 2026-09-09 (build day 2).
+Last updated: 2026-09-15 (soak, handover pages written).
 
 ## Decisions finalised
+
+- **2026-09-15, soak decisions (Arun):** one Staging list for every card, no Needs scope gate (`gated` off in
+  `config/routing.yaml`); no client or internal boards, every card on a department board; one MCP key per Claude
+  account, the hub asks who is filing ("Anuj via Claude-Arun"); the kill switch stays untested until ever needed;
+  Slack checks wait for the first real client message; the feed is one line per message with everything else in the
+  thread. Bug fixed the same day: a sheet row with a card link but a blank Task cell was skipped by the mirror (now
+  mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
+  `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
+  `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
 
 - **2026-09-11, Google Chat surfaces:** the DM with the Task Hub app is the front door (forward, type, voice, `/task`; no
   mention). The Intake space is retired (a space app only gets mentioned messages; the Workspace Events API could
@@ -216,7 +225,7 @@ Last updated: 2026-09-09 (build day 2).
 | 3. Cards and sheet | Pulp Staging cards, drag approval, sheet rows + stamp, Done sync, nudges, daily summary | Done |
 | 4. Hub | MCP with per-person keys, sheet history mirrored every 10 min | Done (milestone C) |
 | 5. Meetings and routing | Meet notes from the Drive folder, scope gate | Done. New-page chain dropped 2026-09-10 (pages are mostly one person's work now; PM adds extra cards by hand) |
-| 6. Soak and handover | 2 hours on live traffic with filter tuning; 1 hour team brief + one-page guide. Plan: `docs/SOAK.md` | starting |
+| 6. Soak and handover | 2 hours on live traffic with filter tuning; 1 hour team brief + one-page guide. Plan: `docs/SOAK.md` | Blocks A, B, E done (Slack and Meet checks wait for real traffic); C3 tonight; D2/D3 with the team's Claude; handover pages written 2026-09-15 |
 
 After go-live, one hour each when wanted: weekly per-client digest, approval-loop nudges, auto-move Staging → To Do.
 
