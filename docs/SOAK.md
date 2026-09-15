@@ -65,7 +65,7 @@ Client-matching audit (14 Sep, after a voice note with no client name was filed 
 | B8 | 3.6, 3.7 | PM | Create a card by hand in Pulp, paste its link in a new row of the client's tab | Within 10 min Claude lists it (D3). Move the card to Done → within 5 min the row reads Done and sits below the divider. |
 | B9 | 2.6 | A | DM: the same text as A1 again | 🔁 line "same as …", comment on the A1 card, no new card. |
 | B10 | 2.6 | A | Reply in the DM thread of A1: `also broken on tablet` | 🔁 line "update to …", comment on the card. |
-| B11 | 3.9 | A | Put the MangoEyes board id `c898e940-b4df-4467-baf6-272f5acbc24a` in the MangoEyes Config row for dev; wait 1 min; DM: `MangoEyes: update our own pricing page` | Card lands on the MangoEyes board. |
+| B11 | 3.9 | — | Skipped 2026-09-15: no card goes to a separate board (Arun). The override is kept for later. | — |
 | B12 | 3.8 | H | Read the queue: no failed `create_card` or `sync_sheet` jobs older than 10 min | Empty, or each one explained and fixed. |
 
 ## Block C — feed, acknowledgements, summary (15 min)

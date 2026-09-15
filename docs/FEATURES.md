@@ -53,7 +53,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | 3.6 | Hand-made cards | A card someone creates directly in Pulp and links in the sheet by hand is picked up by the sheet mirror. From then on the hub checks it in rotation and writes Status only when the card moves list (Done also closes the row). First look never overwrites a typed status. | Built |
 | 3.7 | Sheet mirror | Every 10 min all client tabs are read into the hub (history from before the hub and hand-typed rows), so Claude answers from the PMs' own record. Never writes to the sheet. | Live (1,164 rows) |
 | 3.8 | Retry without re-approving | A card that failed to create is retried by a background job that never changes the approval; a failed sheet write is retried the same way. | Built |
-| 3.9 | Client board overrides | A client's Config row can point any department to another board or list; blank means the default in `config/boards.yaml`. | Built |
+| 3.9 | Client board overrides | A client's Config row can point any department to another board or list; blank means the default in `config/boards.yaml`. Decision 2026-09-15 (Arun): every card goes to the department boards, no client or internal board; the override stays available, unused and untested, for the day it is wanted. | Built, not in use |
 | 3.10 | New-page chain | Seven linked sub-cards per new page. | Dropped 2026-09-10: pages are mostly one person's work; the PM adds cards by hand |
 
 ## 4. Keeping a person in the loop
