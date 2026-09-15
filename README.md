@@ -2,7 +2,7 @@
 
 Turns client requests from any channel into the right task on the right board, keeps the PM sheet in sync, and lets any PM's assistant ask the hub.
 
-- Start here: `CLAUDE.md` (reading order), then `docs/STATE.md` (decisions, IDs, env) and `docs/FEATURES.md` (every feature and its status)
+- Start here: `CLAUDE.md` (reading order), then `docs/ARCHITECTURE.md` (the whole system), `docs/STATE.md` (decisions, IDs, env) and `docs/FEATURES.md` (every feature and its status)
 - Original design: `PLAN.md`
 - Team pages: `docs/overview.html` (technical), `docs/team-summary.html` (non-technical)
 

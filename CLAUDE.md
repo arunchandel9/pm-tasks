@@ -8,13 +8,14 @@ team's Claude accounts. Deployed on Vercel from branch `claude/mangowise-task-au
 
 ## Where everything is (reading order)
 
-1. `docs/STATE.md` — every decision with its date, IDs, the Google/Slack/Pulp facts, environment variable names, useful commands.
-2. `docs/FEATURES.md` — the register: every feature, how it works, status (Live / Built / Dropped), endpoints, code map. `tests/features.test.ts` fails when a module or endpoint is missing from it.
-3. `docs/SOAK.md` — the live checks and what passed, with the progress line under block A.
-4. `docs/OPS.md` — operations for Arun: health, new client, Slack install, MCP keys, pause, clean-start commands, costs.
-5. `docs/GUIDE.md` — one page per role for the team. `docs/TEAM-BRIEF.md` — the team message. `docs/POST-LAUNCH.md` — what still proves itself on real traffic and what could come next.
-6. `docs/MCP.md` — connecting Claude, the tools, from/to dates.
-7. `PLAN.md` — the original design rationale (older; STATE.md wins where they differ).
+1. `docs/ARCHITECTURE.md` — the whole infrastructure and concept, end to end, as it runs today.
+2. `docs/STATE.md` — every decision with its date, IDs, the Google/Slack/Pulp facts, environment variable names, useful commands.
+3. `docs/FEATURES.md` — the register: every feature, how it works, status (Live / Built / Dropped), endpoints, code map. `tests/features.test.ts` fails when a module or endpoint is missing from it.
+4. `docs/SOAK.md` — the live checks and what passed, with the progress line under block A.
+5. `docs/OPS.md` — operations for Arun: health, new client, Slack install, MCP keys, pause, clean-start commands, costs.
+6. `docs/GUIDE.md` — one page per role for the team. `docs/TEAM-BRIEF.md` — the team message. `docs/POST-LAUNCH.md` — what still proves itself on real traffic and what could come next.
+7. `docs/MCP.md` — connecting Claude, the tools, from/to dates.
+8. `PLAN.md` — the original design rationale (older; STATE.md wins where they differ).
 
 ## Working rules (from Arun)
 

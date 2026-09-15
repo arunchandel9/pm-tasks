@@ -5,8 +5,10 @@ feature is added or dropped there first, decisions and IDs are recorded here. St
 nothing built may go unnoticed. Every feature appears in FEATURES.md, in the handover guide, in the handover message
 and in any cost or summary document. `tests/features.test.ts` fails when an endpoint or module is not in FEATURES.md.
 
-Read this first when resuming. It is the operational memory of the project: what is decided, what exists,
-what is verified, what is open. `PLAN.md` holds the design rationale; this file holds the live state.
+Read `docs/ARCHITECTURE.md` first for the whole system as it runs today; this file is the operational memory behind
+it: what is decided (dated), the IDs, what is verified, what is open. `PLAN.md` holds the original design rationale.
+Entries below are dated; a later entry supersedes an earlier one (for example the Intake space and the 5/60-minute
+nudges described in older entries are gone: Drop space and 20 min / 1 h / 1 day / daily reminders since 2026-09-15).
 Keep it updated with every change.
 
 Last updated: 2026-09-15 (go-live: soak closed, Slack rebuilt, clean start done, handover pages written; `CLAUDE.md` is the entry point).
