@@ -73,7 +73,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 |---|---|---|---|
 | 5.1 | MCP server | `https://pm-tasks.vercel.app/api/mcp/<personal key>` over Streamable HTTP. Works in Claude (web, desktop, Code) and Codex. Guide in `docs/MCP.md`. | Live |
 | 5.2 | Personal keys | Minted, listed and revoked from `/api/setup?mcp_key=Name|email`, `?mcp_list`, `?mcp_revoke=`. Keys are stored hashed. | Live |
-| 5.3 | Tools | `list_clients`, `search_tasks`, `task_detail`, `client_summary`, `recent_messages`, `daily_summary`, `add_request`, `meetings`, `meeting_detail`, `ideas`, `decisions`, `hub_status`. | Live |
+| 5.3 | Tools | `list_clients`, `search_tasks`, `task_detail`, `client_summary`, `recent_messages`, `daily_summary`, `add_request`, `meetings`, `meeting_detail`, `ideas`, `decisions`, `hub_status`. Every look-back tool takes `days` (the last N) or `from`/`to` calendar days (Indian time, inclusive), so "what happened on 12 March 2025" is one exact lookup. | Live |
 | 5.4 | Answers cover the whole record | Hub-made tasks and sheet history both answer, with status, links, assignee and dates. | Live |
 | 5.5 | External platforms | Ads, CRM, Search Console, analytics stay on each PM's own Claude/Codex connectors. The PM's assistant compiles hub data with platform data. Not connected to the hub by decision. | Decided 2026-09-10 |
 

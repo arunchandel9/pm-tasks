@@ -29,6 +29,34 @@ async function listName(boardId: string | null, listId: string | null, staging: 
   } catch { return listId; }
 }
 
+/**
+ * A look-back window. `from` / `to` are calendar days (YYYY-MM-DD, Indian time, both inclusive) and win over `days`;
+ * `days` alone means "the last N days"; nothing means the tool's default. A single day is `from` = `to`.
+ */
+export interface Window { days?: number | null; from?: string | null; to?: string | null }
+const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+const istStart = (day: string, plusDays = 0): string => {
+  const m = day.match(DAY);
+  if (!m) throw new Error(`date must be YYYY-MM-DD, got "${day}"`);
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + plusDays, 0, 0, 0) - 330 * 60_000).toISOString(); // 00:00 IST
+};
+/** Bounds as ISO timestamps: rows with `since <= at < until` are in. Null means unbounded on that side. */
+export function windowBounds(w: Window, defaultDays: number | null): { since: string | null; until: string | null } {
+  if (w.from || w.to) {
+    const from = w.from ?? w.to!, to = w.to ?? w.from!;
+    return { since: istStart(from), until: istStart(to, 1) };
+  }
+  const days = w.days ?? defaultDays;
+  return { since: days ? new Date(Date.now() - days * 86_400_000).toISOString() : null, until: null };
+}
+/** "12 Mar 2025", "1 to 15 Mar 2025", "last 7 days" for headings. */
+export function windowLabel(w: Window, defaultDays: number | null): string {
+  const fmt = (d: string) => new Date(istStart(d)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
+  if (w.from || w.to) { const from = w.from ?? w.to!, to = w.to ?? w.from!; return from === to ? fmt(from) : `${fmt(from)} to ${fmt(to)}`; }
+  const days = w.days ?? defaultDays;
+  return days === 1 ? "today" : days ? `last ${days} days` : "all time";
+}
+
 export async function resolveClientId(ref: string | null | undefined): Promise<string | null> {
   if (!ref) return null;
   const r = ref.trim().toLowerCase();
@@ -38,7 +66,7 @@ export async function resolveClientId(ref: string | null | undefined): Promise<s
   return c?.id ?? null;
 }
 
-export interface TaskQuery { client?: string | null; status?: "open" | "done" | "overdue" | "waiting" | "staging" | "all"; department?: string | null; query?: string | null; days?: number | null; limit?: number | null }
+export interface TaskQuery extends Window { client?: string | null; status?: "open" | "done" | "overdue" | "waiting" | "staging" | "all"; department?: string | null; query?: string | null; limit?: number | null }
 
 export async function searchTasks(q: TaskQuery): Promise<TaskRow[]> {
   const clientId = await resolveClientId(q.client);
@@ -46,7 +74,7 @@ export async function searchTasks(q: TaskQuery): Promise<TaskRow[]> {
   const status = q.status ?? "open";
   const limit = Math.min(Math.max(q.limit ?? 50, 1), 200);
   const like = q.query ? `%${q.query.trim()}%` : null;
-  const days = q.days ?? null;
+  const { since, until } = windowBounds(q, null);
   const rows = await sql()`
     select t.id, t.title, c.name as client, coalesce(r.department, t.department) as department, t.priority, t.staging, r.status as request_status, t.assignee, t.due_at, t.created_at, t.completed_at, t.last_moved_at,
            t.board_id, t.list_id, t.pulp_card_id, t.waiting_on_client_since, t.origin, t.sheet_status, t.sheet_tab, t.notes, m.channel, m.permalink, m.sender
@@ -57,7 +85,7 @@ export async function searchTasks(q: TaskQuery): Promise<TaskRow[]> {
     where (${clientId}::text is null or t.client_id = ${clientId})
       and (${q.department ?? null}::text is null or coalesce(r.department, t.department) = ${q.department ?? null})
       and (${like}::text is null or t.title ilike ${like} or r.summary ilike ${like} or r.quote ilike ${like})
-      and (${days}::int is null or t.created_at > now() - (${days} || ' days')::interval)
+      and (${since}::timestamptz is null or t.created_at >= ${since}::timestamptz) and (${until}::timestamptz is null or t.created_at < ${until}::timestamptz)
       and case ${status}
             when 'open' then t.completed_at is null
             when 'done' then t.completed_at is not null
@@ -128,36 +156,42 @@ export async function clientSummary(ref: string): Promise<Record<string, unknown
   return { client: { id: c.id, name: c.name, scope: c.scope, aliases: c.aliases ?? [], sheetTab: c.sheetTab ?? null }, ...counts, ...msgs, openTasks: open };
 }
 
-export async function recentMessages(q: { client?: string | null; channel?: string | null; days?: number | null; limit?: number | null; includeSkipped?: boolean }) {
+export async function recentMessages(q: Window & { client?: string | null; channel?: string | null; limit?: number | null; includeSkipped?: boolean }) {
   const clientId = await resolveClientId(q.client);
   if (q.client && !clientId) return [];
-  const days = q.days ?? 7, limit = Math.min(Math.max(q.limit ?? 30, 1), 200);
+  const { since, until } = windowBounds(q, 7), limit = Math.min(Math.max(q.limit ?? 30, 1), 200);
   const rows = await sql()`
     select m.id, c.name as client, m.channel, m.sender, m.sender_is_staff, m.sent_at, left(m.text, 500) as text, m.skip_reason, m.permalink,
            (select count(*) from requests r where r.message_id = m.id and r.status in ('created','approved','pending_review','needs_scope'))::int as tasks
     from messages m left join clients c on c.id = m.client_id
     where (${clientId}::text is null or m.client_id = ${clientId}) and (${q.channel ?? null}::text is null or m.channel = ${q.channel ?? null})
-      and m.sent_at > now() - (${days} || ' days')::interval and (${!!q.includeSkipped} or m.skip_reason is null or m.skip_reason = 'no_ask')
+      and m.sent_at >= ${since}::timestamptz and (${until}::timestamptz is null or m.sent_at < ${until}::timestamptz)
+      and (${!!q.includeSkipped} or m.skip_reason is null or m.skip_reason = 'no_ask')
     order by m.sent_at desc limit ${limit}`;
   return rows;
 }
 
-/** The end-of-day summary as plain text. `days` = window in days (1 = today). */
-export async function dailySummaryText(days = 1): Promise<string> {
-  const iv = `${days} days`;
+/**
+ * The end-of-day summary as plain text. `days` = window in days (1 = today); `from`/`to` pick past calendar days instead.
+ * Created, moved, completed and updates follow the window; Staging, overdue and waiting are always as of now.
+ */
+export async function dailySummaryText(days = 1, range: Window = {}): Promise<string> {
+  const w: Window = { days, ...range };
+  const { since, until } = windowBounds(w, 1);
   const created = await sql()`
     select coalesce(c.name,'Internal') as client, left(t.id::text,8) as id, r.department, t.title, m.channel, t.priority
     from tasks t join requests r on r.id = t.request_id join messages m on m.id = r.message_id left join clients c on c.id = t.client_id
-    where t.created_at > now() - ${iv}::interval order by c.name`;
+    where t.created_at >= ${since}::timestamptz and (${until}::timestamptz is null or t.created_at < ${until}::timestamptz) order by c.name`;
   const moved = await sql()`
     select coalesce(c.name,'Internal') as client, left(t.id::text,8) as id, s.from_list, s.to_list, t.board_id, t.title
     from status_events s join tasks t on t.id = s.task_id left join clients c on c.id = t.client_id
-    where s.at > now() - ${iv}::interval order by c.name`;
+    where s.at >= ${since}::timestamptz and (${until}::timestamptz is null or s.at < ${until}::timestamptz) order by c.name`;
   // Sheet-mirrored rows count as completed only when the sheet carries a real completion date (sheet_status Done
   // with a Date Completed); rows that merely sit below the divider are dated by their import and would flood the list.
   const completed = await sql()`
     select coalesce(c.name,'Internal') as client, left(t.id::text,8) as id, t.title from tasks t left join clients c on c.id = t.client_id
-    where t.completed_at > now() - ${iv}::interval and (t.origin = 'hub' or t.completed_at::date <> t.created_at::date)`;
+    where t.completed_at >= ${since}::timestamptz and (${until}::timestamptz is null or t.completed_at < ${until}::timestamptz)
+      and (t.origin = 'hub' or t.completed_at::date <> t.created_at::date)`;
   const overdue = await sql()`
     select coalesce(c.name,'Internal') as client, left(t.id::text,8) as id, t.title, t.priority, to_char(t.due_at,'Dy DD Mon') as due
     from tasks t left join clients c on c.id = t.client_id where t.completed_at is null and t.due_at < now() and t.staging = false
@@ -174,10 +208,10 @@ export async function dailySummaryText(days = 1): Promise<string> {
     from tasks t left join clients c on c.id = t.client_id where t.waiting_on_client_since is not null and t.completed_at is null`;
   const updates = await sql()`
     select coalesce(c.name,'Unknown') as client, left(m.text,80) as text from messages m left join clients c on c.id = m.client_id
-    where m.skip_reason = 'no_ask' and m.created_at > now() - ${iv}::interval`;
+    where m.skip_reason = 'no_ask' and m.created_at >= ${since}::timestamptz and (${until}::timestamptz is null or m.created_at < ${until}::timestamptz)`;
   const spend = await sql()`
     select count(*)::int as calls, coalesce(sum(cost_usd),0)::numeric(10,4) as usd, coalesce(sum(cache_read_tokens),0)::int as cached
-    from llm_calls where created_at > now() - ${iv}::interval`;
+    from llm_calls where created_at >= ${since}::timestamptz and (${until}::timestamptz is null or created_at < ${until}::timestamptz)`;
   const attention = await sql()`
     select 'message could not be processed: ' || coalesce(c.name,'Unknown') || ' · "' || left(m.text, 60) || '"' as what from messages m left join clients c on c.id = m.client_id
       where m.skip_reason = 'failed' and m.created_at > now() - interval '7 days'
@@ -196,11 +230,12 @@ export async function dailySummaryText(days = 1): Promise<string> {
     movedNamed.push({ ...r, from, to });
   }
   const day = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+  const heading = range.from || range.to ? `MangoEyes PM summary · ${windowLabel(w, 1)}` : `MangoEyes PM summary · ${day}${days > 1 ? ` (last ${days} days)` : ""}`;
   const CAP = 8;
   const line = (rows: Record<string, unknown>[], f: (r: Record<string, unknown>) => string) =>
     rows.length ? [...rows.slice(0, CAP).map((r) => "  " + f(r)), ...(rows.length > CAP ? [`  … and ${rows.length - CAP} more (ask the hub)`] : [])].join("\n") : "  —";
   return [
-    `MangoEyes PM summary · ${day}${days > 1 ? ` (last ${days} days)` : ""}`,
+    heading,
     "",
     `Created (${created.length})`, line(created, (r) => `${r.client}  ${r.department}  ${r.title}  via ${r.channel}${r.priority === "P1" ? "  🔴" : ""}`),
     `Waiting for a person: Staging / Needs scope (${staging.length})`, line(staging, (r) => `${r.client}  ${r.title}  ${r.needs_scope ? "needs scope, " : ""}since ${r.since}`),
@@ -216,10 +251,10 @@ export async function dailySummaryText(days = 1): Promise<string> {
   ].join("\n");
 }
 
-export async function listMeetings(q: { client?: string | null; days?: number | null; limit?: number | null }) {
+export async function listMeetings(q: Window & { client?: string | null; limit?: number | null }) {
   const clientId = await resolveClientId(q.client);
   if (q.client && !clientId) return [];
-  const days = q.days ?? 30, limit = Math.min(Math.max(q.limit ?? 20, 1), 100);
+  const { since, until } = windowBounds(q, 30), limit = Math.min(Math.max(q.limit ?? 20, 1), 100);
   return sql()`
     select m.id, m.title, m.held_at, c.name as client, m.scope, m.organiser, m.summary, m.doc_url,
            (select count(*) from meeting_items i where i.meeting_id = m.id and i.kind = 'action')::int as actions,
@@ -227,7 +262,7 @@ export async function listMeetings(q: { client?: string | null; days?: number | 
            (select count(*) from meeting_items i where i.meeting_id = m.id and i.kind = 'decision')::int as decisions
     from meetings m left join clients c on c.id = m.client_id
     where (${clientId}::text is null or m.client_id = ${clientId} or exists (select 1 from meeting_items i where i.meeting_id = m.id and i.client_id = ${clientId}))
-      and m.held_at > now() - (${days} || ' days')::interval
+      and m.held_at >= ${since}::timestamptz and (${until}::timestamptz is null or m.held_at < ${until}::timestamptz)
     order by m.held_at desc limit ${limit}`;
 }
 
@@ -240,13 +275,14 @@ export async function meetingDetail(ref: string): Promise<Record<string, unknown
   return { id: m.id, title: m.title, heldAt: m.held_at, client: m.client_name, scope: m.scope, organiser: m.organiser, attendees: m.attendees, docUrl: m.doc_url, summary: m.summary, items, notes: String(m.notes).slice(0, 12000) };
 }
 
-export async function listItems(kind: "idea" | "decision", q: { client?: string | null; days?: number | null; limit?: number | null }) {
+export async function listItems(kind: "idea" | "decision", q: Window & { client?: string | null; limit?: number | null }) {
   const clientId = await resolveClientId(q.client);
   if (q.client && !clientId) return [];
-  const days = q.days ?? 90, limit = Math.min(Math.max(q.limit ?? 50, 1), 200);
+  const { since, until } = windowBounds(q, 90), limit = Math.min(Math.max(q.limit ?? 50, 1), 200);
   return sql()`
     select i.text, c.name as client, i.owner, i.due_text, m.title as meeting, m.held_at, m.doc_url
     from meeting_items i left join clients c on c.id = i.client_id join meetings m on m.id = i.meeting_id
-    where i.kind = ${kind} and (${clientId}::text is null or i.client_id = ${clientId}) and m.held_at > now() - (${days} || ' days')::interval
+    where i.kind = ${kind} and (${clientId}::text is null or i.client_id = ${clientId})
+      and m.held_at >= ${since}::timestamptz and (${until}::timestamptz is null or m.held_at < ${until}::timestamptz)
     order by m.held_at desc limit ${limit}`;
 }

@@ -21,6 +21,14 @@ function buildHandler(owner: McpKeyOwner) {
   return createMcpHandler(
     (server) => {
       const text = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v, null, 2) }] });
+      // Every look-back tool takes either `days` (the last N days) or `from` / `to` (calendar days in Indian time, both
+      // inclusive; one of them alone means that single day). from/to win over days.
+      const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
+      const window = {
+        days: z.number().int().positive().optional().describe("the last N days"),
+        from: day.optional().describe("first calendar day, YYYY-MM-DD (Indian time); alone = that one day"),
+        to: day.optional().describe("last calendar day, YYYY-MM-DD, inclusive"),
+      };
 
       server.registerTool("list_clients", {
         title: "List clients", description: "All clients the hub knows, with their short names (aliases) and sheet tab.",
@@ -29,13 +37,13 @@ function buildHandler(owner: McpKeyOwner) {
 
       server.registerTool("search_tasks", {
         title: "Search tasks",
-        description: "Tasks by client, status, department or words in the title/ask. status: open (default), done, overdue, waiting (on client), staging (not yet approved), all. days limits to tasks created in the last N days.",
+        description: "Tasks by client, status, department or words in the title/ask. status: open (default), done, overdue, waiting (on client), staging (not yet approved), all. days limits to tasks created in the last N days; from/to to tasks created on those calendar days.",
         inputSchema: z.object({
           client: z.string().optional().describe("Client name, id or alias, e.g. HOH"),
           status: z.enum(["open", "done", "overdue", "waiting", "staging", "all"]).optional(),
           department: z.enum(["dev", "content", "design", "seo", "automation", "video", "general", "internal"]).optional(),
           query: z.string().optional().describe("Words to look for in the title or the original ask"),
-          days: z.number().int().positive().optional(),
+          ...window,
           limit: z.number().int().positive().max(200).optional(),
         }),
       }, async (a) => text(await searchTasks(a)));
@@ -51,18 +59,18 @@ function buildHandler(owner: McpKeyOwner) {
       }, async ({ client }) => text((await clientSummary(client)) ?? { error: "no such client" }));
 
       server.registerTool("recent_messages", {
-        title: "Recent messages", description: "What clients (and the team) have sent recently, across Slack, email, Chat, with how many tasks each message produced. Includes updates that were not tasks.",
+        title: "Recent messages", description: "What clients (and the team) have sent recently, across Slack, email, Chat, with how many tasks each message produced. Includes updates that were not tasks. days default 7, or from/to for exact days.",
         inputSchema: z.object({
           client: z.string().optional(), channel: z.enum(["slack", "email", "intake", "task_cmd", "meet"]).optional(),
-          days: z.number().int().positive().optional().describe("default 7"), limit: z.number().int().positive().max(200).optional(),
+          ...window, limit: z.number().int().positive().max(200).optional(),
           includeSkipped: z.boolean().optional().describe("also show messages the filter dropped (acks, noise)"),
         }),
       }, async (a) => text(await recentMessages(a)));
 
       server.registerTool("daily_summary", {
-        title: "Daily summary", description: "The full day or week in text: created, in Staging, moved, completed, overdue, needs a person, waiting on client, updates. days=1 is today; 7 for the week. (The feed gets a shorter brief at 23:00.)",
-        inputSchema: z.object({ days: z.number().int().positive().max(31).optional() }),
-      }, async ({ days }) => text(await dailySummaryText(days ?? 1)));
+        title: "Daily summary", description: "The full day or week in text: created, in Staging, moved, completed, overdue, needs a person, waiting on client, updates. days=1 is today; 7 for the week; from/to for a past day or range, e.g. what happened on 2025-03-12. (The feed gets a shorter brief at 23:00.)",
+        inputSchema: z.object({ days: z.number().int().positive().max(31).optional(), from: window.from, to: window.to }),
+      }, async ({ days, from, to }) => text(await dailySummaryText(days ?? 1, { from, to })));
 
       server.registerTool("add_request", {
         title: "Add a request", description: "File a client request. It goes through the normal pipeline: a card in Staging for a PM to approve, one line in the Task Hub Feed. Use the client's words. This assistant account may be shared by several people, so `by` (the name of the person asking you) is required: ask them if you do not know it, never guess it.",
@@ -91,8 +99,8 @@ function buildHandler(owner: McpKeyOwner) {
       });
 
       server.registerTool("meetings", {
-        title: "Meetings", description: "Recent meetings (Google Meet notes read by the hub): title, date, client, summary, and counts of actions, ideas, decisions. Filter by client and days (default 30).",
-        inputSchema: z.object({ client: z.string().optional(), days: z.number().int().positive().optional(), limit: z.number().int().positive().max(100).optional() }),
+        title: "Meetings", description: "Recent meetings (Google Meet notes read by the hub): title, date, client, summary, and counts of actions, ideas, decisions. Filter by client and days (default 30) or from/to.",
+        inputSchema: z.object({ client: z.string().optional(), ...window, limit: z.number().int().positive().max(100).optional() }),
       }, async (a) => text(await listMeetings(a)));
 
       server.registerTool("meeting_detail", {
@@ -101,13 +109,13 @@ function buildHandler(owner: McpKeyOwner) {
       }, async ({ meeting }) => text((await meetingDetail(meeting)) ?? { error: "no such meeting" }));
 
       server.registerTool("ideas", {
-        title: "Ideas", description: "Ideas and future plans raised in meetings, by client (or MangoEyes for internal), newest first. days default 90.",
-        inputSchema: z.object({ client: z.string().optional(), days: z.number().int().positive().optional(), limit: z.number().int().positive().max(200).optional() }),
+        title: "Ideas", description: "Ideas and future plans raised in meetings, by client (or MangoEyes for internal), newest first. days default 90, or from/to.",
+        inputSchema: z.object({ client: z.string().optional(), ...window, limit: z.number().int().positive().max(200).optional() }),
       }, async (a) => text(await listItems("idea", a)));
 
       server.registerTool("decisions", {
-        title: "Decisions", description: "Decisions recorded in meetings, by client, newest first. days default 90.",
-        inputSchema: z.object({ client: z.string().optional(), days: z.number().int().positive().optional(), limit: z.number().int().positive().max(200).optional() }),
+        title: "Decisions", description: "Decisions recorded in meetings, by client, newest first. days default 90, or from/to.",
+        inputSchema: z.object({ client: z.string().optional(), ...window, limit: z.number().int().positive().max(200).optional() }),
       }, async (a) => text(await listItems("decision", a)));
 
       server.registerTool("hub_status", {
@@ -125,7 +133,7 @@ function buildHandler(owner: McpKeyOwner) {
     },
     {
       serverInfo: { name: "mangoeyes-task-hub", version: "1.0.0" },
-      instructions: `You are connected to the MangoEyes Task Hub. This connection is shared by several people, so you do not know who is talking to you. Clients are aesthetic clinics; tasks live on Pulp department boards and in the PM Overview sheet. Use search_tasks / client_summary for status questions, task_detail to read the original ask, daily_summary for "what happened today", meetings / meeting_detail for "what happened in the last call with X", ideas and decisions for what was raised or agreed, add_request to file a new client ask (it goes to Staging for a PM to approve). Reading needs nothing. Before add_request, ask the person "Who is this request from?" and wait for their answer; never fill in a name yourself, not from this connection's owner, not from earlier context.`,
+      instructions: `You are connected to the MangoEyes Task Hub. This connection is shared by several people, so you do not know who is talking to you. Clients are aesthetic clinics; tasks live on Pulp department boards and in the PM Overview sheet. Use search_tasks / client_summary for status questions, task_detail to read the original ask, daily_summary for "what happened today", meetings / meeting_detail for "what happened in the last call with X", ideas and decisions for what was raised or agreed, from/to (YYYY-MM-DD) on any of these for "what happened on 12 March" or "between 1 and 15 March", add_request to file a new client ask (it goes to Staging for a PM to approve). Reading needs nothing. Before add_request, ask the person "Who is this request from?" and wait for their answer; never fill in a name yourself, not from this connection's owner, not from earlier context.`,
     },
   );
 }

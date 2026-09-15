@@ -38,10 +38,13 @@ codex mcp add task-hub --url https://pm-tasks.vercel.app/api/mcp/mh_YOUR_KEY
 | Tool | What it answers |
 |---|---|
 | `list_clients` | clients, short names, sheet tabs |
-| `search_tasks` | by client, status (open/done/overdue/waiting/staging/all), department, words, days |
+| `search_tasks` | by client, status (open/done/overdue/waiting/staging/all), department, words, days or from/to |
 | `task_detail` | one task: original ask, who, approval, status history, card link |
 | `client_summary` | one client at a glance: counts + open list |
 | `recent_messages` | what came in, by client/channel, incl. updates that were not tasks |
-| `daily_summary` | the PM summary for today or the last N days |
+| `daily_summary` | the PM summary for today, the last N days, or a past day / range (from/to) |
 | `add_request` | file a client ask → Staging card + PM Review line |
+| `meetings`, `meeting_detail`, `ideas`, `decisions` | Meet notes: what was said, raised and agreed, by client and days or from/to |
 | `hub_status` | volumes, spend, last polls |
+
+Dates on any tool are calendar days in Indian time, `YYYY-MM-DD`, both ends inclusive: "what happened on 12 March 2025" is `from: 2025-03-12`; "the first half of March" is `from: 2025-03-01, to: 2025-03-15`. Claude works these out from plain words.
