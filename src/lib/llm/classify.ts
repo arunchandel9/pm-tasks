@@ -47,5 +47,5 @@ export async function classify(opts: {
     "Open requests for this client (last 14 days):",
     open,
   ].join("\n");
-  return structuredCall({ step: "classify", instructions: INSTRUCTIONS, userContent: user, schema: ClassifySchema, maxTokens: 1000, messageId: opts.messageId });
+  return structuredCall({ step: "classify", instructions: INSTRUCTIONS, userContent: user, schema: ClassifySchema, maxTokens: 1500, messageId: opts.messageId });
 }

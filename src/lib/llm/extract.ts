@@ -39,5 +39,5 @@ export async function extract(opts: { text: string; channel: string; clientName:
     "Message:",
     opts.text,
   ].join("\n");
-  return structuredCall({ step: "extract", instructions: INSTRUCTIONS, userContent: user, schema: ExtractSchema, maxTokens: 800, messageId: opts.messageId });
+  return structuredCall({ step: "extract", instructions: INSTRUCTIONS, userContent: user, schema: ExtractSchema, maxTokens: 4000, messageId: opts.messageId });
 }

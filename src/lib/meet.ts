@@ -263,6 +263,9 @@ export async function rereadNoteDoc(fileId: string): Promise<string> {
     await sql()`delete from settings where key = ${"meet_head:" + m.id}`;
     await sql()`delete from queue where done_at is null and kind = 'meet_group' and payload->>'meetingId' = ${String(m.id)}`;
   }
+  // Retries of this doc's action messages from the earlier attempt would double the work: the new group jobs replace them.
+  await sql()`delete from queue where done_at is null and kind = 'process_message'
+    and payload->>'messageId' in (select id::text from messages where channel = 'meet' and external_id like ${"meet:" + fileId + ":%"})`;
   await sql()`delete from settings where key = ${"meet_retry:" + fileId}`;
   return processNoteDoc(doc);
 }

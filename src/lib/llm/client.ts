@@ -41,9 +41,9 @@ export async function structuredCall<T extends z.ZodType>(opts: {
 }): Promise<z.infer<T>> {
   const model = env.model();
   const started = Date.now();
-  const res = await client().messages.parse({
+  const call = (maxTokens: number) => client().messages.parse({
     model,
-    max_tokens: opts.maxTokens,
+    max_tokens: maxTokens,
     system: [
       { type: "text", text: opts.instructions, cache_control: { type: "ephemeral", ttl: "1h" } },
       { type: "text", text: `Request types:\n${routingForPrompt()}`, cache_control: { type: "ephemeral", ttl: "1h" } },
@@ -51,6 +51,15 @@ export async function structuredCall<T extends z.ZodType>(opts: {
     messages: [{ role: "user", content: opts.userContent }],
     output_config: { format: zodOutputFormat(opts.schema), effort: "low" },
   });
+  // A long answer (a meeting with many action items) can run past the budget and arrive as cut-off JSON. One retry
+  // with four times the room; the budget is an upper bound, so a short answer costs the same either way.
+  let res: Awaited<ReturnType<typeof call>>;
+  try { res = await call(opts.maxTokens); }
+  catch (e) {
+    if (!/parse structured output|Unterminated|Unexpected end of JSON/i.test((e as Error).message)) throw e;
+    res = await call(opts.maxTokens * 4);
+  }
+  if (res.stop_reason === "max_tokens") res = await call(opts.maxTokens * 4);
   const latency = Date.now() - started;
 
   await sql()`
