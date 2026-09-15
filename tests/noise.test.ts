@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import YAML from "yaml";
-import { slackNoise, emailNoise, isAcknowledgement, stripQuotedHistory } from "../src/lib/filter/noise";
+import { slackNoise, emailNoise, isAcknowledgement, stripQuotedHistory, splitQuotedHistory } from "../src/lib/filter/noise";
 import type { NoiseConfig } from "../src/lib/types";
 
 const cfg = YAML.parse(readFileSync("config/noise.yaml", "utf8")) as NoiseConfig;
@@ -74,6 +74,9 @@ describe("email rules", () => {
       "--", "You received this message because you are subscribed to the Google Groups \"Client Success\" group.",
     ].join("\n");
     expect(stripQuotedHistory(t).trim()).toBe("Too little too late\n\nSent from Outlook for Android");
+    const h = splitQuotedHistory(t).history;
+    expect(h).toContain("Please review the content for the following pages");
+    expect(h).not.toContain("You received this message");
     const plain = "Too little too late\n\nFrom: Renu Dahiya <renu@mangoeyesagency.com>\nSent: Monday\nSubject: x\n\nHi";
     expect(stripQuotedHistory(plain).trim()).toBe("Too little too late");
     // A lone "From:" inside a sentence, with no header lines after it, is not history.

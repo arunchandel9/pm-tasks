@@ -23,6 +23,12 @@ export interface ProcessResult {
  */
 export const PROBLEM = /\b(not working|isn'?t working|doesn'?t work|broken|down|error|bug|issue|missing|stopped|failing|fails|crash|wrong|please fix|fix)\b/i;
 
+/** The sender's own words: the stored text without the "Earlier in this thread" context a mail may carry. */
+export function latestPart(text: string): string {
+  const i = text.indexOf("Earlier in this thread (context only, not the ask):");
+  return (i >= 0 ? text.slice(0, i) : text).trim();
+}
+
 /** The Pulp link of a task's card, for feed lines that point at an existing card. */
 async function cardLink(taskId: string | null | undefined): Promise<string | null> {
   if (!taskId) return null;
@@ -31,7 +37,8 @@ async function cardLink(taskId: string | null | undefined): Promise<string | nul
 }
 
 export async function processMessage(m: Message, noiseVerdict: { skip: boolean; reason: string | null }): Promise<ProcessResult> {
-  const hash = textHash(m.text);
+  // Repeats are judged on the sender's own words, never on the earlier thread a mail carries as context.
+  const hash = textHash(latestPart(m.text));
 
   // Store first, always. Idempotent on (channel, external_id).
   const stored = await sql()`
@@ -101,7 +108,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
   }
 
   // Dedupe before any model call.
-  const dd = await dedupe(m.clientId, m.text, hash);
+  const dd = await dedupe(m.clientId, latestPart(m.text), hash);
   if (dd.kind === "exact_duplicate" || dd.kind === "likely_duplicate") {
     await sql()`update messages set skip_reason = ${dd.kind} where id = ${messageId}`;
     await addReaction(m, "repeat");
@@ -130,15 +137,16 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
   const voice = !!(m.raw as { voice?: boolean } | null)?.voice;
   const ex = await extract({ text: m.text, channel: m.channel, clientName: client?.name ?? null, messageId, voice, knownNames: voice ? clients.filter((c) => c.scope === "client").map((c) => c.name) : undefined });
   // Guard: a problem statement is always an ask, whatever the model said ("… is not working" → fix it).
-  if ((!ex.is_request || ex.asks.length === 0) && PROBLEM.test(m.text) && m.text.trim().split(/\s+/).length >= 3) {
+  const own = latestPart(m.text);
+  if ((!ex.is_request || ex.asks.length === 0) && PROBLEM.test(own) && own.split(/\s+/).length >= 3) {
     ex.is_request = true;
-    ex.asks = [{ ask: `Fix: ${m.text.trim()}`, quote: m.text.trim(), deadline: null, urls: [] }];
+    ex.asks = [{ ask: `Fix: ${own}`, quote: own, deadline: null, urls: [] }];
   }
   if (!ex.is_request || ex.asks.length === 0) {
     if (ex.tone === "unhappy" && !m.senderIsStaff) {
       // A displeased client with no ask is not "nothing": someone should reply. One ⚠️ line in the feed, listed in the brief until handled.
       await sql()`update messages set skip_reason = 'client_unhappy' where id = ${messageId}`;
-      await postText(`⚠️ *${client?.name ?? "Unknown client"}* · client sounds unhappy: "${m.text.replace(/^Subject:[^\n]*\n+/i, "").replace(/\s+/g, " ").trim().slice(0, 120)}" · ${sourceLabel(m).replace(" · ", ", ")}${m.permalink ? ` · <${m.permalink}|open>` : ""} · no task made; a person should reply`, { threadKey: messageThreadKey(messageId) });
+      await postText(`⚠️ *${client?.name ?? "Unknown client"}* · client sounds unhappy: "${own.replace(/^Subject:[^\n]*\n+/i, "").replace(/\s+/g, " ").trim().slice(0, 120)}" · ${sourceLabel(m).replace(" · ", ", ")}${m.permalink ? ` · <${m.permalink}|open>` : ""} · no task made; a person should reply`, { threadKey: messageThreadKey(messageId) });
       return { messageId, outcome: "skipped", reason: "client_unhappy" };
     }
     await sql()`update messages set skip_reason = 'no_ask' where id = ${messageId}`;

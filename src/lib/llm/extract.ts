@@ -21,7 +21,8 @@ Split it into distinct asks. One message can contain several; each gets its own 
 Quote the sender's exact words for each ask. Do not invent asks that are not in the text.
 A stated problem is an ask: "the Book Now button is not working", "the form is broken", "leads stopped" each mean "fix this" and get one entry.
 If the message contains no actionable ask (an update, thanks, or a pure question), set is_request=false and asks=[].
-A "Subject:" line is context only, never an ask by itself. Anything quoted from an earlier email (From:/Sent: blocks, lines starting with ">") is context, never the ask: the ask is only what the sender wrote themselves.
+A "Subject:" line is context only, never an ask by itself. Text after "Earlier in this thread (context only, not the ask):" is the earlier conversation: use it to understand what the latest message refers to (what "this", "it", "the pages" mean; what the sender is reacting to), but never take an ask from it. The ask is only what the sender wrote themselves, above that line.
+When the latest message is a short reaction ("too little too late", "still not fixed"), say in summary what it reacts to, using the earlier thread.
 Set tone=unhappy when the sender is displeased, even in one short line; that matters more than finding an ask.
 Be literal and brief. No advice, no extra commentary.
 When the message is a voice-note transcript: words may be misheard. Keep to ONE ask unless the speaker clearly lists separate things.

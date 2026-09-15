@@ -90,20 +90,33 @@ export function emailNoise(m: EmailNoiseInput, cfg: NoiseConfig): NoiseVerdict {
  * Only what the sender wrote themselves survives: the hub must never read our own earlier mail as the client's ask.
  */
 export function stripQuotedHistory(text: string): string {
+  return splitQuotedHistory(text).latest;
+}
+
+/**
+ * The sender's own words (`latest`) and the earlier thread they replied to (`history`, quote marks removed, capped).
+ * History is context for understanding the latest message; asks are never taken from it.
+ */
+export function splitQuotedHistory(text: string, historyCap = 1500): { latest: string; history: string } {
   const lines = text.split(/\r?\n/);
   const out: string[] = [];
   const headerLine = (l: string) => /^[*_\s]*(From|Sent|Date|To|Cc|Subject|De|Envoy[ée]|Para|Asunto)[*_\s]*:/i.test(l);
+  let cut = lines.length;
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i].trim();
-    if (/^On .{5,160} wrote:\s*$/.test(l) || /^Le .{5,160} a écrit\s*:$/.test(l)) break;
-    if (/^-{2,}\s*(Original|Forwarded) message\s*-{2,}$/i.test(l)) break;
-    if (/^You received this message because you are subscribed to/i.test(l)) break;
+    if (/^On .{5,160} wrote:\s*$/.test(l) || /^Le .{5,160} a écrit\s*:$/.test(l)) { cut = i; break; }
+    if (/^-{2,}\s*(Original|Forwarded) message\s*-{2,}$/i.test(l)) { cut = i; break; }
+    if (/^You received this message because you are subscribed to/i.test(l)) { cut = i; break; }
     // An Outlook-style quoted header: a From line followed within four lines by another header line.
-    if (/^[*_\s]*From[*_\s]*:/i.test(l) && out.some((x) => x.trim()) && lines.slice(i + 1, i + 5).some((x) => headerLine(x.trim()))) break;
+    if (/^[*_\s]*From[*_\s]*:/i.test(l) && out.some((x) => x.trim()) && lines.slice(i + 1, i + 5).some((x) => headerLine(x.trim()))) { cut = i; break; }
     // A long rule (____ or ----) right before such a block is part of it.
-    if (/^[_-]{5,}$/.test(l) && lines.slice(i + 1, i + 4).some((x) => /^[*_\s]*From[*_\s]*:/i.test(x.trim()))) break;
-    if (/^>/.test(l)) continue;
+    if (/^[_-]{5,}$/.test(l) && lines.slice(i + 1, i + 4).some((x) => /^[*_\s]*From[*_\s]*:/i.test(x.trim()))) { cut = i; break; }
+    if (/^>/.test(l)) { cut = Math.min(cut, i); continue; }
     out.push(lines[i]);
   }
-  return out.join("\n");
+  const history = lines.slice(cut)
+    .map((x) => x.replace(/^(\s*>)+\s?/, "").trimEnd())
+    .filter((x) => !/^You received this message because|^To unsubscribe from this group|^To view this discussion|^[_-]{5,}$/i.test(x.trim()))
+    .join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return { latest: out.join("\n"), history: history.length > historyCap ? history.slice(0, historyCap).trimEnd() + "…" : history };
 }

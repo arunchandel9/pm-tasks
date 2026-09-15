@@ -1,6 +1,6 @@
 import { google, type gmail_v1 } from "googleapis";
 import { resolveClientFromText, stripClientPrefix } from "./resolve";
-import { emailNoise, stripQuotedHistory } from "./filter/noise";
+import { emailNoise, splitQuotedHistory } from "./filter/noise";
 import { noise as noiseConfig } from "./config";
 import { allClients, enqueue, sql } from "./db";
 import { processMessage } from "./pipeline";
@@ -76,7 +76,9 @@ export function bodyText(payload: gmail_v1.Schema$MessagePart | undefined): stri
 
 export interface ParsedMail {
   id: string; threadId: string; subject: string; from: string; fromEmail: string; to: string; date: Date;
-  isForward: boolean; originalFrom: string | null; originalFromEmail: string | null; note: string; body: string; headers: Record<string, string>;
+  isForward: boolean; originalFrom: string | null; originalFromEmail: string | null; note: string; body: string;
+  /** The earlier thread the sender replied to, quote marks removed, capped: context for the model, never the ask. */
+  history: string; headers: Record<string, string>;
 }
 
 const emailOf = (s: string) => (s.match(/<([^>]+)>/)?.[1] ?? s).trim().toLowerCase();
@@ -123,12 +125,13 @@ export function parseMail(raw: gmail_v1.Schema$Message): ParsedMail {
     }
     body = block.slice(i).join("\n");
   }
-  body = stripSignature(stripQuotedHistory(body));
-  note = stripSignature(stripQuotedHistory(note));
+  const split = splitQuotedHistory(body);
+  body = stripSignature(split.latest);
+  note = stripSignature(splitQuotedHistory(note).latest);
   return {
     id: raw.id ?? "", threadId: raw.threadId ?? "", subject, from, fromEmail: emailOf(from), to: header(raw, "To"),
     date: raw.internalDate ? new Date(Number(raw.internalDate)) : new Date(),
-    isForward, originalFrom, originalFromEmail: originalFrom ? emailOf(originalFrom) : null, note, body, headers,
+    isForward, originalFrom, originalFromEmail: originalFrom ? emailOf(originalFrom) : null, note, body, history: split.history, headers,
   };
 }
 
@@ -221,7 +224,10 @@ export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> 
       else transcriptNote = ` (voice note could not be transcribed: ${"error" in t ? t.error : "unknown"})`;
     } catch (e) { transcriptNote = ` (voice note failed: ${(e as Error).message.slice(0, 120)})`; }
   }
-  const composed = [subjectClean ? `Subject: ${subjectClean}` : "", mail.note, mail.body, ...transcripts].filter(Boolean).join("\n\n").trim();
+  const composed = [
+    subjectClean ? `Subject: ${subjectClean}` : "", mail.note, mail.body, ...transcripts,
+    mail.history ? `${HISTORY_MARKER}\n${mail.history}` : "",
+  ].filter(Boolean).join("\n\n").trim();
 
   const verdict = emailNoise({ from: senderEmail, fromIsStaff: senderIsStaff, isForward: mail.isForward, toIntake: sentToIntake(mail.to), headers: mail.headers, text: composed }, noiseConfig());
 
@@ -259,6 +265,9 @@ export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> 
   }
   return `${subjectClean.slice(0, 40)} → ${result.outcome}${result.reason ? ` (${result.reason})` : ""}`;
 }
+
+/** Separates the sender's words from the earlier thread in the stored text; the pipeline and the model treat what follows as context only. */
+export const HISTORY_MARKER = "Earlier in this thread (context only, not the ask):";
 
 /** Is the intake address in the To line (not just Cc)? A staff mail addressed to the hub is an intake, not outgoing mail. */
 export function sentToIntake(to: string): boolean {
