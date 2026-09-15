@@ -112,7 +112,8 @@ async function handleSlashCommand(form: URLSearchParams) {
   const text = (form.get("text") ?? "").trim();
   const user = form.get("user_id") ?? "unknown";
   const teamId = form.get("team_id");
-  if (!text) return NextResponse.json({ response_type: "ephemeral", text: "Usage: /task <what the client asked for>. Add the client name if this isn't their workspace." });
+  // Clients can type this too, so the reply says nothing about how the hub works.
+  if (!text) return NextResponse.json({ response_type: "ephemeral", text: "Task Hub" });
   const clients = await allClients();
   const client = clients.find((c) => c.slackTeamId === teamId && c.scope === "client") ?? resolveClientFromText(text, clients)?.client ?? null;
   const m = {
@@ -121,7 +122,7 @@ async function handleSlashCommand(form: URLSearchParams) {
     text: client ? stripClientPrefix(text, client) : text, permalink: null, threadRef: null, raw: Object.fromEntries(form.entries()),
   };
   waitUntil(processMessage(m, { skip: false, reason: null }).catch((e) => console.error("/task failed", e)));
-  return NextResponse.json({ response_type: "ephemeral", text: client ? `Got it for ${client.name}. It will appear in ${env.reviewChannel()}.` : `Got it. I couldn't tell the client, so it will appear in ${env.reviewChannel()} for you to pick.` });
+  return NextResponse.json({ response_type: "ephemeral", text: "Task Hub: noted." });
 }
 
 async function handleInteraction(payload: { type: string; team?: { id: string }; user?: { id: string; username?: string }; actions?: Array<{ action_id: string; value?: string; block_id?: string; selected_option?: { value: string } }>; message?: { ts: string }; channel?: { id: string } }) {

@@ -4,18 +4,14 @@
 # and install into each workspace via https://pm-tasks.vercel.app/api/slack/install
 display_information:
   name: Task Hub
-  description: Turns client requests into tasks. Internal use.
+  description: MangoEyes Task Hub.
   background_color: "#E28F05"
 features:
   bot_user:
     display_name: Task Hub
     always_online: true
-  slash_commands:
-    - command: /task
-      url: https://pm-tasks.vercel.app/api/slack/events
-      description: Log a request the hub couldn't see (a call, a WhatsApp, a message elsewhere)
-      usage_hint: "[client name] what was asked"
-      should_escape: false
+  # No slash command: the app sits in client workspaces, and anything it lists under "/" is visible to clients.
+  # The team files asks through Task Hub Drop, the DM and taskhub@ (removed 2026-09-15).
 oauth_config:
   redirect_urls:
     - https://pm-tasks.vercel.app/api/slack/oauth
@@ -30,7 +26,6 @@ oauth_config:
       - reactions:read
       - users:read
       - users:read.email
-      - commands
       - team:read
       - files:read
 settings:
