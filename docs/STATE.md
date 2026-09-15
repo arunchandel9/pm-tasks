@@ -230,7 +230,7 @@ Last updated: 2026-09-15 (soak, handover pages written).
 | 3. Cards and sheet | Pulp Staging cards, drag approval, sheet rows + stamp, Done sync, nudges, daily summary | Done |
 | 4. Hub | MCP with per-person keys, sheet history mirrored every 10 min | Done (milestone C) |
 | 5. Meetings and routing | Meet notes from the Drive folder, scope gate | Done. New-page chain dropped 2026-09-10 (pages are mostly one person's work now; PM adds extra cards by hand) |
-| 6. Soak and handover | 2 hours on live traffic with filter tuning; 1 hour team brief + one-page guide. Plan: `docs/SOAK.md` | Blocks A, B, E done (Slack and Meet checks wait for real traffic); C3 tonight; D2/D3 with the team's Claude; handover pages written 2026-09-15 |
+| 6. Soak and handover | 2 hours on live traffic with filter tuning; 1 hour team brief + one-page guide. Plan: `docs/SOAK.md` | Done 2026-09-15 except what only real traffic can prove (first Slack client message, next Meet call, tonight's brief). Handover pages written; team brief ready to post |
 
 After go-live, one hour each when wanted: weekly per-client digest, approval-loop nudges, auto-move Staging → To Do.
 
