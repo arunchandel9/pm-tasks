@@ -66,6 +66,19 @@ describe("email rules", () => {
   it("keeps staff mail addressed to the intake address (typed ask or shared voice note)", () => {
     expect(emailNoise({ ...e, from: "arun@mangoeyesagency.com", fromIsStaff: true, toIntake: true }, cfg).skip).toBe(false);
   });
+  it("strips an Outlook-style quoted header block, as Gmail renders it (bold From line, separator, group footer)", () => {
+    const t = [
+      "Too little too late", "", "Sent from Outlook for Android", "", "------------------------------",
+      "*From:* Renu Dahiya <renu@mangoeyesagency.com>", "*Sent:* Monday, 14 September 2026 18:18:22", "*To:* virmani.dr@gmail.com",
+      "*Subject:* For Review: Treatment, Condition & Blog Page Content", "", "Hi Dr Sumit,", "Please review the content for the following pages", "",
+      "--", "You received this message because you are subscribed to the Google Groups \"Client Success\" group.",
+    ].join("\n");
+    expect(stripQuotedHistory(t).trim()).toBe("Too little too late\n\nSent from Outlook for Android");
+    const plain = "Too little too late\n\nFrom: Renu Dahiya <renu@mangoeyesagency.com>\nSent: Monday\nSubject: x\n\nHi";
+    expect(stripQuotedHistory(plain).trim()).toBe("Too little too late");
+    // A lone "From:" inside a sentence, with no header lines after it, is not history.
+    expect(stripQuotedHistory("Please update the page.\nFrom: the home page, remove the banner.").trim()).toContain("remove the banner");
+  });
   it("strips quoted history", () => {
     const t = "Please swap the hero image.\n\nOn Mon, 8 Sep 2026 at 10:00, Arun <arun@mangoeyesagency.com> wrote:\n> old stuff\n> more old stuff";
     expect(stripQuotedHistory(t).trim()).toBe("Please swap the hero image.");

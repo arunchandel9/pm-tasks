@@ -84,16 +84,26 @@ export function emailNoise(m: EmailNoiseInput, cfg: NoiseConfig): NoiseVerdict {
 }
 
 /** Keep only the newest part of a reply/forward chain. Cuts 60–90% of tokens on long threads. */
+/**
+ * Cut everything from the first sign of an earlier email: "On … wrote:", Gmail/Outlook separators, an Outlook header
+ * block ("From:" / "*From:*" / "De:" then Sent/Date/To/Subject), or the Google Groups footer. Lines quoted with ">" go too.
+ * Only what the sender wrote themselves survives: the hub must never read our own earlier mail as the client's ask.
+ */
 export function stripQuotedHistory(text: string): string {
   const lines = text.split(/\r?\n/);
   const out: string[] = [];
-  for (const line of lines) {
-    const l = line.trim();
-    if (/^On .{5,120} wrote:$/.test(l)) break;
+  const headerLine = (l: string) => /^[*_\s]*(From|Sent|Date|To|Cc|Subject|De|Envoy[ée]|Para|Asunto)[*_\s]*:/i.test(l);
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim();
+    if (/^On .{5,160} wrote:\s*$/.test(l) || /^Le .{5,160} a écrit\s*:$/.test(l)) break;
     if (/^-{2,}\s*(Original|Forwarded) message\s*-{2,}$/i.test(l)) break;
-    if (/^From:\s.+/.test(l) && out.length > 0) break;
-    if (/^>{1}/.test(l)) continue;
-    out.push(line);
+    if (/^You received this message because you are subscribed to/i.test(l)) break;
+    // An Outlook-style quoted header: a From line followed within four lines by another header line.
+    if (/^[*_\s]*From[*_\s]*:/i.test(l) && out.some((x) => x.trim()) && lines.slice(i + 1, i + 5).some((x) => headerLine(x.trim()))) break;
+    // A long rule (____ or ----) right before such a block is part of it.
+    if (/^[_-]{5,}$/.test(l) && lines.slice(i + 1, i + 4).some((x) => /^[*_\s]*From[*_\s]*:/i.test(x.trim()))) break;
+    if (/^>/.test(l)) continue;
+    out.push(lines[i]);
   }
   return out.join("\n");
 }

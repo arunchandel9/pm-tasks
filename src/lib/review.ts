@@ -142,6 +142,7 @@ export function humanOutcome(outcome: string, reason?: string | null): string {
     change: "an update to an existing task; noted on its card.",
     acknowledgement: "just a thank-you or OK, nothing to do.",
     noise: "not a request, nothing to do.",
+    client_unhappy: "no task, but the client sounds unhappy; a person should reply.",
   };
   if (known[r]) return known[r];
   if (outcome === "attached") return "added to an existing task's card.";

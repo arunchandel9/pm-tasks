@@ -7,7 +7,7 @@ import { classify } from "./llm/classify";
 import { route } from "./route";
 import type { Message, Client } from "./types";
 import { addReaction, postThreadFollowupComment } from "./slack";
-import { postReview, postP1Ping, postText, reviewMode, draftLine, followupLine, messageThreadKey, suggestedClientOf } from "./review";
+import { postReview, postP1Ping, postText, reviewMode, draftLine, followupLine, messageThreadKey, suggestedClientOf, sourceLabel } from "./review";
 import { createStagingCard } from "./tasks";
 
 export interface ProcessResult {
@@ -135,6 +135,12 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     ex.asks = [{ ask: `Fix: ${m.text.trim()}`, quote: m.text.trim(), deadline: null, urls: [] }];
   }
   if (!ex.is_request || ex.asks.length === 0) {
+    if (ex.tone === "unhappy" && !m.senderIsStaff) {
+      // A displeased client with no ask is not "nothing": someone should reply. One ⚠️ line in the feed, listed in the brief until handled.
+      await sql()`update messages set skip_reason = 'client_unhappy' where id = ${messageId}`;
+      await postText(`⚠️ *${client?.name ?? "Unknown client"}* · client sounds unhappy: "${m.text.replace(/^Subject:[^\n]*\n+/i, "").replace(/\s+/g, " ").trim().slice(0, 120)}" · ${sourceLabel(m).replace(" · ", ", ")}${m.permalink ? ` · <${m.permalink}|open>` : ""} · no task made; a person should reply`, { threadKey: messageThreadKey(messageId) });
+      return { messageId, outcome: "skipped", reason: "client_unhappy" };
+    }
     await sql()`update messages set skip_reason = 'no_ask' where id = ${messageId}`;
     // Logged as a client update; surfaces in the EOD "updates, no task" bucket.
     return { messageId, outcome: "skipped", reason: "no_ask" };

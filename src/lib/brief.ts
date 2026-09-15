@@ -38,10 +38,10 @@ export async function collectBrief(): Promise<BriefData> {
   // Questions nobody answered: a real message (three words or more), not a stray "ok" or "test".
   const questions = (await sql()`
     select left(m.text, 70) as text, m.channel, m.sender, m.skip_reason from messages m
-    where m.skip_reason in ('unknown_client','attachment_only') and m.created_at > now() - interval '3 days'
-      and (m.skip_reason = 'attachment_only' and m.created_at > now() - interval '1 day' or array_length(regexp_split_to_array(trim(m.text), '\s+'), 1) >= 3)
+    where m.skip_reason in ('unknown_client','attachment_only','client_unhappy') and m.created_at > now() - interval '3 days'
+      and (m.skip_reason <> 'unknown_client' and m.created_at > now() - interval '1 day' or array_length(regexp_split_to_array(trim(m.text), '\s+'), 1) >= 3)
     order by m.created_at desc limit 10`)
-    .map((r) => ({ text: String(r.text), source: `${{ slack: "Slack", intake: "Task Hub", email: "Email", meet: "Meeting" }[String(r.channel)] ?? String(r.channel)}, ${String(r.sender).replace(/<[^>]+>/, "").trim()}`, why: r.skip_reason === "attachment_only" ? "image only, needs the ask typed" : "which client?" }));
+    .map((r) => ({ text: String(r.text), source: `${{ slack: "Slack", intake: "Task Hub", email: "Email", meet: "Meeting" }[String(r.channel)] ?? String(r.channel)}, ${String(r.sender).replace(/<[^>]+>/, "").trim()}`, why: r.skip_reason === "attachment_only" ? "image only, needs the ask typed" : r.skip_reason === "client_unhappy" ? "client sounded unhappy, reply needed:" : "which client?" }));
   const waitingOnClient = (await sql()`
     select coalesce(c.name,'Internal') as client, t.title, extract(day from now() - t.waiting_on_client_since)::int as days
     from tasks t left join clients c on c.id = t.client_id where t.waiting_on_client_since is not null and t.completed_at is null order by t.waiting_on_client_since`)

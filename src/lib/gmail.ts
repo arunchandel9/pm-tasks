@@ -90,7 +90,7 @@ export function stripSignature(text: string): string {
     const l = line.trim();
     if (/^--\s*$/.test(l)) break;
     if (/^((kind|best|warm|many)\s+)?(regards|thanks|thank you|cheers|sincerely|best)\s*[,!.]?\s*$/i.test(l)) break;
-    if (/^(sent from my|get outlook for)/i.test(l)) break;
+    if (/^(sent from |get outlook for|sent via )/i.test(l)) break;
     out.push(line);
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -253,7 +253,7 @@ export async function ingestMail(raw: gmail_v1.Schema$Message): Promise<string> 
   const result = await processMessage(m, verdict);
   const n = result.requestIds?.length ?? 0;
   // A "which client?" / "attachment only" card is already the feed post for this mail: no extra line.
-  const askedOnCard = result.outcome === "review" && n === 0 && /^(unknown_client|attachment_only)$/.test(result.reason ?? "");
+  const askedOnCard = (result.outcome === "review" && n === 0 && /^(unknown_client|attachment_only)$/.test(result.reason ?? "")) || result.reason === "client_unhappy";
   if (!(result.outcome === "review" && n) && !(result.outcome === "skipped" && verdict.skip) && !askedOnCard) {
     await postAck({ message: { ...m, text: subjectClean || m.text }, outcome: result.outcome, detail: `${humanOutcome(result.outcome, result.reason)}${transcriptNote}`, messageId: result.messageId || null });
   }

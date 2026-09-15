@@ -12,6 +12,7 @@ export const ExtractSchema = z.object({
     })
   ),
   is_request: z.boolean().describe("false if this is only an update, thanks, or question with nothing to do"),
+  tone: z.enum(["neutral", "unhappy", "urgent"]).describe("unhappy: the sender is displeased, complaining or frustrated (\"too little too late\", \"this is unacceptable\"); urgent: they say it is urgent; else neutral"),
 });
 export type Extraction = z.infer<typeof ExtractSchema>;
 
@@ -20,6 +21,8 @@ Split it into distinct asks. One message can contain several; each gets its own 
 Quote the sender's exact words for each ask. Do not invent asks that are not in the text.
 A stated problem is an ask: "the Book Now button is not working", "the form is broken", "leads stopped" each mean "fix this" and get one entry.
 If the message contains no actionable ask (an update, thanks, or a pure question), set is_request=false and asks=[].
+A "Subject:" line is context only, never an ask by itself. Anything quoted from an earlier email (From:/Sent: blocks, lines starting with ">") is context, never the ask: the ask is only what the sender wrote themselves.
+Set tone=unhappy when the sender is displeased, even in one short line; that matters more than finding an ask.
 Be literal and brief. No advice, no extra commentary.
 When the message is a voice-note transcript: words may be misheard. Keep to ONE ask unless the speaker clearly lists separate things.
 Never add details (colours, versions, dates, counts) that are not in the words. When unsure what was meant, keep the ask general ("fix the homepage images") rather than specific.`;
