@@ -23,6 +23,8 @@ export interface ProcessResult {
  */
 export const PROBLEM = /\b(not working|isn'?t working|doesn'?t work|broken|down|error|bug|issue|missing|stopped|failing|fails|crash|wrong|please fix|fix)\b/i;
 
+const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+
 /** The sender's own words: the stored text without the "Earlier in this thread" context a mail may carry. */
 export function latestPart(text: string): string {
   const i = text.indexOf("Earlier in this thread (context only, not the ask):");
@@ -122,7 +124,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     await sql()`update messages set skip_reason = ${dd.kind} where id = ${messageId}`;
     await addReaction(m, "repeat");
     await postThreadFollowupComment({ taskId: dd.taskId, requestId: dd.requestId, message: m });
-    if ((m.channel === "intake" || inSharedThread(m)) && reviewMode() === "notify") {
+    if ((m.channel === "intake" || m.channel === "task_cmd" || inSharedThread(m)) && reviewMode() === "notify") {
       // The feed is the team's record: a repeat that was noted on its card gets a line too, not only the sender's thread.
       const t = await sql()`select coalesce(draft->>'title', '') as title from requests where id = ${dd.requestId}`;
       if (inSharedThread(m)) await postText(followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m, pulpLink: await cardLink(dd.taskId) }), { threadKey: feedThreadKeyOf(m, messageId) });
@@ -173,6 +175,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
   // notify mode: one short line per task, all asks from one message in a single post. No buttons; Staging is the approval.
   const notify = reviewMode() === "notify";
   const feed: string[] = [];
+  const noCard: string[] = [];
 
   for (let i = 0; i < ex.asks.length; i++) {
     const a = ex.asks[i];
@@ -224,6 +227,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
 
     if (r.noCard) {
       await sql()`update requests set status = 'dismissed', decided_by = 'system:no_card' where id = ${requestId}`;
+      noCard.push(`${cl.title} (${cl.request_type.replace(/_/g, " ")})`);
       continue;
     }
 
@@ -239,6 +243,16 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     if (r.priority === "P1") await postP1Ping({ requestId, client, title: cl.title, message: m, reason: r.priorityReason });
   }
 
+  if (!feed.length && noCard.length && requestIds.length === noCard.length) {
+    // Understood, but nothing to build: an update, a question, an idea. Never silent: one line in the feed, and the
+    // sender is told (the DM/Drop thread reply comes from the caller via reason "no_card").
+    await sql()`update messages set skip_reason = 'no_card' where id = ${messageId}`;
+    if (notify && !inSharedThread(m)) {
+      await postFeed({ headline: `ℹ️ *${client?.name ?? "Unknown client"}* · noted, no card · ${clip(noCard[0], 70)}${noCard.length > 1 ? ` +${noCard.length - 1}` : ""} · ${sourceLabel(m).replace(" · ", ", ")}`, detail: [noCard.map((t) => `• ${t}`).join("\n"), wordsLine(m.text)].filter(Boolean).join("\n"), threadKey: messageThreadKey(messageId) });
+    } else if (inSharedThread(m)) await postText(`ℹ️ noted, no card: ${noCard.join("; ")}`, { threadKey: feedThreadKeyOf(m, messageId) });
+    await addReaction(m, "eyes");
+    return { messageId, outcome: "skipped", reason: "no_card", requestIds };
+  }
   if (feed.length && inSharedThread(m)) {
     // Part of a bigger post (a meeting): the card lines are replies in that thread; the meeting headline carries the counts.
     await postText(feed.join("\n"), { threadKey: feedThreadKeyOf(m, messageId) });
