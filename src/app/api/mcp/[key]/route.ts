@@ -69,18 +69,21 @@ function buildHandler(owner: McpKeyOwner) {
         inputSchema: z.object({
           client: z.string().describe("Client name, id or alias"),
           request: z.string().describe("What was asked, as close to the original words as possible"),
-          by: z.string().min(2).describe("The name of the person asking you to file this. Ask if you do not know. Never guess."),
+          by: z.string().min(2).describe("The name the person gave when you asked them 'Who is this request from?' in this chat. Their answer verbatim. Never the connection owner's name, never inferred."),
+          asked: z.literal(true).describe("true only if you asked the person for their name in this chat and they answered. If you have not asked, ask first; do not call this tool."),
           priority: z.enum(["P1", "P2", "P3"]).optional(),
           source: z.string().optional().describe("Where it came from: WhatsApp, phone, meeting…"),
         }),
       }, async ({ client, request, by, priority, source }) => {
+        const who = by.trim();
+        const label = who.toLowerCase() === owner.name.trim().toLowerCase() ? who : `${who} (${owner.name})`;
         const clients = await allClients();
         const c = clients.find((x) => x.id.toLowerCase() === client.toLowerCase() || x.name.toLowerCase() === client.toLowerCase() || (x.aliases ?? []).some((a) => a.toLowerCase() === client.toLowerCase()));
         if (!c) return text({ error: `unknown client "${client}"; call list_clients` });
         const body = [request, source ? `\nCame via: ${source}` : "", priority === "P1" ? "\nMarked urgent (P1) by the team." : priority === "P2" ? "\nMarked important by the team." : ""].join("");
         const m: Message = {
           channel: "task_cmd", externalId: `mcp:${owner.email}:${Date.now()}`, teamId: null, clientId: c.id, scope: c.scope,
-          sender: `${by.trim()} (${owner.name})`, senderIsStaff: true, sentAt: new Date(), text: body, permalink: null, threadRef: null, raw: { mcp: true, by: by.trim(), account: owner.email },
+          sender: label, senderIsStaff: true, sentAt: new Date(), text: body, permalink: null, threadRef: null, raw: { mcp: true, by: who, account: owner.email },
         };
         const r = await processMessage(m, { skip: false, reason: null });
         const n = r.requestIds?.length ?? 0;
@@ -120,7 +123,7 @@ function buildHandler(owner: McpKeyOwner) {
     },
     {
       serverInfo: { name: "mangoeyes-task-hub", version: "1.0.0" },
-      instructions: `You are connected to the MangoEyes Task Hub as ${owner.name}. Clients are aesthetic clinics; tasks live on Pulp department boards and in the PM Overview sheet. Use search_tasks / client_summary for status questions, task_detail to read the original ask, daily_summary for "what happened today", meetings / meeting_detail for "what happened in the last call with X", ideas and decisions for what was raised or agreed, add_request to file a new client ask (it goes to Staging for a PM to approve).`,
+      instructions: `You are connected to the MangoEyes Task Hub. This connection is shared by several people, so you do not know who is talking to you. Clients are aesthetic clinics; tasks live on Pulp department boards and in the PM Overview sheet. Use search_tasks / client_summary for status questions, task_detail to read the original ask, daily_summary for "what happened today", meetings / meeting_detail for "what happened in the last call with X", ideas and decisions for what was raised or agreed, add_request to file a new client ask (it goes to Staging for a PM to approve). Reading needs nothing. Before add_request, ask the person "Who is this request from?" and wait for their answer; never fill in a name yourself, not from this connection's owner, not from earlier context.`,
     },
   );
 }
