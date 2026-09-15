@@ -23,7 +23,10 @@ describe("PM Review feed lines", () => {
   });
   it("follow-ups say which task they were noted on", () => {
     const line = followupLine({ client, existingTitle: "Fix Book Now button on mobile", kind: "followup_change", message });
-    expect(line).toBe("🔁 *HOH* · \"the Book Now button on the contact page isn't working on mobile\" · update to *Fix Book Now button on mobile* · noted on its card");
+    expect(line).toBe("🔁 *HOH* · update to *Fix Book Now button on mobile* · noted on its card · Slack, Dr Mehta");
+    const linked = followupLine({ client, existingTitle: "Fix Book Now button on mobile", kind: "possible_duplicate", message, pulpLink: "https://pulp/x" });
+    expect(linked).toContain("same as");
+    expect(linked).toContain("<https://pulp/x|card>");
   });
 });
 

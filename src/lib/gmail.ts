@@ -115,13 +115,14 @@ export function parseMail(raw: gmail_v1.Schema$Message): ParsedMail {
     note = text.slice(0, marker).trim();
     const block = text.slice(marker).split("\n").slice(1); // drop the marker line
     // Header lines of the forwarded block: From / Date / Subject / To / Cc, then a blank line, then the body.
-    let i = 0;
+    // Long To:/Cc: lines wrap onto continuation lines, so the block runs to the first blank line once a header was seen.
+    let i = 0, seen = false;
     for (; i < block.length; i++) {
       const l = block[i].trim();
-      if (!l) { if (i > 0) { i++; break; } continue; }
+      if (!l) { if (seen) { i++; break; } continue; }
       const m = l.match(/^(From|Date|Subject|To|Cc|Sent)\s*:\s*(.*)$/i);
-      if (!m) break;
-      if (m[1].toLowerCase() === "from") originalFrom = m[2].trim();
+      if (!m && !seen) break;
+      if (m) { seen = true; if (m[1].toLowerCase() === "from") originalFrom = m[2].trim(); }
     }
     body = block.slice(i).join("\n");
   }

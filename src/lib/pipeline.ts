@@ -7,7 +7,7 @@ import { classify } from "./llm/classify";
 import { route } from "./route";
 import type { Message, Client } from "./types";
 import { addReaction, postThreadFollowupComment } from "./slack";
-import { postReview, postP1Ping, postText, reviewMode, draftLine, followupLine, messageThreadKey, suggestedClientOf, sourceLabel } from "./review";
+import { postReview, postP1Ping, postText, postFeed, wordsLine, reviewMode, draftLine, followupLine, messageThreadKey, suggestedClientOf, sourceLabel } from "./review";
 import { createStagingCard } from "./tasks";
 
 export interface ProcessResult {
@@ -101,7 +101,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
       const chasing = /\b(any update|update on|status|eta|any news|when will|still waiting|following up|follow up)\b|\?\s*$/i.test(m.text);
       await postThreadFollowupComment({ taskId: root[0].task_id, requestId: root[0].request_id, message: m, flag: chasing ? "client_waiting" : undefined });
       if (m.channel === "intake" && reviewMode() === "notify") {
-        await postText(followupLine({ client, existingTitle: String(root[0].title ?? "the task"), kind: "followup_change", message: m, pulpLink: await cardLink(root[0].task_id as string | null) }), { threadKey: messageThreadKey(String(root[0].root_message_id)) });
+        await postFeed({ headline: followupLine({ client, existingTitle: String(root[0].title ?? "the task"), kind: "followup_change", message: m, pulpLink: await cardLink(root[0].task_id as string | null) }), detail: wordsLine(m.text), threadKey: messageThreadKey(String(root[0].root_message_id)) });
       }
       return { messageId, outcome: "attached", requestIds: [String(root[0].request_id)] };
     }
@@ -116,7 +116,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     if (m.channel === "intake" && reviewMode() === "notify") {
       // The feed is the team's record: a repeat that was noted on its card gets a line too, not only the sender's thread.
       const t = await sql()`select coalesce(draft->>'title', '') as title from requests where id = ${dd.requestId}`;
-      await postText(followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m, pulpLink: await cardLink(dd.taskId) }), { threadKey: messageThreadKey(messageId) });
+      await postFeed({ headline: followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m, pulpLink: await cardLink(dd.taskId) }), detail: wordsLine(m.text), threadKey: messageThreadKey(messageId) });
     }
     return { messageId, outcome: "attached", reason: dd.kind, requestIds: [dd.requestId] };
   }
@@ -146,7 +146,11 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     if (ex.tone === "unhappy" && !m.senderIsStaff) {
       // A displeased client with no ask is not "nothing": someone should reply. One ⚠️ line in the feed, listed in the brief until handled.
       await sql()`update messages set skip_reason = 'client_unhappy' where id = ${messageId}`;
-      await postText(`⚠️ *${client?.name ?? "Unknown client"}* · client sounds unhappy: "${own.replace(/^Subject:[^\n]*\n+/i, "").replace(/\s+/g, " ").trim().slice(0, 120)}" · ${sourceLabel(m).replace(" · ", ", ")}${m.permalink ? ` · <${m.permalink}|open>` : ""} · no task made; a person should reply`, { threadKey: messageThreadKey(messageId) });
+      await postFeed({
+        headline: `⚠️ *${client?.name ?? "Unknown client"}* · client sounds unhappy · ${sourceLabel(m).replace(" · ", ", ")} · no task made, a person should reply`,
+        detail: [wordsLine(m.text), ex.summary.length ? `Context: ${ex.summary.join(" ")}` : "", m.permalink ? `<${m.permalink}|Open the message>` : ""].filter(Boolean).join("\n"),
+        threadKey: messageThreadKey(messageId),
+      });
       return { messageId, outcome: "skipped", reason: "client_unhappy" };
     }
     await sql()`update messages set skip_reason = 'no_ask' where id = ${messageId}`;
@@ -225,7 +229,15 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     if (r.priority === "P1") await postP1Ping({ requestId, client, title: cl.title, message: m, reason: r.priorityReason });
   }
 
-  if (feed.length) await postText(feed.join("\n"), { threadKey: messageThreadKey(messageId) });
+  if (feed.length) {
+    // One line in the feed per message. One card: its line is the headline and the words sit in the thread.
+    // Several cards: a count line on top, the per-card lines with links in the thread.
+    const src = sourceLabel(m).replace(" · ", ", ");
+    const titles = feed.map((l) => l.split(" · ")[1] ?? "").filter(Boolean);
+    const headline = feed.length === 1 ? feed[0] : `${feed.some((l) => l.startsWith("🔴")) ? "🔴" : "🆕"} *${client?.name ?? "Unknown client"}* · ${feed.length} cards · ${titles.join("; ").slice(0, 90)} · ${src}`;
+    const detail = [...(feed.length > 1 ? feed : []), wordsLine(m.text)].filter(Boolean).join("\n");
+    await postFeed({ headline, detail, threadKey: messageThreadKey(messageId) });
+  }
   await addReaction(m, "eyes");
   return { messageId, outcome: "review", requestIds };
 }

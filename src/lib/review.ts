@@ -44,11 +44,27 @@ export function draftLine(p: { client: Client | null; title: string; department:
   return parts.filter(Boolean).join(" · ");
 }
 
-/** One feed line for a message that belongs to an existing task: noted on that card, nothing new created. */
+/** One feed line for a message that belongs to an existing task: noted on that card, nothing new created. The words go in the thread. */
 export function followupLine(p: { client: Client | null; existingTitle: string; kind: "possible_duplicate" | "followup_change"; message: Message; pulpLink?: string | null }): string {
   const what = p.kind === "possible_duplicate" ? "same as" : "update to";
-  const card = p.pulpLink ? `noted on <${p.pulpLink}|its card>` : "noted on its card";
-  return `🔁 *${p.client?.name ?? "Unknown client"}* · "${clip(p.message.text.replace(/\s+/g, " "), 80)}" · ${what} *${clip(p.existingTitle, 60)}* · ${card}`;
+  const card = p.pulpLink ? `<${p.pulpLink}|card>` : "card";
+  return `🔁 *${p.client?.name ?? "Unknown client"}* · ${what} *${clip(p.existingTitle, 60)}* · noted on its ${card} · ${sourceLabel(p.message).replace(" · ", ", ")}`;
+}
+
+/** The sender's own words, for the thread under a feed line. */
+export function wordsLine(text: string): string {
+  const i = text.indexOf("Earlier in this thread (context only, not the ask):");
+  const own = (i >= 0 ? text.slice(0, i) : text).replace(/^Subject:[^\n]*\n+/i, "").replace(/\s+/g, " ").trim();
+  return own ? `"${clip(own, 400)}"` : "";
+}
+
+/**
+ * The feed rule: one line at the top level per message, everything else inside that line's thread.
+ * The headline is the ledger entry; the detail (the words, per-card links, a card with buttons) opens on demand.
+ */
+export async function postFeed(p: { headline: string; detail?: string | null; threadKey: string }): Promise<void> {
+  await postText(p.headline, { threadKey: p.threadKey });
+  if (p.detail?.trim()) await postText(p.detail, { threadKey: p.threadKey });
 }
 
 export async function postReview(p: ReviewPost): Promise<void> {
@@ -76,12 +92,12 @@ export async function postReview(p: ReviewPost): Promise<void> {
       messageId: p.messageId, clientName, why: p.why, text: p.message.text, source: sourceLabel(p.message), permalink: p.message.permalink,
       clients: rows.map((r) => ({ id: String(r.id), name: String(r.name) })),
     });
-    // The text shows above the card (and in phone notifications): one useful line, not a code.
-    const snippet = p.message.text.replace(/^Subject:\s*/i, "").replace(/\s+/g, " ").slice(0, 60);
-    const line = p.why.startsWith("unknown") ? `❓ Which client? · ${sourceLabel(p.message).replace(" · ", ", ")} · "${snippet}${p.message.text.length > 60 ? "…" : ""}"` : `❓ Needs a person (${p.why.replace(/_/g, " ")}) · ${sourceLabel(p.message).replace(" · ", ", ")}`;
-    const sent = await gchat.sendCard(space, card, line, `human-${p.messageId}`, messageThreadKey(p.messageId));
+    // One headline line in the feed; the words and the card with the dropdown sit in its thread.
+    const head = p.why.startsWith("unknown") ? `❓ *Which client?* · ${sourceLabel(p.message).replace(" · ", ", ")} · ${clip(wordsLine(p.message.text), 70)}` : `❓ *Needs a person* · ${p.why.replace(/_/g, " ")} · ${sourceLabel(p.message).replace(" · ", ", ")}`;
+    const headName = await gchat.sendText(space, head, undefined, messageThreadKey(p.messageId));
+    const sent = await gchat.sendCard(space, card, "Pick the client below, or reply here with the name.", `human-${p.messageId}`, messageThreadKey(p.messageId));
     await rememberThread(sent.thread, { kind: "needs_human", messageId: p.messageId });
-    if (sent.name) await sql()`insert into settings (key, value) values (${"gchat_card_for:" + p.messageId}, ${JSON.stringify(sent.name)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+    await sql()`insert into settings (key, value) values (${"gchat_card_for:" + p.messageId}, ${JSON.stringify({ card: sent.name, head: headName })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
     return;
   }
   const label = p.kind === "possible_duplicate" ? "Possible duplicate" : "Change to an existing task";
@@ -100,7 +116,12 @@ async function rememberThread(thread: string | null, topic: ThreadTopic): Promis
 export async function closeNeedsHumanCard(messageId: string, text: string): Promise<void> {
   const r = await sql()`select value from settings where key = ${"gchat_card_for:" + messageId}`;
   if (!r.length || surface() !== "gchat") return;
-  try { await gchat.updateMessageText(String(r[0].value), text); } catch (e) { console.error("card update failed", (e as Error).message); }
+  // Older rows hold the card's name as a string; newer ones hold { card, head } so the headline changes too.
+  const v = r[0].value as string | { card?: string | null; head?: string | null };
+  const names = typeof v === "string" ? [v] : [v.head, v.card].filter((x): x is string => !!x);
+  for (const name of names) {
+    try { await gchat.updateMessageText(name, text); } catch (e) { console.error("card update failed", (e as Error).message); }
+  }
 }
 export async function threadTopic(thread: string | null | undefined): Promise<ThreadTopic | null> {
   if (!thread) return null;
@@ -110,7 +131,7 @@ export async function threadTopic(thread: string | null | undefined): Promise<Th
 
 export async function postP1Ping(p: { requestId: string; client: Client | null; title: string; message: Message; reason: string | null }): Promise<void> {
   if (surface() === "slack" || !gchat.gchatConfigured()) return slack.postP1Ping(p);
-  await gchat.sendText(gchat.reviewSpace(), `🔴 *P1* · *${p.client?.name ?? "Unknown client"}*\n*${p.title}*\n_${p.reason ?? ""}_\n${sourceLabel(p.message)}${p.message.permalink ? ` · ${p.message.permalink}` : ""}`);
+  await gchat.sendText(gchat.reviewSpace(), `🔴 *P1* · *${p.client?.name ?? "Unknown client"}* · ${clip(p.title, 80)} · ${p.reason ?? ""} · ${sourceLabel(p.message).replace(" · ", ", ")}`);
 }
 
 /** Plain text to the review surface (daily summary, notices). */
