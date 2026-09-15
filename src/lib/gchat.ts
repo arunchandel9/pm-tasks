@@ -60,8 +60,9 @@ export async function clearOwnMessages(space: string): Promise<{ deleted: number
   const out = { deleted: 0, kept: 0, errors: [] as string[] };
   let pageToken: string | undefined;
   const mine: string[] = [];
+  // Listing a space is a person's read (the app cannot list); deleting the app's own messages is the app's right.
   do {
-    const res = await chat().spaces.messages.list({ parent: space, pageSize: 100, pageToken });
+    const res = await chatAsUser().spaces.messages.list({ parent: space, pageSize: 100, pageToken });
     for (const m of res.data.messages ?? []) {
       if (m.sender?.type === "BOT" && m.name) mine.push(m.name); else out.kept++;
     }
