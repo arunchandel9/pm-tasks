@@ -146,6 +146,12 @@ export async function sendCard(space: string, card: chat_v1.Schema$GoogleAppsCar
   return { name: res.data.name ?? null, thread: res.data.thread?.name ?? null };
 }
 
+/** Remove one of the app's own messages (a headline being replaced). Missing already is fine. */
+export async function deleteMessage(messageName: string): Promise<void> {
+  try { await chat().spaces.messages.delete({ name: messageName }); }
+  catch (e) { if (!/404|NOT_FOUND/.test((e as Error).message)) throw e; }
+}
+
 export async function updateMessageText(messageName: string, text: string): Promise<void> {
   await chat().spaces.messages.patch({ name: messageName, updateMask: "text,cardsV2", requestBody: { text, cardsV2: [] } });
 }

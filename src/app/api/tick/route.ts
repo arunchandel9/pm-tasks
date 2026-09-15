@@ -238,6 +238,12 @@ async function runJob(kind: string, payload: Record<string, unknown>) {
       if (payload.flag === "client_waiting") await sql()`update tasks set waiting_on_client_since = null where id = ${payload.taskId as string}`;
       return;
     }
+    case "meet_group": {
+      // One client's action items from one meeting, in its own budget (src/lib/meet.ts).
+      const { runMeetGroup } = await import("@/lib/meet");
+      await runMeetGroup(payload as Parameters<typeof runMeetGroup>[0]);
+      return;
+    }
     case "process_message": {
       // Re-run of a stored message (queue fallback; the Chat and Slack handlers run it inline).
       const { reprocessMessage } = await import("@/lib/reprocess");

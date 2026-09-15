@@ -1,5 +1,5 @@
 import { google, type drive_v3 } from "googleapis";
-import { sql, allClients } from "./db";
+import { sql, allClients, enqueue } from "./db";
 import { resolveClientFromText } from "./resolve";
 import { sortMeeting } from "./llm/meeting";
 import { processMessage } from "./pipeline";
@@ -165,9 +165,10 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
     returning id`;
   const meetingId = String(ins[0].id);
 
-  // Actions: group per client and run each group through the normal pipeline (dedupe, cards, feed lines).
+  // Ideas, decisions and discussion are stored now. Actions are grouped per client and handed to the queue: one job
+  // per client, each in its own time budget, so a call with many action items can never outrun one web request
+  // (that left a meeting stuck at "reading the notes…" on 2026-09-15). The headline tally follows as jobs finish.
   const groups = new Map<string, { client: Client | null; items: typeof sorted.items }>();
-  const counts = { tasks: 0, onCard: 0, ideas: 0, decisions: 0, unclear: 0 };
   const ideaLines: string[] = [];
   for (const it of sorted.items) {
     const c = clientByName(it.client, clients) ?? meetingClient ?? (it.kind === "action" ? internal : null);
@@ -175,48 +176,76 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
       const key = c?.id ?? "?";
       if (!groups.has(key)) groups.set(key, { client: c, items: [] });
       groups.get(key)!.items.push(it);
+      // Recorded now as pending; the group job sets the outcome once the pipeline has run.
+      await sql()`insert into meeting_items (meeting_id, kind, client_id, text, owner, due_text, outcome) values (${meetingId}, 'action', ${c?.id ?? null}, ${it.text}, ${it.owner}, ${it.due}, 'pending')`;
       continue;
     }
     const outcome = it.kind === "idea" ? "idea" : it.kind === "decision" ? "decision" : "noted";
     await sql()`insert into meeting_items (meeting_id, kind, client_id, text, owner, due_text, outcome) values (${meetingId}, ${it.kind}, ${c?.id ?? null}, ${it.text}, ${it.owner}, ${it.due}, ${outcome})`;
-    if (it.kind === "idea") { counts.ideas++; if (ideaLines.length < 6) ideaLines.push(`💡 *${c?.name ?? "Unassigned"}* · ${it.text}`); }
-    if (it.kind === "decision") { counts.decisions++; if (ideaLines.length < 6) ideaLines.push(`📌 *${c?.name ?? "Unassigned"}* · ${it.text}`); }
+    if (it.kind === "idea" && ideaLines.length < 6) ideaLines.push(`💡 *${c?.name ?? "Unassigned"}* · ${it.text}`);
+    if (it.kind === "decision" && ideaLines.length < 6) ideaLines.push(`📌 *${c?.name ?? "Unassigned"}* · ${it.text}`);
   }
 
   // One headline in the feed per meeting; the cards, ideas, decisions and summary all go inside its thread.
   const threadKey = `meet-${meetingId}`;
   const who = meetingClient ? meetingClient.name : sorted.meeting_client?.toLowerCase().includes("mango") ? "MangoEyes internal" : "client unclear";
   const day = heldAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
-  const headName = await postHeadline(`📝 *Meeting · ${who}* · ${day} · reading the notes… · <${docUrl}|notes>`, threadKey);
+  const headName = await postHeadline(`📝 *Meeting · ${who}* · ${day} · ${groups.size ? "reading the notes…" : await tallyText(meetingId)} · <${docUrl}|notes>`, threadKey);
+  await sql()`insert into settings (key, value) values (${"meet_head:" + meetingId}, ${JSON.stringify({ name: headName, who, day, docUrl })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+  const summary = (sorted.summary ?? []).slice(0, 4).map((x) => `• ${x}`).join("\n");
+  await postDetail([summary ? `*In short*\n${summary}` : "", ideaLines.length ? `*Raised*\n${ideaLines.join("\n")}` : ""].filter(Boolean).join("\n\n"), threadKey);
 
   for (const [, g] of groups) {
     const text = g.items.map((it) => `- ${it.text}${it.owner ? ` (${it.owner})` : ""}${it.due ? ` — ${it.due}` : ""}`).join("\n");
-    const m: Message = {
-      channel: "meet", externalId: `meet:${doc.id}:${g.client?.id ?? "unassigned"}`, teamId: null, clientId: g.client?.id ?? null, scope: g.client ? g.client.scope : "unknown",
-      sender: doc.owner ?? "meeting", senderIsStaff: true, sentAt: heldAt, text: `Action items from the meeting "${title}":\n${text}`, permalink: docUrl, threadRef: null,
-      raw: { meeting: { id: meetingId, driveFileId: doc.id, title }, feedThreadKey: threadKey },
-    };
-    const r = await processMessage(m, { skip: false, reason: null });
-    const n = r.requestIds?.length ?? 0;
-    const made = r.outcome === "review" ? n : 0;
-    counts.tasks += made;
-    if (r.outcome === "attached") counts.onCard += 1;
-    if (!g.client) counts.unclear += g.items.length;
-    for (const it of g.items) {
-      await sql()`insert into meeting_items (meeting_id, kind, client_id, text, owner, due_text, outcome) values (${meetingId}, 'action', ${g.client?.id ?? null}, ${it.text}, ${it.owner}, ${it.due}, ${made ? "task" : r.outcome === "attached" ? "on_existing_card" : "noted"})`;
-    }
+    await enqueue("meet_group", { meetingId, docId: doc.id, docUrl, title, owner: doc.owner, heldAt: heldAt.toISOString(), clientId: g.client?.id ?? null, text, threadKey });
   }
+  return `${title}: ${groups.size ? `${groups.size} action group${groups.size > 1 ? "s" : ""} queued` : await tallyText(meetingId)}`;
+}
 
+/** The headline tally from what is recorded: cards made, on existing cards, ideas, decisions, actions without a client. */
+export async function tallyText(meetingId: string): Promise<string> {
+  const r = (await sql()`
+    select count(*) filter (where kind = 'action' and outcome = 'task')::int as tasks,
+           count(*) filter (where kind = 'action' and outcome = 'on_existing_card')::int as on_card,
+           count(*) filter (where kind = 'idea')::int as ideas,
+           count(*) filter (where kind = 'decision')::int as decisions,
+           count(*) filter (where kind = 'action' and client_id is null)::int as unclear,
+           count(*) filter (where kind = 'action' and outcome = 'pending')::int as pending
+    from meeting_items where meeting_id = ${meetingId}`)[0];
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
-  const tally = [
-    counts.tasks ? n(counts.tasks, "card") : null, counts.onCard ? `${counts.onCard} on existing cards` : null,
-    counts.ideas ? n(counts.ideas, "idea") : null, counts.decisions ? n(counts.decisions, "decision") : null,
-    counts.unclear ? `${counts.unclear} with no clear client` : null,
+  return [
+    Number(r.tasks) ? n(Number(r.tasks), "card") : null, Number(r.on_card) ? `${r.on_card} on existing cards` : null,
+    Number(r.ideas) ? n(Number(r.ideas), "idea") : null, Number(r.decisions) ? n(Number(r.decisions), "decision") : null,
+    Number(r.unclear) ? `${r.unclear} with no clear client` : null, Number(r.pending) ? `${r.pending} still reading` : null,
   ].filter(Boolean).join(" · ") || "nothing to act on";
-  await editHeadline(headName, `📝 *Meeting · ${who}* · ${day} · ${tally} · <${docUrl}|notes>`);
-  const summary = (sorted.summary ?? []).slice(0, 4).map((x) => `• ${x}`).join("\n");
-  await postDetail([summary ? `*In short*\n${summary}` : "", ideaLines.length ? `*Raised*\n${ideaLines.join("\n")}` : ""].filter(Boolean).join("\n\n"), threadKey);
-  return `${title}: ${tally}`;
+}
+
+/** Rewrite the meeting's headline with the current tally. */
+export async function refreshMeetingHeadline(meetingId: string): Promise<void> {
+  const r = await sql()`select value from settings where key = ${"meet_head:" + meetingId}`;
+  if (!r.length) return;
+  const h = r[0].value as { name: string | null; who: string; day: string; docUrl: string };
+  await editHeadline(h.name, `📝 *Meeting · ${h.who}* · ${h.day} · ${await tallyText(meetingId)} · <${h.docUrl}|notes>`);
+}
+
+/**
+ * The `meet_group` queue job: one client's action items from one meeting through the normal pipeline (dedupe, Staging
+ * cards, feed lines inside the meeting's thread). Re-run safe: the message is upserted, so a retry never doubles cards.
+ */
+export async function runMeetGroup(p: { meetingId: string; docId: string; docUrl: string; title: string; owner: string | null; heldAt: string; clientId: string | null; text: string; threadKey: string }): Promise<string> {
+  const clients = await allClients();
+  const client = p.clientId ? clients.find((c) => c.id === p.clientId) ?? null : null;
+  const m: Message = {
+    channel: "meet", externalId: `meet:${p.docId}:${client?.id ?? "unassigned"}`, teamId: null, clientId: client?.id ?? null, scope: client ? client.scope : "unknown",
+    sender: p.owner ?? "meeting", senderIsStaff: true, sentAt: new Date(p.heldAt), text: `Action items from the meeting "${p.title}":\n${p.text}`, permalink: p.docUrl, threadRef: null,
+    raw: { meeting: { id: p.meetingId, driveFileId: p.docId, title: p.title }, feedThreadKey: p.threadKey },
+  };
+  const r = await processMessage(m, { skip: false, reason: null }, { rerun: true });
+  const made = r.outcome === "review" ? (r.requestIds?.length ?? 0) : 0;
+  const outcome = made ? "task" : r.outcome === "attached" ? "on_existing_card" : "noted";
+  await sql()`update meeting_items set outcome = ${outcome} where meeting_id = ${p.meetingId} and kind = 'action' and outcome = 'pending' and client_id is not distinct from ${client?.id ?? null}`;
+  await refreshMeetingHeadline(p.meetingId);
+  return `${client?.name ?? "unassigned"}: ${outcome}`;
 }
 
 /** Forget one meeting and read its notes doc again now (a doc read before Gemini finished, or notes edited by hand). */
@@ -227,6 +256,12 @@ export async function rereadNoteDoc(fileId: string): Promise<string> {
   for (const m of old) {
     await sql()`delete from meeting_items where meeting_id = ${m.id}`;
     await sql()`delete from meetings where id = ${m.id}`;
+    // The old headline goes, so the feed shows one line for the meeting, not a stale one beside the new one.
+    const head = await sql()`select value from settings where key = ${"meet_head:" + m.id}`;
+    const name = (head[0]?.value as { name?: string | null } | undefined)?.name;
+    if (name) { try { const { deleteMessage } = await import("./gchat"); await deleteMessage(name); } catch (e) { console.error("old headline not deleted", (e as Error).message); } }
+    await sql()`delete from settings where key = ${"meet_head:" + m.id}`;
+    await sql()`delete from queue where done_at is null and kind = 'meet_group' and payload->>'meetingId' = ${String(m.id)}`;
   }
   await sql()`delete from settings where key = ${"meet_retry:" + fileId}`;
   return processNoteDoc(doc);
