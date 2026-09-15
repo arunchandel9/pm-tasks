@@ -8,6 +8,7 @@ import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
 import { resolveClientFromText } from "@/lib/resolve";
 import { postAck, humanOutcome, threadTopic, closeNeedsHumanCard, type ThreadTopic } from "@/lib/review";
 import { handleIntakeMessage } from "@/lib/chat-intake";
+import { reprocessSoon } from "@/lib/reprocess";
 import type { Message } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -80,13 +81,13 @@ async function answerThread(topic: ThreadTopic, text: string, who: string): Prom
     const hit = resolveClientFromText(text, await allClients());
     if (hit) {
       await sql()`update messages set client_id = ${hit.client.id}, scope = ${hit.client.scope}, skip_reason = null where id = ${topic.messageId}`;
-      await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: topic.messageId })}::jsonb)`;
+      reprocessSoon(topic.messageId, waitUntil);
       await closeNeedsHumanCard(topic.messageId, `👤 Client set to ${hit.client.name} by ${who}; processing.`);
       return `👤 Client set to ${hit.client.name} by ${who}; processing.`;
     }
     if (yes) {
       await sql()`update messages set skip_reason = null where id = ${topic.messageId}`;
-      await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: topic.messageId })}::jsonb)`;
+      reprocessSoon(topic.messageId, waitUntil);
       return `↪️ Marked as a task by ${who}; processing on the next tick.`;
     }
     return "I did not catch that. Say the client name, \"not a task\", or \"make it a task\".";
@@ -157,14 +158,14 @@ async function handleCardClick(ev: NormalisedEvent) {
         return NextResponse.json(replyText(ev.format, "Edit and Merge open a form in the next build. For now: Approve, or Not a task, and fix the card in Pulp."));
       case "make_task":
         await sql()`update messages set skip_reason = null where id = ${p.messageId}`;
-        await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: p.messageId })}::jsonb)`;
+        reprocessSoon(p.messageId, waitUntil);
         return done(`↪️ Marked as a task by ${who}; processing on the next tick.`);
       case "pick_client": {
         const clientId = ev.formInputs.client?.stringInputs?.value?.[0];
         if (!clientId) return NextResponse.json({});
         const c = (await allClients()).find((x) => x.id === clientId);
         await sql()`update messages set client_id = ${clientId}, scope = ${c?.scope ?? "client"}, skip_reason = null where id = ${p.messageId}`;
-        await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: p.messageId })}::jsonb)`;
+        reprocessSoon(p.messageId, waitUntil);
         return done(`👤 Client set to ${c?.name ?? clientId} by ${who}; processing.`);
       }
       case "dismiss_message":

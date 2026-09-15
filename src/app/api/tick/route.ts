@@ -238,31 +238,9 @@ async function runJob(kind: string, payload: Record<string, unknown>) {
       return;
     }
     case "process_message": {
-      // Re-run of a stored message (after pause, "Make it a task", a client picked, or a long transcript arrived).
-      const { processMessage } = await import("@/lib/pipeline");
-      const rows = await sql()`select * from messages where id = ${payload.messageId as string}`;
-      if (!rows.length) return;
-      const r = rows[0];
-      await sql()`delete from messages where id = ${r.id}`; // processMessage re-inserts idempotently
-      const m = {
-        channel: r.channel, externalId: r.external_id, teamId: (r.raw as { team?: string } | null)?.team ?? null, clientId: r.client_id, scope: r.scope, sender: r.sender,
-        senderIsStaff: r.sender_is_staff, sentAt: new Date(r.sent_at), text: r.text, permalink: r.permalink, threadRef: r.thread_ref, raw: r.raw,
-      };
-      const result = await processMessage(m, { skip: false, reason: null });
-      if (m.channel === "intake" || m.channel === "task_cmd") {
-        const n = result.requestIds?.length ?? 0;
-        if (!(result.outcome === "review" && n)) {
-          const { postAck, humanOutcome } = await import("@/lib/review");
-          const threadRef = typeof m.threadRef === "string" && m.threadRef.includes("/threads/") ? m.threadRef : null;
-          if (threadRef) {
-            // The sender's own DM thread, same as the live path: the feed carries finals only.
-            const { sendText } = await import("@/lib/gchat");
-            const { askWhichClient } = await import("@/lib/review");
-            const line = result.reason === "unknown_client" ? askWhichClient({ text: String(m.text), raw: m.raw }) : `Nothing created: ${humanOutcome(result.outcome, result.reason)}`;
-            await sendText(threadRef.split("/threads/")[0], line, threadRef);
-          } else await postAck({ message: m, outcome: result.outcome, detail: humanOutcome(result.outcome, result.reason) });
-        }
-      }
+      // Re-run of a stored message (queue fallback; the Chat and Slack handlers run it inline).
+      const { reprocessMessage } = await import("@/lib/reprocess");
+      await reprocessMessage(payload.messageId as string);
       return;
     }
     case "transcribe_poll": {

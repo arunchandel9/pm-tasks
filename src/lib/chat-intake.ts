@@ -12,6 +12,7 @@ import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, estimateM
 import { isAcknowledgement, isAffirmative } from "./filter/noise";
 import { noise } from "./config";
 import { downloadAttachment, sendText } from "./gchat";
+import { reprocessMessage } from "./reprocess";
 import type { ChatMessage } from "./gchat-events";
 import type { Message } from "./types";
 
@@ -41,9 +42,9 @@ export async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space:
     if (pending.length && chosen) {
       const id = String(pending[0].id);
       await sql()`update messages set client_id = ${chosen.id}, scope = ${chosen.scope}, skip_reason = null where id = ${id}`;
-      await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: id })}::jsonb)`;
       await closeNeedsHumanCard(id, `👤 Client set to ${chosen.name} by ${sender}; processing.`);
       await say(`Got it: ${chosen.name}. Processing the message above.`);
+      await reprocessMessage(id); // right away, not on the next minute: the person is waiting
       return;
     }
     if (nameHit) {

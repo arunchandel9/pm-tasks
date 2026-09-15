@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reprocessSoon } from "@/lib/reprocess";
 import { waitUntil } from "@vercel/functions";
 import { verifySlackSignature, web, isStaffUser, homeTeamId } from "@/lib/slack";
 import { slackToMessage, type SlackMessageEvent } from "@/lib/normalize/slack";
@@ -131,7 +132,7 @@ async function handleInteraction(payload: { type: string; team?: { id: string };
         return NextResponse.json({ response_type: "ephemeral", text: "Edit and Merge open a form in the next build. For now: Approve, or Not a task, and fix the card in Pulp." });
       case "make_task":
         await sql()`update messages set skip_reason = null where id = ${action.value!}`;
-        await sql()`insert into queue (kind, payload) values ('process_message', ${JSON.stringify({ messageId: action.value })}::jsonb)`;
+        reprocessSoon(String(action.value), waitUntil);
         await finish(`↪️ Marked as a task by ${who}; it will be processed on the next tick.`);
         break;
       case "pick_client": {
