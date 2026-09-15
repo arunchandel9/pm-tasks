@@ -3,7 +3,7 @@ import { cronAuthorized } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120; // a round can transcribe a voice note and run the model; three rounds must never be cut short
 
 /**
  * The Drop space, read three times a minute (Vercel Cron fires once a minute; this call reads at 0 s, 20 s and 40 s),

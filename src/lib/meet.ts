@@ -201,7 +201,18 @@ export async function pollMeetings(): Promise<{ found: number; processed: string
   for (const doc of docs) {
     if (known.has(doc.id)) continue;
     if (done >= 3) break; // bound one tick
-    try { processed.push(await processNoteDoc(doc)); done++; } catch (e) { errors.push(`${doc.name.slice(0, 40)}: ${(e as Error).message.slice(0, 160)}`); }
+    try { processed.push(await processNoteDoc(doc)); done++; }
+    catch (e) {
+      const msg = (e as Error).message;
+      if (/File not found|"code":\s*404/.test(msg)) {
+        // Deleted, or a shortcut to a doc the hub cannot open: remember it so it is not tried every five minutes.
+        await sql()`insert into meetings (drive_file_id, title, held_at, organiser, attendees, client_id, scope, doc_url, notes, summary)
+          values (${doc.id}, ${doc.name}, ${doc.modifiedTime}, null, '{}', null, 'unknown', null, '', 'not readable: deleted or a dead shortcut') on conflict (drive_file_id) do nothing`;
+        processed.push(`${doc.name.slice(0, 40)}: not readable, skipped`);
+        continue;
+      }
+      errors.push(`${doc.name.slice(0, 40)}: ${msg.slice(0, 160)}`);
+    }
   }
   const report = { found: docs.length, processed, errors, at: new Date().toISOString() };
   try { await sql()`insert into settings (key, value) values ('meet_poll_last', ${JSON.stringify(report)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`; } catch { /* ignore */ }

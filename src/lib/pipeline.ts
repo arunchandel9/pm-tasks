@@ -36,20 +36,29 @@ async function cardLink(taskId: string | null | undefined): Promise<string | nul
   return t.length && t[0].pulp_card_id ? pulp.cardUrl(String(t[0].board_id ?? ""), String(t[0].pulp_card_id)) : null;
 }
 
-export async function processMessage(m: Message, noiseVerdict: { skip: boolean; reason: string | null }): Promise<ProcessResult> {
+export async function processMessage(m: Message, noiseVerdict: { skip: boolean; reason: string | null }, opts: { rerun?: boolean } = {}): Promise<ProcessResult> {
   // Repeats are judged on the sender's own words, never on the earlier thread a mail carries as context.
   const hash = textHash(latestPart(m.text));
 
-  // Store first, always. Idempotent on (channel, external_id).
-  const stored = await sql()`
-    insert into messages (channel, external_id, client_id, scope, sender, sender_is_staff, sent_at, text, text_hash, permalink, thread_ref, raw, skip_reason)
-    values (${m.channel}, ${m.externalId}, ${m.clientId}, ${m.scope}, ${m.sender}, ${m.senderIsStaff}, ${m.sentAt.toISOString()},
-            ${m.text}, ${hash}, ${m.permalink}, ${m.threadRef}, ${JSON.stringify(m.raw)}::jsonb,
-            ${noiseVerdict.skip ? noiseVerdict.reason : null})
-    on conflict (channel, external_id) do nothing
-    returning id`;
+  // Store first, always. Idempotent on (channel, external_id). A re-run (client picked, "make it a task") updates the
+  // stored row in place and clears its earlier requests, so the message is never without a row, even if the run dies.
+  const stored = opts.rerun
+    ? await sql()`
+      insert into messages (channel, external_id, client_id, scope, sender, sender_is_staff, sent_at, text, text_hash, permalink, thread_ref, raw, skip_reason)
+      values (${m.channel}, ${m.externalId}, ${m.clientId}, ${m.scope}, ${m.sender}, ${m.senderIsStaff}, ${m.sentAt.toISOString()},
+              ${m.text}, ${hash}, ${m.permalink}, ${m.threadRef}, ${JSON.stringify(m.raw)}::jsonb, ${noiseVerdict.skip ? noiseVerdict.reason : null})
+      on conflict (channel, external_id) do update set client_id = excluded.client_id, scope = excluded.scope, text = excluded.text, text_hash = excluded.text_hash, raw = excluded.raw, skip_reason = excluded.skip_reason
+      returning id`
+    : await sql()`
+      insert into messages (channel, external_id, client_id, scope, sender, sender_is_staff, sent_at, text, text_hash, permalink, thread_ref, raw, skip_reason)
+      values (${m.channel}, ${m.externalId}, ${m.clientId}, ${m.scope}, ${m.sender}, ${m.senderIsStaff}, ${m.sentAt.toISOString()},
+              ${m.text}, ${hash}, ${m.permalink}, ${m.threadRef}, ${JSON.stringify(m.raw)}::jsonb,
+              ${noiseVerdict.skip ? noiseVerdict.reason : null})
+      on conflict (channel, external_id) do nothing
+      returning id`;
   if (!stored.length) return { messageId: "", outcome: "skipped", reason: "already_seen" };
   const messageId = stored[0].id as string;
+  if (opts.rerun) await sql()`delete from requests where message_id = ${messageId} and id not in (select request_id from tasks where request_id is not null)`;
 
   // Unanswered-client-message nudge: any client-authored Slack message starts a timer, request or not.
   if (m.channel === "slack" && !m.senderIsStaff && m.scope === "client" && !noiseVerdict.skip) {

@@ -1,7 +1,8 @@
 /**
  * Re-run a stored message right now: after a client was picked or typed, "Make it a task", a long transcript arriving,
  * or a pause lifting. Used inline from the Chat and Slack handlers (so the person sees the result in seconds) and by
- * the queue job as the fallback. The stored row is deleted and re-inserted by the pipeline, so the run is idempotent.
+ * the queue job as the fallback. The stored row is updated in place (never deleted), so a run that dies leaves the
+ * message for the watchdog rather than losing it.
  */
 import { sql } from "./db";
 import { processMessage } from "./pipeline";
@@ -13,13 +14,12 @@ export async function reprocessMessage(messageId: string): Promise<void> {
   const rows = await sql()`select * from messages where id = ${messageId}`;
   if (!rows.length) return;
   const r = rows[0];
-  await sql()`delete from messages where id = ${r.id}`; // processMessage re-inserts idempotently
   const m: Message = {
     channel: r.channel as Message["channel"], externalId: String(r.external_id), teamId: (r.raw as { team?: string } | null)?.team ?? null, clientId: (r.client_id as string | null) ?? null,
     scope: r.scope as Message["scope"], sender: String(r.sender), senderIsStaff: !!r.sender_is_staff, sentAt: new Date(r.sent_at as string), text: String(r.text),
     permalink: (r.permalink as string | null) ?? null, threadRef: (r.thread_ref as string | null) ?? null, raw: r.raw,
   };
-  const result = await processMessage(m, { skip: false, reason: null });
+  const result = await processMessage(m, { skip: false, reason: null }, { rerun: true });
   if (m.channel === "intake" || m.channel === "task_cmd") {
     const n = result.requestIds?.length ?? 0;
     if (!(result.outcome === "review" && n)) {

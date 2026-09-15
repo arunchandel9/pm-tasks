@@ -11,7 +11,7 @@ import { postText, humanOutcome, closeNeedsHumanCard, messageThreadKey, askWhich
 import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, estimateMinutes, hintPhrases } from "./transcribe";
 import { isAcknowledgement, isAffirmative } from "./filter/noise";
 import { noise } from "./config";
-import { downloadAttachment, sendText } from "./gchat";
+import { downloadAttachment, sendText, updateMessageText } from "./gchat";
 import { reprocessMessage } from "./reprocess";
 import type { ChatMessage } from "./gchat-events";
 import type { Message } from "./types";
@@ -26,7 +26,14 @@ export async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space:
   let text = (msg.argumentText ?? msg.text ?? "").replace(/^@?Task Hub\s*/i, "").trim();
   const sender = msg.sender?.displayName ?? msg.sender?.email ?? "unknown";
   let transcriptNote = "";
-  const say = (t: string) => sendText(space, t, msg.thread?.name).catch((e) => console.error("say failed", (e as Error).message));
+  // The first reply may be a placeholder ("Transcribing…") posted before the slow work; the real answer then edits it in place.
+  let placeholder: string | null = null;
+  const say = async (t: string) => {
+    try {
+      if (placeholder) { const name = placeholder; placeholder = null; await updateMessageText(name, t); return; }
+      await sendText(space, t, msg.thread?.name);
+    } catch (e) { console.error("say failed", (e as Error).message); }
+  };
 
   // A message that is only a client name ("HOH", "this is for PSS"), or a "yes" to the hub's suggestion: it names the
   // client for a message sent just before (same thread, or the last 30 minutes in a direct chat) or about to be sent (kept 15 min).
@@ -67,6 +74,7 @@ export async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space:
     try {
       const buf = await downloadAttachment(a.attachmentDataRef.resourceName);
       if (!namedAudio && !sniffAudio(buf)) continue;
+      if (!placeholder) { try { placeholder = await sendText(space, "🎙️ Voice note received, transcribing…", msg.thread?.name); } catch { /* the final reply is sent on its own */ } }
       const hints = hintPhrases(clients.flatMap((c) => [c.name, ...(c.aliases ?? [])]));
       const t = await transcribeAudio(buf, a.contentType ?? "", a.contentName ?? "", hints);
       if ("text" in t && t.text) { text = [text, t.text].filter(Boolean).join("\n"); transcriptNote = " (voice note transcribed)"; }
@@ -78,6 +86,7 @@ export async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space:
           const stored = await storeOnly({ ...baseMessage(msg, raw, sender, text, clients), text }, "transcribing");
           await sql()`insert into queue (kind, payload, next_run_at) values ('transcribe_poll', ${JSON.stringify({ messageId: stored.id, job, typed: text })}::jsonb, now() + interval '60 seconds')`;
           await postText(`🎙️ Voice note from ${sender} received (about ${mins} min). Transcribing; the task lines will follow in a few minutes.`, { threadKey: messageThreadKey(stored.id) });
+          await say(`🎙️ Long voice note (about ${mins} min): transcribing, the result follows in the feed in a few minutes.`);
           return;
         } catch (e) { transcriptNote = ` (long voice note could not be started: ${(e as Error).message.slice(0, 160)})`; }
       }
@@ -115,6 +124,7 @@ export async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space:
   }
   const result = await processMessage(m, { skip: false, reason: null });
   const n = result.requestIds?.length ?? 0;
+  const finish = async () => { if (placeholder) { const name = placeholder; placeholder = null; try { await updateMessageText(name, `Heard: "${m.text.replace(/\s+/g, " ").slice(0, 200)}${m.text.length > 200 ? "…" : ""}"`); } catch { /* ignore */ } } };
   // The DM answers only when the sender must act or nothing was created; the feed lines are the receipt for created tasks.
   if (result.outcome === "review" && result.reason === "unknown_client") {
     await say(askWhichClient({ text: m.text, raw: m.raw }));
@@ -132,8 +142,8 @@ export async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space:
     const added = result.outcome === "attached" ? reqs.map((r) => String(r.title)) : reqs.filter((r) => r.status === "merged").map((r) => String(r.title));
     const vague = m.text.trim().split(/\s+/).length < 10 || reqs.some((r) => Number(r.confidence) < 0.7);
     const parts = [filed.length ? `Filed: ${filed.join("; ")}.` : "", added.length ? `Added to the existing card: ${added.join("; ")}.` : ""].filter(Boolean).join(" ");
-    if (result.outcome === "attached" && !reqs.length) { if (transcriptNote) await say(`${heard}Added to the existing card in this thread.`); return; }
-    if (transcriptNote || vague || added.length) await say(`${heard}${parts} Reply here to correct or add anything.`);
+    if (result.outcome === "attached" && !reqs.length) { if (transcriptNote) await say(`${heard}Added to the existing card in this thread.`); else await finish(); return; }
+    if (transcriptNote || vague || added.length) await say(`${heard}${parts} Reply here to correct or add anything.`); else await finish();
     return;
   }
   await say(`Nothing created: ${humanOutcome(result.outcome, result.reason)}${transcriptNote}`);
