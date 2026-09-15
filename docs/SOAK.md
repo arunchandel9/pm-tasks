@@ -61,7 +61,7 @@ Client-matching audit (14 Sep, after a voice note with no client name was filed 
 | B4 | 3.5 | PM | Move the card to In Progress | Status cell reads the list name within 1 min. |
 | B5 | 3.5 | PM | Move the card to Done | Date Completed filled, row below the DONE divider, still the row moved in B3. |
 | B6 | 3.5 | PM | Move the card back to In Progress | Row Status back to In Progress, Date Completed cleared, row above the divider. Then Done again. |
-| B7 | 3.2 | A | DM: `TED: we want a new landing page for the Botox offer` | Card in Needs scope on Development, feed line says "Needs scope card". Drag it to To Do → sheet row, yellow. |
+| B7 | 3.2 | A | Drop: `TED: we want a new landing page for the Botox offer` | Card in Staging with the new-page label (Needs scope list dropped 2026-09-15). Drag it to To Do → sheet row, yellow. |
 | B8 | 3.6, 3.7 | PM | Create a card by hand in Pulp, paste its link in a new row of the client's tab | Within 10 min Claude lists it (D3). Move the card to Done → within 5 min the row reads Done and sits below the divider. |
 | B9 | 2.6 | A | DM: the same text as A1 again | 🔁 line "same as …", comment on the A1 card, no new card. |
 | B10 | 2.6 | A | Reply in the DM thread of A1: `also broken on tablet` | 🔁 line "update to …", comment on the card. |

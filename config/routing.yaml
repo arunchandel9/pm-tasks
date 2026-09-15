@@ -1,6 +1,6 @@
 # Routing table. Deterministic. Edit here, not in prompts.
 # department: which board family (dev | content | design | seo | automation | video | general | internal)
-# gated: true → card goes to the "Needs scope" list first; a person moves it on.
+# gated: true → card goes to the "Needs scope" list first; a person moves it on. Not used since 2026-09-15 (Arun: one Staging list for everything; the new-page label marks what needs scoping).
 # sla_days: working days from creation to due date. P1 overrides with p1_sla_hours.
 # No sub-card chains: a new page is one card; the PM adds extra cards by hand if a page needs more than one person (decided 2026-09-10).
 
@@ -65,12 +65,10 @@ request_types:
     labels: [video]
   new_page:
     department: seo
-    gated: true
     sla_days: 10
     labels: [new-page]
   new_feature:
     department: dev
-    gated: true
     sla_days: 10
     labels: [feature]
   general_update:

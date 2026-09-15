@@ -38,9 +38,9 @@ describe("route", () => {
     expect(r.priority).toBe("P1"); expect(r.priorityReason).toContain("keyword");
     expect(r.dueAt!.getTime() - mon.getTime()).toBe(4 * 3600 * 1000);
   });
-  it("new page is gated into Needs scope", () => {
+  it("new page is not gated any more: Staging like everything else, with the new-page label", () => {
     const r = route({ requestType: "new_page", modelDepartment: "seo", priorityHint: "P3", priorityReason: null, text: "we want a new landing page for botox", client, now: mon });
-    expect(r.gated).toBe(true); expect(r.list).toBe("Needs scope"); expect(r.board).toBe("b-dev");
+    expect(r.gated).toBe(false); expect(r.labels).toContain("new-page");
   });
   it("general update creates no card", () => {
     const r = route({ requestType: "general_update", modelDepartment: "general", priorityHint: "P3", priorityReason: null, text: "just fyi we are closed friday", client, now: mon });
@@ -53,11 +53,11 @@ describe("route", () => {
 });
 
 describe("hold list", () => {
-  it("gated asks wait in Needs scope, everything else in Staging", async () => {
+  it("everything waits in Staging (the gate is off in routing.yaml; the code still honours a gated rule if one is ever set)", async () => {
     const { holdListName } = await import("../src/lib/tasks");
     const page = route({ requestType: "new_page", modelDepartment: "seo", priorityHint: "P3", priorityReason: null, text: "new landing page", client, now: mon });
     const fix = route({ requestType: "dev_issue", modelDepartment: "dev", priorityHint: "P3", priorityReason: null, text: "button broken", client, now: mon });
-    expect(holdListName(page)).toBe("Needs scope");
+    expect(holdListName(page)).toBe("Staging");
     expect(holdListName(fix)).toBe("Staging");
     expect(holdListName({ gated: true, list: null, staging: null })).toBe("Needs scope");
     expect(holdListName({ gated: false, list: "To Do", staging: null })).toBe("Staging");
