@@ -9,7 +9,8 @@ import { resolveClientFromText } from "@/lib/resolve";
 import { postAck, humanOutcome, threadTopic, closeNeedsHumanCard, type ThreadTopic } from "@/lib/review";
 import { handleIntakeMessage } from "@/lib/chat-intake";
 import { reprocessSoon } from "@/lib/reprocess";
-import type { Message } from "@/lib/types";
+import { acknowledgeReplies, ACK_WORDS } from "@/lib/slack-replies";
+import type { Message, Client } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,11 +77,16 @@ async function answerThread(topic: ThreadTopic, text: string, who: string): Prom
   const t = text.toLowerCase();
   const no = /\b(not a task|no task|ignore|skip|dismiss|drop it|nothing)\b/.test(t);
   const yes = /\b(make it a task|make a task|create|approve|yes|go ahead|ok(ay)?|separate task)\b/.test(t);
+  if (topic.kind === "nudge") {
+    if (ACK_WORDS.test(t)) { await acknowledgeReplies(topic.channelId, who); return `✅ Acknowledged by ${who}; no more reminders for this one.`; }
+    return "Say \"ack\" (or \"handled\") to stop the reminders, or reply to the client in Slack.";
+  }
   if (topic.kind === "needs_human") {
     if (no) { await sql()`update messages set skip_reason = 'dismissed_by_human' where id = ${topic.messageId}`; return `🗑️ Not a task · by ${who}`; }
     const hit = resolveClientFromText(text, await allClients());
     if (hit) {
       await sql()`update messages set client_id = ${hit.client.id}, scope = ${hit.client.scope}, skip_reason = null where id = ${topic.messageId}`;
+      await learnWorkspace(topic.messageId, hit.client);
       reprocessSoon(topic.messageId, waitUntil);
       await closeNeedsHumanCard(topic.messageId, `👤 Client set to ${hit.client.name} by ${who}; processing.`);
       return `👤 Client set to ${hit.client.name} by ${who}; processing.`;
@@ -96,6 +102,16 @@ async function answerThread(topic: ThreadTopic, text: string, who: string): Prom
   if (/\b(merge|same)\b/.test(t) && topic.duplicateOf) { await mergeRequest(topic.requestId, topic.duplicateOf, who); return `🔗 Merged into the existing task by ${who}`; }
   if (yes) { await approveRequest(topic.requestId, who); return `✅ Approved by ${who}`; }
   return "I did not catch that. Say \"approve\", \"not a task\"" + (topic.duplicateOf ? " or \"merge\"." : ".");
+}
+
+/** The first message from a Slack workspace the hub did not know: the client a person picks for it is remembered for the workspace. */
+async function learnWorkspace(messageId: string, client: Client): Promise<void> {
+  try {
+    const r = await sql()`select channel, raw->>'teamId' as team_id from messages where id = ${messageId}`;
+    if (!r.length || r[0].channel !== "slack" || !r[0].team_id) return;
+    const { linkWorkspaceToClient } = await import("@/lib/slack");
+    await linkWorkspaceToClient(client, String(r[0].team_id));
+  } catch (e) { console.error("learnWorkspace failed", (e as Error).message); }
 }
 
 let _inbox: { at: number; space: string } | null = null;
@@ -165,9 +181,13 @@ async function handleCardClick(ev: NormalisedEvent) {
         if (!clientId) return NextResponse.json({});
         const c = (await allClients()).find((x) => x.id === clientId);
         await sql()`update messages set client_id = ${clientId}, scope = ${c?.scope ?? "client"}, skip_reason = null where id = ${p.messageId}`;
+        if (c) await learnWorkspace(p.messageId, c);
         reprocessSoon(p.messageId, waitUntil);
         return done(`👤 Client set to ${c?.name ?? clientId} by ${who}; processing.`);
       }
+      case "ack_reply":
+        await acknowledgeReplies(p.channelId, who);
+        return done(`✅ Acknowledged by ${who} · ${p.clientName ?? "client"} · no more reminders for this one.`);
       case "dismiss_message":
         await sql()`update messages set skip_reason = 'dismissed_by_human' where id = ${p.messageId}`;
         return done(`🗑️ Not a task · by ${who}`);

@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { reprocessSoon } from "@/lib/reprocess";
 import { waitUntil } from "@vercel/functions";
-import { verifySlackSignature, web, isStaffUser, homeTeamId } from "@/lib/slack";
-import { slackToMessage, type SlackMessageEvent } from "@/lib/normalize/slack";
+import { verifySlackSignature, web, slackUser, userNames, homeTeamId, downloadSlackFile } from "@/lib/slack";
+import { slackToMessage, mentionedUsers, isAudioFile, type SlackMessageEvent } from "@/lib/normalize/slack";
 import { slackNoise } from "@/lib/filter/noise";
 import { noise, env } from "@/lib/config";
 import { allClients, sql, getSetting } from "@/lib/db";
-import { processMessage } from "@/lib/pipeline";
+import { processMessage, storeSkipped } from "@/lib/pipeline";
 import { approveRequest, dismissRequest, mergeRequest } from "@/lib/tasks";
 import { resolveClientFromText, stripClientPrefix } from "@/lib/resolve";
+import { transcribeAudio, startLongTranscription, estimateMinutes, hintPhrases } from "@/lib/transcribe";
+import { postText, messageThreadKey } from "@/lib/review";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,10 +53,34 @@ async function handleMessageEvent(ev: SlackMessageEvent, teamId: string | null) 
   const clients = await allClients();
   const home = await homeTeamId();
   const intakeId = await getSetting<string | null>("intake_channel_id", null);
-  const senderIsStaff = ev.user ? await isStaffUser(teamId, ev.user) : false;
+  const who = ev.user ? await slackUser(teamId, ev.user) : { isStaff: false, isBot: !!ev.bot_id, name: null, email: null };
+  const senderIsStaff = who.isStaff;
   const workspaceUrl = await getSetting<string | null>(`workspace_url:${teamId}`, null);
+  const names = await userNames(teamId, mentionedUsers(ev.text ?? ""));
 
-  const m = slackToMessage(ev, { teamId, homeTeamId: home, clients, senderIsStaff, intakeChannelId: intakeId, workspaceUrl });
+  // A voice clip from the client is read like a voice note in the DM: same engine, same vocabulary hints.
+  let transcript: string | null = null, transcriptNote: string | null = null;
+  const audio = (ev.files ?? []).find((f) => isAudioFile(f) && (f.url_private_download || f.url_private));
+  if (audio && !senderIsStaff && !ev.bot_id) {
+    const hints = hintPhrases(clients.flatMap((c) => [c.name, ...(c.aliases ?? [])]));
+    try {
+      const buf = await downloadSlackFile(teamId, (audio.url_private_download ?? audio.url_private)!);
+      const t = await transcribeAudio(buf, audio.mimetype ?? "", audio.name ?? "", hints);
+      if ("text" in t && t.text) transcript = t.text;
+      else if ("tooLong" in t) {
+        // A long clip: start the long-running recognition, store the message now, and let the minute tick finish it.
+        const base = slackToMessage(ev, { teamId, homeTeamId: home, clients, senderIsStaff, senderName: who.name, intakeChannelId: intakeId, workspaceUrl, userNames: names });
+        const job = await startLongTranscription(buf, audio.mimetype ?? "", audio.name ?? "", undefined, hints);
+        const stored = await storeSkipped(base, "transcribing");
+        await sql()`insert into queue (kind, payload, next_run_at) values ('transcribe_poll', ${JSON.stringify({ messageId: stored.id, job, typed: base.text })}::jsonb, now() + interval '60 seconds')`;
+        await postText(`🎙️ Voice clip from ${base.sender} in ${base.clientId ? clients.find((c) => c.id === base.clientId)?.name ?? "their Slack" : "Slack"} (about ${estimateMinutes(buf.length, audio.mimetype ?? "")} min). Transcribing; the task lines follow in a few minutes.`, { threadKey: messageThreadKey(stored.id) });
+        return;
+      } else transcriptNote = "error" in t ? t.error : "unknown";
+    } catch (e) { transcriptNote = (e as Error).message; }
+    if (transcriptNote) console.error("slack voice clip not transcribed:", transcriptNote);
+  }
+
+  const m = slackToMessage(ev, { teamId, homeTeamId: home, clients, senderIsStaff, senderName: who.name, intakeChannelId: intakeId, workspaceUrl, userNames: names, transcript });
   const isIntake = m.channel === "intake";
   if (isIntake && !m.clientId) {
     const hit = resolveClientFromText(m.text, clients);
@@ -73,7 +99,7 @@ async function handleMessageEvent(ev: SlackMessageEvent, teamId: string | null) 
     {
       subtype: ev.subtype, botId: ev.bot_id, text: m.text, senderIsStaff: m.senderIsStaff,
       isIntakeChannel: isIntake, isThreadReply: !!m.threadRef, threadRootIsRequest,
-      hasFilesOnly: !!ev.files?.length && !(ev.text ?? "").trim(),
+      hasFilesOnly: !!ev.files?.length && !m.text.trim(),
     },
     noise()
   );

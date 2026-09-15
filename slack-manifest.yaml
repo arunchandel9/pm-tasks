@@ -32,6 +32,7 @@ oauth_config:
       - users:read.email
       - commands
       - team:read
+      - files:read
 settings:
   event_subscriptions:
     request_url: https://pm-tasks.vercel.app/api/slack/events

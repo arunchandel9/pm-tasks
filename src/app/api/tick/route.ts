@@ -262,31 +262,16 @@ async function runJob(kind: string, payload: Record<string, unknown>) {
       const { resolveClientFromText, stripClientPrefix } = await import("@/lib/resolve");
       const { allClients } = await import("@/lib/db");
       const hit = resolveClientFromText(text, await allClients());
-      await sql()`update messages set text = ${hit ? stripClientPrefix(text, hit.client) : text}, client_id = ${hit?.client.id ?? null}, scope = ${hit ? hit.client.scope : "unknown"}, skip_reason = null,
+      // A name in the words wins; otherwise the client the message already had (a Slack workspace's client) stays.
+      await sql()`update messages set text = ${hit ? stripClientPrefix(text, hit.client) : text}, client_id = coalesce(${hit?.client.id ?? null}::text, client_id), scope = coalesce(${hit ? hit.client.scope : null}::text, scope), skip_reason = null,
         raw = coalesce(raw, '{}'::jsonb) || ${JSON.stringify({ transcript: r.text, audio: job.gsUri })}::jsonb where id = ${payload.messageId as string}`;
       await enqueue("process_message", { messageId: payload.messageId }, 0);
       return;
     }
     case "reply_check": {
-      // Has a MangoEyes person replied in the same channel (or thread) since the client's message? If not, one nudge.
-      const rows = await sql()`select m.*, c.name as client_name from messages m left join clients c on c.id = m.client_id where m.id = ${payload.messageId as string}`;
-      if (!rows.length) return;
-      const m = rows[0];
-      const channelId = String(m.external_id).split(":")[0];
-      const replied = await sql()`
-        select 1 from messages r where r.channel = 'slack' and r.sender_is_staff and r.sent_at > ${m.sent_at}
-          and split_part(r.external_id, ':', 1) = ${channelId} limit 1`;
-      if (replied.length) return;
-      // One line per channel per mark, however many messages the client sent.
-      const mins = Number(payload.mins ?? 60);
-      const key = `reply_nudged:${channelId}:${mins}`;
-      const last = await sql()`select value from settings where key = ${key}`;
-      if (last.length && Date.now() - new Date(last[0].value as string).getTime() < mins * 60 * 1000) return;
-      await sql()`insert into settings (key, value) values (${key}, ${JSON.stringify(new Date().toISOString())}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
-      const { postText } = await import("@/lib/review");
-      const quote = String(m.text).replace(/\s+/g, " ").slice(0, 160);
-      const label = mins >= 60 ? `${Math.round(mins / 60)} hour${mins >= 120 ? "s" : ""}` : `${mins} min`;
-      await postText(`${mins >= 60 ? "⏰" : "💬"} *${m.client_name ?? "A client"}* wrote ${label} ago in their Slack and nobody from the team has replied yet: "${quote}${String(m.text).length > 160 ? "…" : ""}"${m.permalink ? `\n${m.permalink}` : ""}`);
+      // A client wrote in Slack: has a MangoEyes person replied since? If not, one reminder in the feed (src/lib/slack-replies.ts).
+      const { replyCheck } = await import("@/lib/slack-replies");
+      await replyCheck(String(payload.messageId), Number(payload.mins ?? 60));
       return;
     }
     case "create_card": {

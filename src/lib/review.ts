@@ -143,8 +143,8 @@ export async function postReview(p: ReviewPost): Promise<void> {
 }
 
 /** What a PM Review card thread is about, so a typed reply in that thread can answer it. */
-export type ThreadTopic = { kind: "needs_human"; messageId: string } | { kind: "request"; requestId: string; duplicateOf?: string };
-async function rememberThread(thread: string | null, topic: ThreadTopic): Promise<void> {
+export type ThreadTopic = { kind: "needs_human"; messageId: string } | { kind: "request"; requestId: string; duplicateOf?: string } | { kind: "nudge"; messageId: string; channelId: string };
+export async function rememberThread(thread: string | null, topic: ThreadTopic): Promise<void> {
   if (!thread) return;
   await sql()`insert into settings (key, value) values (${"gchat_thread:" + thread}, ${JSON.stringify(topic)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
 }

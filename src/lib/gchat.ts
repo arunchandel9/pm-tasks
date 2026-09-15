@@ -203,6 +203,11 @@ export function needsHumanCard(p: { messageId: string; clientName: string; why: 
   return { header: { title: `${p.clientName} · needs a person`, subtitle: p.why.replace(/_/g, " ") }, sections: [{ widgets }] };
 }
 
+/** Under a "no reply yet" reminder: one button that stops the reminders for that Slack channel. */
+export function ackCard(p: { messageId: string; channelId: string; clientName: string }): chat_v1.Schema$GoogleAppsCardV1Card {
+  return { sections: [{ widgets: [buttons([{ text: "Acknowledged", fn: "ack_reply", params: { messageId: p.messageId, channelId: p.channelId, clientName: p.clientName }, primary: true }])] }] };
+}
+
 export function duplicateCard(p: { requestId: string; duplicateOf: string; clientName: string; label: string; text: string; source: string; permalink: string | null }): chat_v1.Schema$GoogleAppsCardV1Card {
   const src = p.permalink ? `<a href="${p.permalink}">${esc(p.source)}</a>` : esc(p.source);
   return {

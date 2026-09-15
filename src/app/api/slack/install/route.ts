@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 const SCOPES = [
   "channels:history", "channels:read", "groups:history", "groups:read",
   "chat:write", "reactions:write", "reactions:read", "users:read", "users:read.email", "commands", "team:read",
+  "files:read", // voice clips a client shares are transcribed like DM voice notes
 ];
 
 /** "Add to Slack": open this URL while signed in to the workspace you want to install into. */

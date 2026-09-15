@@ -21,6 +21,11 @@ Last updated: 2026-09-15 (soak, handover pages written).
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-15, Slack (Arun):** no test with an outside actor; the Slack path is built to the feed standard and proves
+  itself on the first real client message. Reply reminders at 20 min, 1 hour, 1 day, then daily until a team reply or
+  the Acknowledged button; never for thank-yous or messages the model reads as closing. Install is a browser step per
+  workspace (`/api/slack/install`), invites from the Slack app; the workspace links itself to the client by name, or
+  from the first "which client?" answer. `files:read` added for voice clips (Abela to be reinstalled once).
 
 - **2026-09-11, Google Chat surfaces:** the DM with the Task Hub app is the front door (forward, type, voice, `/task`; no
   mention). The Intake space is retired (a space app only gets mentioned messages; the Workspace Events API could

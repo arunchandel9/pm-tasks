@@ -38,6 +38,15 @@ async function cardLink(taskId: string | null | undefined): Promise<string | nul
   return t.length && t[0].pulp_card_id ? pulp.cardUrl(String(t[0].board_id ?? ""), String(t[0].pulp_card_id)) : null;
 }
 
+/** Store a message with a reason and nothing else (an acknowledgement, an image, a note still transcribing). */
+export async function storeSkipped(m: Message, skipReason: string): Promise<{ id: string }> {
+  const rows = await sql()`
+    insert into messages (channel, external_id, client_id, scope, sender, sender_is_staff, sent_at, text, text_hash, permalink, thread_ref, raw, skip_reason)
+    values (${m.channel}, ${m.externalId}, ${m.clientId}, ${m.scope}, ${m.sender}, ${m.senderIsStaff}, ${m.sentAt.toISOString()}, ${m.text}, ${textHash(m.text || m.externalId)}, ${m.permalink}, ${m.threadRef}, ${JSON.stringify(m.raw)}::jsonb, ${skipReason})
+    on conflict (channel, external_id) do update set skip_reason = excluded.skip_reason returning id`;
+  return { id: rows[0].id as string };
+}
+
 export async function processMessage(m: Message, noiseVerdict: { skip: boolean; reason: string | null }, opts: { rerun?: boolean } = {}): Promise<ProcessResult> {
   // Repeats are judged on the sender's own words, never on the earlier thread a mail carries as context.
   const hash = textHash(latestPart(m.text));
@@ -124,7 +133,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     await sql()`update messages set skip_reason = ${dd.kind} where id = ${messageId}`;
     await addReaction(m, "repeat");
     await postThreadFollowupComment({ taskId: dd.taskId, requestId: dd.requestId, message: m });
-    if ((m.channel === "intake" || m.channel === "task_cmd" || inSharedThread(m)) && reviewMode() === "notify") {
+    if ((m.channel === "intake" || m.channel === "task_cmd" || m.channel === "slack" || inSharedThread(m)) && reviewMode() === "notify") {
       // The feed is the team's record: a repeat that was noted on its card gets a line too, not only the sender's thread.
       const t = await sql()`select coalesce(draft->>'title', '') as title from requests where id = ${dd.requestId}`;
       if (inSharedThread(m)) await postText(followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m, pulpLink: await cardLink(dd.taskId) }), { threadKey: feedThreadKeyOf(m, messageId) });
@@ -148,6 +157,10 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
   // Model call 1.
   const voice = !!(m.raw as { voice?: boolean } | null)?.voice;
   const ex = await extract({ text: m.text, channel: m.channel, clientName: client?.name ?? null, messageId, voice, knownNames: voice ? clients.filter((c) => c.scope === "client").map((c) => c.name) : undefined });
+  // A client message that closes the exchange ("perfect, that works now, thanks") needs no reply: the reply reminders stand down.
+  if (m.channel === "slack" && !m.senderIsStaff && ex.needs_reply === false) {
+    await sql()`update messages set raw = coalesce(raw, '{}'::jsonb) || '{"needsReply": false}'::jsonb where id = ${messageId}`;
+  }
   // Guard: a problem statement is always an ask, whatever the model said ("… is not working" → fix it).
   const own = latestPart(m.text);
   if ((!ex.is_request || ex.asks.length === 0) && PROBLEM.test(own) && own.split(/\s+/).length >= 3) {

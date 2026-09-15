@@ -4,7 +4,7 @@ Each item is about an hour unless noted. None is needed for the hub to run.
 
 ## Still to prove on real traffic (no work, just watch)
 
-- Slack: first real client message in a client channel → feed line, card (A9, A10). Reply nudge after 5 minutes of silence (C4).
+- Slack: first real client message in a client channel → feed line, card (A9, A10). Reminder after 20 minutes of silence, naming who was tagged (C4).
 - Google Meet: next real client call with Gemini notes → one headline in the feed, cards in its thread (A11).
 - A voice note longer than 10 minutes (the long path is built; the longest verified is 163 seconds).
 - The first daily brief at 23:00 (C3).

@@ -42,6 +42,14 @@ export async function collectBrief(): Promise<BriefData> {
       and (m.skip_reason <> 'unknown_client' and m.created_at > now() - interval '1 day' or array_length(regexp_split_to_array(trim(m.text), '\s+'), 1) >= 3)
     order by m.created_at desc limit 10`)
     .map((r) => ({ text: String(r.text), source: `${{ slack: "Slack", intake: "Task Hub", email: "Email", meet: "Meeting" }[String(r.channel)] ?? String(r.channel)}, ${String(r.sender).replace(/<[^>]+>/, "").trim()}`, why: r.skip_reason === "attachment_only" ? "image only, needs the ask typed" : r.skip_reason === "client_unhappy" ? "client sounded unhappy, reply needed:" : "which client?" }));
+  // Clients still waiting for a reply in Slack (no team reply, not acknowledged).
+  try {
+    const { unansweredClientMessages } = await import("./slack-replies");
+    for (const u of await unansweredClientMessages(5)) {
+      const age = u.minutes >= 1440 ? `${Math.round(u.minutes / 1440)} d` : u.minutes >= 60 ? `${Math.round(u.minutes / 60)} h` : `${u.minutes} min`;
+      questions.push({ text: clip(u.text.replace(/\s+/g, " "), 70), source: `Slack, ${u.sender}`, why: `no reply from the team for ${age} (${u.client}):` });
+    }
+  } catch (e) { console.error("unanswered check failed", (e as Error).message); }
   const waitingOnClient = (await sql()`
     select coalesce(c.name,'Internal') as client, t.title, extract(day from now() - t.waiting_on_client_since)::int as days
     from tasks t left join clients c on c.id = t.client_id where t.waiting_on_client_since is not null and t.completed_at is null order by t.waiting_on_client_since`)

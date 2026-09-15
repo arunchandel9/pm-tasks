@@ -25,9 +25,15 @@ Aliases are matched as whole words only. Names under five letters never match by
 
 ## Slack (client workspaces)
 
-- Install: send the client `https://pm-tasks.vercel.app/api/slack/install`, or install it yourself as workspace owner. Then `/invite @Task Hub` in each channel to read.
-- Put the workspace T-id in the client's Config row (column D). Staff are recognised by the `mangoeyesagency.com` domain.
-- The app only reads and adds an emoji reaction in a client workspace. It never posts there.
+1. **Install, in a browser** (the OAuth step cannot run inside the Slack app): sign in to that workspace at slack.com as its owner, then open `https://pm-tasks.vercel.app/api/slack/install` and click Allow. One time per workspace. The page that follows says which client the workspace was linked to.
+2. **Invite, from the Slack app** (desktop or phone): in every channel the hub should read, type `/invite @Task Hub`, or channel details → Integrations → Add apps. Private channels too. The hub reads only channels it is in.
+3. Nothing else. The workspace is linked to the client by its name on install; if no name matched, the first client message asks "which client?" in the feed and the answer links it for good (the Config row is written for you).
+
+Already installed before 15 Sep (Abela): open the install link once more so the new `files:read` permission (voice clips) is granted.
+
+- Staff are recognised by the `mangoeyesagency.com` email on their Slack profile. A team member on a personal email gets `STAFF_EMAILS` in Vercel.
+- The app never posts in a client workspace. It only adds an emoji reaction.
+- Reply reminders: 20 min, 1 hour, 1 day, then daily, in the feed, until a team reply in that channel or the Acknowledged button. Marks in `config/noise.yaml`.
 
 ## Claude connections (MCP)
 

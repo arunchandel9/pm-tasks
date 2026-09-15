@@ -55,24 +55,92 @@ export async function saveInstallation(p: { teamId: string; teamName: string | n
 
 const STAFF_DOMAINS = () => (process.env.STAFF_EMAIL_DOMAINS || "mangoeyesagency.com").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean);
 
-export async function isStaffUser(teamId: string | null, userId: string): Promise<boolean> {
-  if (!teamId) return false;
-  const cached = await sql()`select is_staff, seen_at from slack_users where team_id = ${teamId} and user_id = ${userId}`;
-  if (cached.length && Date.now() - new Date(cached[0].seen_at as string).getTime() < 7 * 24 * 3600 * 1000) return cached[0].is_staff as boolean;
-  let email: string | null = null, isBot = false;
+export interface SlackUser { isStaff: boolean; isBot: boolean; name: string | null; email: string | null }
+
+/**
+ * Who a Slack user is: staff or client (by email domain), and their name, so the feed and the cards read
+ * "Slack, Dr Mehta" and never "U0ABC12". One users.info call per person per week; names live in settings
+ * (`slack_user:<team>:<id>`) so no schema change is needed.
+ */
+export async function slackUser(teamId: string | null, userId: string): Promise<SlackUser> {
+  const none: SlackUser = { isStaff: false, isBot: false, name: null, email: null };
+  if (!teamId || !userId) return none;
+  const key = `slack_user:${teamId}:${userId}`;
+  const cached = await sql()`select value from settings where key = ${key}`;
+  if (cached.length) {
+    const v = cached[0].value as SlackUser & { at?: string };
+    if (v.at && Date.now() - new Date(v.at).getTime() < 7 * 24 * 3600 * 1000) return { isStaff: !!v.isStaff, isBot: !!v.isBot, name: v.name ?? null, email: v.email ?? null };
+  }
+  let email: string | null = null, isBot = false, name: string | null = null;
   try {
     const res = await (await web(teamId)).users.info({ user: userId });
     email = res.user?.profile?.email?.toLowerCase() ?? null;
     isBot = !!res.user?.is_bot;
+    name = res.user?.profile?.display_name?.trim() || res.user?.real_name?.trim() || res.user?.name?.trim() || null;
   } catch (e) {
     console.error("users.info failed", (e as Error).message);
+    if (cached.length) { const v = cached[0].value as SlackUser; return { isStaff: !!v.isStaff, isBot: !!v.isBot, name: v.name ?? null, email: v.email ?? null }; }
   }
   const extra = (process.env.STAFF_EMAILS || "").toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
   const isStaff = !!email && (STAFF_DOMAINS().some((d) => email!.endsWith("@" + d)) || extra.includes(email));
-  await sql()`
-    insert into slack_users (team_id, user_id, email, is_staff, is_bot, seen_at) values (${teamId}, ${userId}, ${email}, ${isStaff}, ${isBot}, now())
-    on conflict (team_id, user_id) do update set email = excluded.email, is_staff = excluded.is_staff, is_bot = excluded.is_bot, seen_at = now()`;
-  return isStaff;
+  const u: SlackUser = { isStaff, isBot, name, email };
+  await sql()`insert into settings (key, value) values (${key}, ${JSON.stringify({ ...u, at: new Date().toISOString() })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+  try {
+    await sql()`
+      insert into slack_users (team_id, user_id, email, is_staff, is_bot, seen_at) values (${teamId}, ${userId}, ${email}, ${isStaff}, ${isBot}, now())
+      on conflict (team_id, user_id) do update set email = excluded.email, is_staff = excluded.is_staff, is_bot = excluded.is_bot, seen_at = now()`;
+  } catch { /* the settings row is the record; the table is kept for older readers */ }
+  return u;
+}
+
+export async function isStaffUser(teamId: string | null, userId: string): Promise<boolean> {
+  return (await slackUser(teamId, userId)).isStaff;
+}
+
+/** Names for the people mentioned in a message ("<@U…>"), so the words read "@Renu" and the reminder can say who was tagged. */
+export async function userNames(teamId: string | null, ids: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const id of ids) { const u = await slackUser(teamId, id); if (u.name) out[id] = u.name; }
+  return out;
+}
+
+/** A file the client shared (a voice clip): fetched with the workspace's bot token. Needs the files:read scope. */
+export async function downloadSlackFile(teamId: string | null, url: string): Promise<Buffer> {
+  const token = await tokenFor(teamId ?? (await homeTeamId()));
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, redirect: "follow" });
+  if (!res.ok) throw new Error(`file download → ${res.status}`);
+  const ct = res.headers.get("content-type") ?? "";
+  if (/text\/html/i.test(ct)) throw new Error("file download returned a sign-in page (is files:read granted? reinstall the app)");
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/** The workspace's URL (for permalinks), remembered once per install. */
+export async function rememberWorkspaceUrl(teamId: string): Promise<string | null> {
+  try {
+    const res = await (await web(teamId)).team.info();
+    const domain = res.team?.domain;
+    if (!domain) return null;
+    const url = `https://${domain}.slack.com`;
+    await sql()`insert into settings (key, value) values (${"workspace_url:" + teamId}, ${JSON.stringify(url)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+    return url;
+  } catch (e) { console.error("team.info failed", (e as Error).message); return null; }
+}
+
+/**
+ * Tie a Slack workspace to a client: the Config row (so the sheet stays the directory) and the hub at once.
+ * Called on install when the workspace name says which client it is, and when a person picks the client for the
+ * first message from a workspace the hub did not know. Never overwrites a workspace a client already has.
+ */
+export async function linkWorkspaceToClient(client: Client, teamId: string): Promise<boolean> {
+  if (client.slackTeamId && client.slackTeamId !== teamId) return false;
+  if (client.slackTeamId === teamId) return true;
+  try {
+    const { setConfigCell } = await import("./sheets");
+    const w = await setConfigCell(client.id, "slack_team_id", teamId);
+    if (!w.ok) console.error("slack_team_id not written to Config:", w.reason);
+  } catch (e) { console.error("Config write failed", (e as Error).message); }
+  await sql()`update clients set slack_team_id = ${teamId}, updated_at = now() where id = ${client.id}`;
+  return true;
 }
 
 // ---- request verification ----

@@ -5,7 +5,7 @@
  * the message's own thread only when they must act or nothing was created; the feed carries the finals.
  */
 import { allClients, sql } from "./db";
-import { processMessage } from "./pipeline";
+import { processMessage, storeSkipped } from "./pipeline";
 import { resolveClientFromText, fuzzyClientFromText, stripClientPrefix, isNameOnly } from "./resolve";
 import { postText, humanOutcome, closeNeedsHumanCard, messageThreadKey, askWhichClient, suggestedClientOf } from "./review";
 import { transcribeAudio, isAudio, sniffAudio, startLongTranscription, estimateMinutes, hintPhrases } from "./transcribe";
@@ -159,11 +159,4 @@ function baseMessage(msg: ChatMessage, raw: unknown, sender: string, text: strin
   };
 }
 
-async function storeOnly(m: Message, skipReason: string): Promise<{ id: string }> {
-  const { textHash } = await import("@/lib/dedupe");
-  const rows = await sql()`
-    insert into messages (channel, external_id, client_id, scope, sender, sender_is_staff, sent_at, text, text_hash, permalink, thread_ref, raw, skip_reason)
-    values (${m.channel}, ${m.externalId}, ${m.clientId}, ${m.scope}, ${m.sender}, ${m.senderIsStaff}, ${m.sentAt.toISOString()}, ${m.text}, ${textHash(m.text || m.externalId)}, ${m.permalink}, ${m.threadRef}, ${JSON.stringify(m.raw)}::jsonb, ${skipReason})
-    on conflict (channel, external_id) do update set skip_reason = excluded.skip_reason returning id`;
-  return { id: rows[0].id as string };
-}
+const storeOnly = (m: Message, skipReason: string) => storeSkipped(m, skipReason);

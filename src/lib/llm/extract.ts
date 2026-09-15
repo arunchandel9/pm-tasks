@@ -13,6 +13,7 @@ export const ExtractSchema = z.object({
   ),
   is_request: z.boolean().describe("false if this is only an update, thanks, or question with nothing to do"),
   tone: z.enum(["neutral", "unhappy", "urgent"]).describe("unhappy: the sender is displeased, complaining or frustrated (\"too little too late\", \"this is unacceptable\"); urgent: they say it is urgent; else neutral"),
+  needs_reply: z.boolean().describe("true when the sender is waiting for an answer from the agency: a question, a request, a complaint, an update they want confirmed. false when the message closes the exchange: thanks, \"done\", \"received\", \"perfect, that works now\", \"ok noted\""),
 });
 export type Extraction = z.infer<typeof ExtractSchema>;
 
@@ -24,6 +25,7 @@ If the message contains no actionable ask (an update, thanks, or a pure question
 A "Subject:" line is context only, never an ask by itself. Text after "Earlier in this thread (context only, not the ask):" is the earlier conversation: use it to understand what the latest message refers to (what "this", "it", "the pages" mean; what the sender is reacting to), but never take an ask from it. The ask is only what the sender wrote themselves, above that line.
 When the latest message is a short reaction ("too little too late", "still not fixed"), say in summary what it reacts to, using the earlier thread.
 Set tone=unhappy when the sender is displeased, even in one short line; that matters more than finding an ask.
+Set needs_reply=false only when nothing in the message waits for an answer (thanks, confirmation that something is done, "noted"); a question, an ask, a complaint or an update that expects confirmation is needs_reply=true.
 Be literal and brief. No advice, no extra commentary.
 When the message is a voice-note transcript: words may be misheard. Keep to ONE ask unless the speaker clearly lists separate things.
 Never add details (colours, versions, dates, counts) that are not in the words. When unsure what was meant, keep the ask general ("fix the homepage images") rather than specific.`;
