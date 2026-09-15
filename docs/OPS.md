@@ -51,6 +51,15 @@ Connect: Claude → Settings → Connectors → Add custom connector → URL fro
 
 Vercel → pm-tasks → Settings → Environment Variables → `INTAKE_PAUSED` = `true` → Redeploy. Messages are still stored; no cards, no feed lines, no sheet writes. Set it back to `false` and redeploy: everything parked goes through, in order. Not tested in the soak by decision; if it is ever needed we test it then.
 
+## Clean start (used once before go-live; kept for a rerun)
+
+```
+curl -H "Authorization: Bearer <SECRET>" "https://pm-tasks.vercel.app/api/setup?label_hub_cards=Hub%20test"   # label every hub-made card; lists the sheet rows the hub wrote
+curl -H "Authorization: Bearer <SECRET>" "https://pm-tasks.vercel.app/api/setup?purge_hub_tests=before:2026-09-16T00:00:00Z"   # forget hub-made records before that moment
+```
+
+Order: label, delete the labelled cards in Pulp, delete the listed sheet rows, then purge. The purge never touches sheet-mirrored history or the cost log.
+
 ## Sheet and Pulp rules that keep the hub working
 
 - Rows are found by their **Pulp link**. Move rows freely within a tab; never clear the link; never move a row to another tab.

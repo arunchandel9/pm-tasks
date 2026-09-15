@@ -114,7 +114,7 @@ The soak plan and its results are in `docs/SOAK.md` (progress line under block A
 | `/api/slack/events`, `/api/slack/install`, `/api/slack/oauth` | Slack messages from client channels; app install and OAuth for a new client workspace. | Slack |
 | `/api/mcp/[key]` | The MCP hub for a PM's own Claude or Codex. | PMs' assistants |
 | `/api/health` | Configuration flags, last poll times, recent activity, 503 when the tick is stale. | Uptime monitor, people |
-| `/api/setup` | Applies the schema; seeds clients, Slack team ids, MCP keys; removes a test client. | Arun, with the cron secret |
+| `/api/setup` | Applies the schema; seeds clients, Slack team ids, MCP keys; removes a test client; `label_hub_cards` and `purge_hub_tests` for the clean start before go-live (`docs/OPS.md`). | Arun, with the cron secret |
 | `/api/sheet-check` | Shows every client tab and how its headers map. | Arun |
 | `/api/sheet-sync` | Runs the sheet mirror now (`?client=` for one client). | Arun |
 | `/api/pulp-check` | Verifies the Pulp key, boards and lists (`?create=1` creates missing Staging lists). | Arun |

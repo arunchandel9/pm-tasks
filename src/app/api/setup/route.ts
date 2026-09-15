@@ -72,6 +72,54 @@ export async function GET(req: Request) {
       seeded.push(w.ok ? `slack_team:${ref}=${teamId}` : `slack_team failed: ${w.reason}`);
       continue;
     }
+    if (k === "label_hub_cards") {
+      // label_hub_cards=<label>: put a label on every card the hub created (every hub card so far is a soak test), so the
+      // cards can be selected by label in Pulp and deleted in one go. Also lists the sheet rows the hub wrote, bottom-up
+      // per tab, so they can be deleted by hand without the row numbers shifting under you.
+      const { pulp } = await import("@/lib/pulp");
+      const name = v.trim() || "Hub test";
+      const cards = await sql()`select t.id, t.title, t.board_id, t.pulp_card_id, t.sheet_row, tab.value as tab from tasks t
+        left join settings tab on tab.key = 'sheet_tab:' || t.id::text where t.origin = 'hub' and t.pulp_card_id is not null order by t.created_at`;
+      let labelled = 0, gone = 0; const errors: string[] = [];
+      for (const c of cards) {
+        try {
+          const card = await pulp.getCard(String(c.pulp_card_id));
+          await pulp.addLabel(card.boardId, card.id, name);
+          labelled++;
+        } catch (e) {
+          const msg = (e as Error).message;
+          if (/→ 404/.test(msg)) gone++; else errors.push(`${String(c.title).slice(0, 40)}: ${msg.slice(0, 100)}`);
+        }
+      }
+      const rows = cards.filter((c) => c.tab && c.sheet_row).map((c) => ({ tab: String(c.tab), row: Number(c.sheet_row), title: String(c.title).slice(0, 60) }))
+        .sort((a, b) => a.tab.localeCompare(b.tab) || b.row - a.row);
+      seeded.push(`label_hub_cards "${name}": ${labelled} labelled, ${gone} already gone, ${errors.length} errors${errors.length ? " (" + errors.join("; ") + ")" : ""}`);
+      seeded.push(`sheet rows written by the hub (delete bottom-up): ${JSON.stringify(rows)}`);
+      continue;
+    }
+    if (k === "purge_hub_tests") {
+      // purge_hub_tests=before:<ISO time>: forget everything the hub made before that moment (messages, requests, tasks,
+      // status history, meetings), so the record starts clean at go-live. Sheet-mirrored history is never touched.
+      // Run only after the test cards are deleted in Pulp and the test rows removed from the sheet.
+      const before = v.replace(/^before:/, "").trim();
+      if (!before || isNaN(new Date(before).getTime())) { seeded.push("purge_hub_tests: give before:<ISO time>, e.g. before:2026-09-16T00:00:00Z"); continue; }
+      const t = await sql()`select id from tasks where origin = 'hub' and created_at < ${before}::timestamptz`;
+      const ids = t.map((r) => String(r.id));
+      await sql()`delete from status_events where task_id = any(${ids}::uuid[])`;
+      await sql()`delete from settings where key like 'sheet_stage:%' or key like 'sheet_tab:%' or key like 'gchat_card_for:%' or key like 'gchat_thread:%' or key like 'reply_nudged:%' or key like 'reply_acked:%' or key like 'client_hint:%'`;
+      await sql()`delete from tasks where id = any(${ids}::uuid[])`;
+      const m = await sql()`select id from messages where channel in ('intake','email','slack','task_cmd','meet') and created_at < ${before}::timestamptz`;
+      const mids = m.map((r) => String(r.id));
+      const mi = await sql()`delete from meeting_items where meeting_id in (select id from meetings where created_at < ${before}::timestamptz) returning id`;
+      const me = await sql()`delete from meetings where created_at < ${before}::timestamptz returning id`;
+      await sql()`update llm_calls set message_id = null where message_id = any(${mids}::uuid[])`; // the cost log stays
+      await sql()`update requests set merged_into = null where merged_into in (select id from requests where message_id = any(${mids}::uuid[]))`;
+      await sql()`delete from requests where message_id = any(${mids}::uuid[])`;
+      await sql()`delete from queue where done_at is null and (payload->>'messageId') = any(${mids})`;
+      await sql()`delete from messages where id = any(${mids}::uuid[])`;
+      seeded.push(`purge_hub_tests before ${before}: ${ids.length} tasks, ${mids.length} messages and their requests, ${me.length} meetings (${mi.length} items) removed; sheet history kept`);
+      continue;
+    }
     if (k === "remove_client") {
       // Remove a client that is not in the Config tab (e.g. the setup-time test client). Messages/requests keep their rows.
       const r = await sql()`delete from clients where id = ${v} returning id`;

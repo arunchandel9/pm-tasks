@@ -120,6 +120,18 @@ export const pulp = {
     });
   },
 
+  /** Put a label on a card by name, creating the label on the board if it does not exist yet. */
+  async addLabel(boardId: string, cardId: string, name: string): Promise<void> {
+    const labels = await this.labelsOnBoard(boardId);
+    let label = labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
+    if (!label) {
+      const created = await call<{ id: string }>("POST", `/boards/${boardId}/labels`, { name, color: LABEL_COLOURS[name.toUpperCase()] ?? "sky" });
+      cache.delete(`labels:${boardId}`);
+      label = { id: created.id, name, color: "" };
+    }
+    await call("POST", `/cards/${cardId}/labels`, { label_id: label.id });
+  },
+
   /**
    * Create a card in a list, then set description, due date, labels and assignee. Only the create is fatal;
    * the rest is best-effort so a missing label or member never blocks a task.
@@ -131,16 +143,8 @@ export const pulp = {
       await call("PATCH", `/cards/${c.id}`, { description: p.description, due_date: p.dueAt ? p.dueAt.toISOString() : null });
     } catch (e) { warnings.push(`describe: ${(e as Error).message}`); }
     for (const name of p.labels) {
-      try {
-        const labels = await this.labelsOnBoard(p.boardId);
-        let label = labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
-        if (!label) {
-          const created = await call<{ id: string }>("POST", `/boards/${p.boardId}/labels`, { name, color: LABEL_COLOURS[name.toUpperCase()] ?? "sky" });
-          cache.delete(`labels:${p.boardId}`);
-          label = { id: created.id, name, color: "" };
-        }
-        await call("POST", `/cards/${c.id}/labels`, { label_id: label.id });
-      } catch (e) { warnings.push(`label ${name}: ${(e as Error).message}`); }
+      try { await this.addLabel(p.boardId, c.id, name); }
+      catch (e) { warnings.push(`label ${name}: ${(e as Error).message}`); }
     }
     if (p.assignee) {
       try {
@@ -191,4 +195,4 @@ export const pulp = {
   },
 };
 
-const LABEL_COLOURS: Record<string, string> = { P1: "red", P2: "orange", P3: "green", "NEEDS SCOPE": "purple", "CLIENT WAITING": "yellow", "TASK HUB": "sky" };
+const LABEL_COLOURS: Record<string, string> = { P1: "red", P2: "orange", P3: "green", "NEEDS SCOPE": "purple", "CLIENT WAITING": "yellow", "TASK HUB": "sky", "HUB TEST": "red" };
