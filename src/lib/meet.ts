@@ -170,8 +170,15 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   // (that left a meeting stuck at "reading the notes…" on 2026-09-15). The headline tally follows as jobs finish.
   const groups = new Map<string, { client: Client | null; items: typeof sorted.items }>();
   const ideaLines: string[] = [];
+  const clientTodo: string[] = [];
   for (const it of sorted.items) {
     const c = clientByName(it.client, clients) ?? meetingClient ?? (it.kind === "action" ? internal : null);
+    if (it.kind === "action" && it.side === "client" && c?.scope !== "internal") {
+      // The client's own homework (sign, grant access, send photos) is not the team's task: listed in the thread, no card.
+      await sql()`insert into meeting_items (meeting_id, kind, client_id, text, owner, due_text, outcome) values (${meetingId}, 'action', ${c?.id ?? null}, ${it.text}, ${it.owner}, ${it.due}, 'client')`;
+      if (clientTodo.length < 8) clientTodo.push(`• ${it.text}${it.owner ? ` (${it.owner})` : ""}${it.due ? ` — ${it.due}` : ""}`);
+      continue;
+    }
     if (it.kind === "action") {
       const key = c?.id ?? "?";
       if (!groups.has(key)) groups.set(key, { client: c, items: [] });
@@ -193,7 +200,7 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   const headName = await postHeadline(`📝 *Meeting · ${who}* · ${day} · ${groups.size ? "reading the notes…" : await tallyText(meetingId)} · <${docUrl}|notes>`, threadKey);
   await sql()`insert into settings (key, value) values (${"meet_head:" + meetingId}, ${JSON.stringify({ name: headName, who, day, docUrl })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
   const summary = (sorted.summary ?? []).slice(0, 4).map((x) => `• ${x}`).join("\n");
-  await postDetail([summary ? `*In short*\n${summary}` : "", ideaLines.length ? `*Raised*\n${ideaLines.join("\n")}` : ""].filter(Boolean).join("\n\n"), threadKey);
+  await postDetail([summary ? `*In short*\n${summary}` : "", ideaLines.length ? `*Raised*\n${ideaLines.join("\n")}` : "", clientTodo.length ? `*With the client*\n${clientTodo.join("\n")}` : ""].filter(Boolean).join("\n\n"), threadKey);
 
   // Five action items per job: each ask costs a model call and a card, and a job must finish well inside a minute.
   let jobs = 0;
@@ -217,13 +224,15 @@ export async function tallyText(meetingId: string): Promise<string> {
            count(*) filter (where kind = 'action' and outcome = 'on_existing_card')::int as on_card,
            count(*) filter (where kind = 'idea')::int as ideas,
            count(*) filter (where kind = 'decision')::int as decisions,
-           count(*) filter (where kind = 'action' and client_id is null)::int as unclear,
-           count(*) filter (where kind = 'action' and outcome = 'pending')::int as pending
+           count(*) filter (where kind = 'action' and client_id is null and outcome <> 'client')::int as unclear,
+           count(*) filter (where kind = 'action' and outcome = 'pending')::int as pending,
+           count(*) filter (where kind = 'action' and outcome = 'client')::int as with_client
     from meeting_items where meeting_id = ${meetingId}`)[0];
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
   return [
     Number(r.tasks) ? n(Number(r.tasks), "card") : null, Number(r.on_card) ? `${r.on_card} on existing cards` : null,
     Number(r.ideas) ? n(Number(r.ideas), "idea") : null, Number(r.decisions) ? n(Number(r.decisions), "decision") : null,
+    Number(r.with_client) ? `${r.with_client} with the client` : null,
     Number(r.unclear) ? `${r.unclear} with no clear client` : null, Number(r.pending) ? `${r.pending} still reading` : null,
   ].filter(Boolean).join(" · ") || "nothing to act on";
 }
