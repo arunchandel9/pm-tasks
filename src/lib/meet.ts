@@ -154,7 +154,7 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   // Meeting-level client: title, attendee domains, then the sorter's own view.
   const byTitle = resolveClientFromText(title, clients)?.client ?? null;
   const byAttendee = attendees.map((e) => resolveClientFromText(e, clients)?.client ?? null).find(Boolean) ?? null;
-  const sorted = await sortMeeting({ title, notes, attendees, clients: clients.map((c) => `${c.name}${c.aliases?.length ? `; ${c.aliases.join(", ")}` : ""}`) });
+  const sorted = await sortMeeting({ title, notes, attendees, team: await teamNames(attendees), clients: clients.map((c) => `${c.name}${c.aliases?.length ? `; ${c.aliases.join(", ")}` : ""}`) });
   if (notesNotReady(notes, sorted.summary ?? [], sorted.items.length)) return notReady("no usable content yet");
   await sql()`delete from settings where key = ${retryKey}`;
   const internal = clients.find((c) => c.scope === "internal") ?? null;
@@ -216,6 +216,26 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   return `${title}: ${jobs ? `${jobs} action job${jobs > 1 ? "s" : ""} queued` : await tallyText(meetingId)}`;
 }
 const ACTIONS_PER_JOB = 5;
+
+/**
+ * Who the MangoEyes team is, by name: the members of the Task Hub Drop space (the whole team is in it), plus anyone
+ * in the meeting with an agency address. Handed to the sorter so "Shanur" is never mistaken for a team member: a name
+ * not on this list is the client's side.
+ */
+export async function teamNames(attendees: string[]): Promise<string[]> {
+  const names = new Set<string>();
+  try {
+    const { inboxSpace, memberNames } = await import("./chat-inbox");
+    const space = await inboxSpace();
+    if (space) for (const n of (await memberNames(space)).values()) if (n && !/task hub/i.test(n)) names.add(n);
+  } catch (e) { console.error("team names unavailable", (e as Error).message); }
+  const domains = (process.env.STAFF_EMAIL_DOMAINS || "mangoeyesagency.com").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean);
+  for (const e of attendees) {
+    const at = e.toLowerCase().indexOf("@");
+    if (at > 0 && domains.includes(e.toLowerCase().slice(at + 1))) names.add(e.slice(0, at).replace(/[._]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()));
+  }
+  return [...names];
+}
 
 /** The headline tally from what is recorded: cards made, on existing cards, ideas, decisions, actions without a client. */
 export async function tallyText(meetingId: string): Promise<string> {
