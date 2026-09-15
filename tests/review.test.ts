@@ -30,6 +30,15 @@ describe("PM Review feed lines", () => {
   });
 });
 
+describe("detail cards", () => {
+  it("turns Chat markup into card HTML", async () => {
+    const { toCardHtml } = await import("../src/lib/review");
+    expect(toCardHtml('"Too little too late"\n*Context:* reacts to the review request · <https://pulp/x|card> · <https://mail/y>'))
+      .toBe('&quot;Too little too late&quot;<br><b>Context:</b> reacts to the review request · <a href="https://pulp/x">card</a> · <a href="https://mail/y">https://mail/y</a>'.replace(/&quot;/g, '"'));
+    expect(toCardHtml("a < b & c")).toBe("a &lt; b &amp; c");
+  });
+});
+
 describe("acknowledgement wording", () => {
   it("turns reason codes into plain English", async () => {
     const { humanOutcome } = await import("../src/lib/review");

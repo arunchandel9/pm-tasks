@@ -64,7 +64,20 @@ export function wordsLine(text: string): string {
  */
 export async function postFeed(p: { headline: string; detail?: string | null; threadKey: string }): Promise<void> {
   await postText(p.headline, { threadKey: p.threadKey });
-  if (p.detail?.trim()) await postText(p.detail, { threadKey: p.threadKey });
+  if (!p.detail?.trim()) return;
+  if (surface() === "slack" || !gchat.gchatConfigured()) { await postText(p.detail, { threadKey: p.threadKey }); return; }
+  // The detail is a boxed card, so even where Chat shows replies inline it reads as the note under the headline, never as a second headline.
+  const card = { sections: [{ widgets: [{ textParagraph: { text: toCardHtml(p.detail) } }] }] };
+  await gchat.sendCard(gchat.reviewSpace(), card, "", `detail-${p.threadKey}-${Date.now()}`, p.threadKey);
+}
+
+/** Chat text markup (*bold*, _italic_, <url|label>) to the HTML subset cards accept. */
+export function toCardHtml(text: string): string {
+  const esc = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const links: string[] = [];
+  let t = text.replace(/<(https?:[^|>\s]+)(?:\|([^>]+))?>/g, (_m, u: string, l?: string) => { links.push(`<a href="${esc(u)}">${esc(l ?? u)}</a>`); return `\u0000${links.length - 1}\u0000`; });
+  t = esc(t).replace(/\*([^*\n]+)\*/g, "<b>$1</b>").replace(/(^|\s)_([^_\n]+)_(?=\s|$)/g, "$1<i>$2</i>").replace(/\n/g, "<br>");
+  return t.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => links[Number(i)]);
 }
 
 export async function postReview(p: ReviewPost): Promise<void> {
