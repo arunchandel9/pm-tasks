@@ -120,6 +120,20 @@ export async function GET(req: Request) {
       seeded.push(`purge_hub_tests before ${before}: ${ids.length} tasks, ${mids.length} messages and their requests, ${me.length} meetings (${mi.length} items) removed; sheet history kept`);
       continue;
     }
+    if (k === "clear_chat") {
+      // clear_chat=feed | drop | all: delete every message the app posted in that space (people's messages stay).
+      const { clearOwnMessages, reviewSpace } = await import("@/lib/gchat");
+      const { inboxSpace } = await import("@/lib/chat-inbox");
+      const targets: Array<[string, string | null]> = [];
+      if (v === "feed" || v === "all") targets.push(["feed", reviewSpace()]);
+      if (v === "drop" || v === "all") targets.push(["drop", await inboxSpace()]);
+      for (const [label, space] of targets) {
+        if (!space) { seeded.push(`clear_chat ${label}: space not known`); continue; }
+        try { const r = await clearOwnMessages(space); seeded.push(`clear_chat ${label}: ${r.deleted} of the hub's messages deleted, ${r.kept} by people kept${r.errors.length ? `, errors: ${r.errors.join("; ")}` : ""}`); }
+        catch (e) { seeded.push(`clear_chat ${label} failed: ${(e as Error).message.slice(0, 160)}`); }
+      }
+      continue;
+    }
     if (k === "remove_client") {
       // Remove a client that is not in the Config tab (e.g. the setup-time test client). Messages/requests keep their rows.
       const r = await sql()`delete from clients where id = ${v} returning id`;

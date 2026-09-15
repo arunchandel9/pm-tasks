@@ -52,6 +52,28 @@ export async function rememberInboxSpace(space: string): Promise<void> {
   const { sql } = await import("./db");
   await sql()`insert into settings (key, value) values ('chat_inbox_space', ${JSON.stringify(space)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
 }
+/**
+ * Delete every message the app itself posted in a space (feed lines, cards, thread details, replies). Messages by
+ * people are left alone: app credentials cannot delete them, and the hub never should. Returns how many went.
+ */
+export async function clearOwnMessages(space: string): Promise<{ deleted: number; kept: number; errors: string[] }> {
+  const out = { deleted: 0, kept: 0, errors: [] as string[] };
+  let pageToken: string | undefined;
+  const mine: string[] = [];
+  do {
+    const res = await chat().spaces.messages.list({ parent: space, pageSize: 100, pageToken });
+    for (const m of res.data.messages ?? []) {
+      if (m.sender?.type === "BOT" && m.name) mine.push(m.name); else out.kept++;
+    }
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  for (const name of mine) {
+    try { await chat().spaces.messages.delete({ name }); out.deleted++; }
+    catch (e) { const msg = (e as Error).message; if (!/404|NOT_FOUND/.test(msg)) out.errors.push(msg.slice(0, 100)); }
+  }
+  return out;
+}
+
 /** Every space the app has been added to (app credentials). */
 export async function appSpaces(): Promise<Array<{ name: string; displayName: string; spaceType: string }>> {
   const out: Array<{ name: string; displayName: string; spaceType: string }> = [];

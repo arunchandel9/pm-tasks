@@ -60,6 +60,14 @@ curl -H "Authorization: Bearer <SECRET>" "https://pm-tasks.vercel.app/api/setup?
 
 Order: label, delete the labelled cards in Pulp, delete the listed sheet rows, then purge. The purge never touches sheet-mirrored history or the cost log.
 
+```
+curl -H "Authorization: Bearer <SECRET>" "https://pm-tasks.vercel.app/api/setup?clear_chat=all"   # delete every message the hub posted in Task Hub Feed and Task Hub Drop (feed | drop | all)
+```
+
+People's own messages stay: Chat has no bulk delete for those. To empty the Drop space completely, delete the space and create a new one with the same name (add the app and `all.team@`, set the 📥 emoji); the hub finds it by name within a minute.
+
+The app's avatar is an image URL in Cloud Console → Google Chat API → Configuration → Avatar URL: `https://pm-tasks.vercel.app/avatars/mango.png` (also `clipboard.png`, `cards.png`, `brain.png`). Do not touch the visibility box on that page.
+
 ## Sheet and Pulp rules that keep the hub working
 
 - Rows are found by their **Pulp link**. Move rows freely within a tab; never clear the link; never move a row to another tab.
