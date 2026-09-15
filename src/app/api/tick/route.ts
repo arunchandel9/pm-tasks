@@ -6,6 +6,7 @@ import { pulp, isDoneList } from "@/lib/pulp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 120; // a round that reads meeting notes (model call, feed posts) must never be cut short
 
 /**
  * Every minute (Vercel Cron). Does three things, each isolated so one failing doesn't stop the others:

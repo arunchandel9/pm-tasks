@@ -247,7 +247,12 @@ export async function pollMeetings(): Promise<{ found: number; processed: string
   try {
     const since = await meetSince();
     docs = (await findNoteDocs()).filter((d) => new Date(d.modifiedTime) > since);
-  } catch (e) { return { found: 0, processed, errors: [(e as Error).message.slice(0, 200)] }; }
+  } catch (e) {
+    // A failed Drive query must show on health and in the brief, not vanish.
+    const report = { found: 0, processed, errors: [`drive: ${(e as Error).message.slice(0, 200)}`], at: new Date().toISOString() };
+    try { await sql()`insert into settings (key, value) values ('meet_poll_last', ${JSON.stringify(report)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`; } catch { /* ignore */ }
+    return report;
+  }
   const known = new Set((await sql()`select drive_file_id from meetings where drive_file_id = any(${docs.map((d) => d.id)}::text[])`).map((r) => String(r.drive_file_id)));
   let done = 0;
   for (const doc of docs) {
