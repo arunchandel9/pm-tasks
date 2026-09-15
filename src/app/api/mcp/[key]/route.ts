@@ -118,7 +118,9 @@ function buildHandler(owner: McpKeyOwner) {
         const tasks = (await sql()`select count(*) filter (where created_at > now() - interval '7 days')::int as created_7d, count(*) filter (where completed_at is null)::int as open, count(*) filter (where staging and completed_at is null)::int as staging from tasks`)[0];
         const spend = (await sql()`select count(*)::int as calls, coalesce(sum(cost_usd),0)::numeric(10,4) as usd from llm_calls where created_at > now() - interval '30 days'`)[0];
         const polls = await sql()`select key, value from settings where key in ('pulp_poll_last','gmail_poll_last','gchat_last_event','voice_last','sheet_cards_last','meet_poll_last','tick_last','chat_inbox_last')`;
-        return text({ you: owner, messagesByChannel7d: byChannel, tasks, modelSpend30d: spend, lastPolls: Object.fromEntries(polls.map((p) => [p.key, p.value])) });
+        const queueErrors = await sql()`select kind, attempts, left(coalesce(last_error, ''), 300) as last_error, payload->>'messageId' as message_id, next_run_at from queue where done_at is null and last_error is not null order by next_run_at limit 10`;
+        const stuck = await sql()`select m.id, m.channel, left(m.text, 60) as text, m.created_at from messages m where m.skip_reason is null and m.created_at > now() - interval '2 days' and m.created_at < now() - interval '3 minutes' and not exists (select 1 from requests r where r.message_id = m.id) order by m.created_at desc limit 10`;
+        return text({ you: owner, messagesByChannel7d: byChannel, tasks, modelSpend30d: spend, lastPolls: Object.fromEntries(polls.map((p) => [p.key, p.value])), queueErrors, stuckMessages: stuck });
       });
     },
     {
