@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { draftLine, followupLine, reviewMode } from "../src/lib/review";
+import { draftLine, followupLine, reviewMode, splitDetail } from "../src/lib/review";
 import type { Client, Message } from "../src/lib/types";
 
 const client = { id: "hoh", name: "HOH", scope: "client" } as Client;
@@ -45,5 +45,16 @@ describe("acknowledgement wording", () => {
     expect(humanOutcome("skipped", "no_ask")).toMatch(/nothing was asked/);
     expect(humanOutcome("attached", "nudge")).toMatch(/chase/);
     expect(humanOutcome("skipped", "weird_code")).toBe("nothing to do (weird code).");
+  });
+});
+
+describe("a long note is split into several boxes", () => {
+  it("keeps short notes whole and splits long ones at paragraph or line breaks", () => {
+    expect(splitDetail("short")).toEqual(["short"]);
+    const lines = Array.from({ length: 120 }, (_, i) => `• Client ${i} · a task title of ordinary length · card`).join("\n");
+    const parts = splitDetail(`*New today (120)*\n${lines}`, 3500);
+    expect(parts.length).toBeGreaterThan(1);
+    for (const p of parts) expect(p.length).toBeLessThanOrEqual(3500);
+    expect(parts.join("\n")).toContain("• Client 119");
   });
 });

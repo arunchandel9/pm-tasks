@@ -85,11 +85,11 @@ export async function collectBrief(): Promise<BriefData> {
   return { day, newToday, stale, questions, waitingOnClient, issues, overdue, done };
 }
 
-/** Headline for the feed (one line) and the detail for its thread (null when there is nothing to say). */
+/** Headline for the feed (one line) and the detail for its thread (null when there is nothing to say). Every item is listed; nothing is cut to "and N more" (Arun, 2026-09-16). A long detail is posted as several boxed notes. */
 export function renderBrief(d: BriefData): { headline: string; detail: string | null } {
   const waiting = d.stale.length + d.questions.length;
   const counts = [
-    d.newToday.length ? plural(d.newToday.length, "new") : null,
+    d.newToday.length ? `${d.newToday.length} new` : null,
     waiting ? `${waiting} waiting on you` : null,
     d.issues.length ? plural(d.issues.length, "issue") : null,
     d.overdue.length ? `${d.overdue.length} overdue` : null,
@@ -102,35 +102,31 @@ export function renderBrief(d: BriefData): { headline: string; detail: string | 
   const s: string[] = [];
   if (d.newToday.length) {
     s.push(`*New today (${d.newToday.length})*`);
-    for (const t of d.newToday.slice(0, 10)) s.push(`• ${t.priority === "P1" ? "🔴 " : ""}${t.client} · ${clip(t.title, 70)}${t.hold ? " · in Staging" : ""}${card(t.link)}`);
-    if (d.newToday.length > 10) s.push(`• … and ${d.newToday.length - 10} more (ask the hub)`);
+    for (const t of d.newToday) s.push(`• ${t.priority === "P1" ? "🔴 " : ""}${t.client} · ${clip(t.title, 70)}${t.hold ? " · in Staging" : ""}${card(t.link)}`);
   }
   if (waiting) {
     s.push(`*Waiting on you (${waiting})*`);
     if (d.stale.length) {
       s.push(`• ${plural(d.stale.length, "card")} in Staging for more than a day: drag them where they belong, or delete.`);
-      for (const t of d.stale.slice(0, 3)) s.push(`   ${t.client} · ${clip(t.title, 60)} · ${t.days} d${card(t.link)}`);
-      if (d.stale.length > 3) s.push(`   … and ${d.stale.length - 3} more`);
+      for (const t of d.stale) s.push(`   ${t.client} · ${clip(t.title, 60)} · ${t.days} d${card(t.link)}`);
     }
-    for (const q of d.questions.slice(0, 3)) s.push(`• ${q.why} "${clip(q.text, 60)}" (${q.source})`);
-    if (d.questions.length > 3) s.push(`• … and ${d.questions.length - 3} more questions`);
+    for (const q of d.questions) s.push(`• ${q.why} "${clip(q.text, 60)}" (${q.source})`);
   }
   if (d.waitingOnClient.length) {
     s.push(`*Waiting on a client (${d.waitingOnClient.length})*`);
-    for (const t of d.waitingOnClient.slice(0, 3)) s.push(`• ${t.client} · ${clip(t.title, 60)} · ${t.days} d`);
+    for (const t of d.waitingOnClient) s.push(`• ${t.client} · ${clip(t.title, 60)} · ${t.days} d`);
   }
   if (d.issues.length) {
     s.push(`*Issues (${d.issues.length})*`);
-    for (const i of d.issues.slice(0, 5)) s.push(`• ${i}`);
+    for (const i of d.issues) s.push(`• ${i}`);
   }
   if (d.overdue.length) {
     s.push(`*Overdue (${d.overdue.length})*`);
-    for (const t of d.overdue.slice(0, 5)) s.push(`• ${t.priority === "P1" ? "🔴 " : ""}${t.client} · ${clip(t.title, 60)} · due ${t.due}${card(t.link)}`);
-    if (d.overdue.length > 5) s.push(`• … and ${d.overdue.length - 5} more (ask the hub)`);
+    for (const t of d.overdue) s.push(`• ${t.priority === "P1" ? "🔴 " : ""}${t.client} · ${clip(t.title, 60)} · due ${t.due}${card(t.link)}`);
   }
   if (d.done.length) {
     s.push(`*Done today (${d.done.length})*`);
-    if (d.done.length <= 5) for (const t of d.done) s.push(`• ${t.client} · ${clip(t.title, 60)}`);
+    for (const t of d.done) s.push(`• ${t.client} · ${clip(t.title, 60)}`);
   }
   return { headline, detail: s.join("\n") };
 }

@@ -76,8 +76,10 @@ export async function editHeadline(name: string | null, text: string): Promise<v
 export async function postDetail(detail: string, threadKey: string): Promise<void> {
   if (!detail.trim()) return;
   if (surface() === "slack" || !gchat.gchatConfigured()) { await postText(detail, { threadKey }); return; }
-  const card = { sections: [{ widgets: [{ textParagraph: { text: toCardHtml(detail) } }] }] };
-  await gchat.sendCard(gchat.reviewSpace(), card, "", `detail-${threadKey}-${Date.now()}`, threadKey);
+  for (const [i, part] of splitDetail(detail).entries()) {
+    const card = { sections: [{ widgets: [{ textParagraph: { text: toCardHtml(part) } }] }] };
+    await gchat.sendCard(gchat.reviewSpace(), card, "", `detail-${threadKey}-${Date.now()}-${i}`, threadKey);
+  }
 }
 
 /**
@@ -89,8 +91,24 @@ export async function postFeed(p: { headline: string; detail?: string | null; th
   if (!p.detail?.trim()) return;
   if (surface() === "slack" || !gchat.gchatConfigured()) { await postText(p.detail, { threadKey: p.threadKey }); return; }
   // The detail is a boxed card, so even where Chat shows replies inline it reads as the note under the headline, never as a second headline.
-  const card = { sections: [{ widgets: [{ textParagraph: { text: toCardHtml(p.detail) } }] }] };
-  await gchat.sendCard(gchat.reviewSpace(), card, "", `detail-${p.threadKey}-${Date.now()}`, p.threadKey);
+  await postDetail(p.detail, p.threadKey);
+}
+
+/** Chat caps a card paragraph at about 4,000 characters: a long note is split at section or line breaks into several boxes. */
+export function splitDetail(detail: string, max = 3500): string[] {
+  if (detail.length <= max) return [detail];
+  const out: string[] = [];
+  let cur = "";
+  for (const para of detail.split("\n\n")) {
+    const piece = para.length > max ? para.split("\n") : [para];
+    for (const line of piece) {
+      const sep = cur ? (piece.length > 1 ? "\n" : "\n\n") : "";
+      if (cur && cur.length + sep.length + line.length > max) { out.push(cur); cur = line; }
+      else cur += sep + line;
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
 }
 
 /** Chat text markup (*bold*, _italic_, <url|label>) to the HTML subset cards accept. */
