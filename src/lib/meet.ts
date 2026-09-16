@@ -91,6 +91,18 @@ async function attendeesOf(id: string): Promise<string[]> {
 /** "HOH monthly review - Notes by Gemini" → "HOH monthly review". Gemini also puts the date in the doc body. */
 export const meetingTitle = (name: string) => name.replace(NOTES_TITLE, "").trim();
 
+/**
+ * The feed headline: the call's own name, then whose it was. Gemini's date-time tail goes ("Introduction Call –
+ * 2026/09/15 15:22 CEST" → "Introduction Call"); a generic "Meeting started …" title says nothing, so it reads "Meeting".
+ */
+export function headlineTitle(title: string): string {
+  const t = title.replace(/\s*[-–—]?\s*\d{4}[/-]\d{2}[/-]\d{2}(\s+\d{1,2}:\d{2}(\s*[AP]M)?)?(\s+[A-Z]{2,5})?\s*$/i, "").trim();
+  if (!t || /^meeting( started)?$/i.test(t)) return "Meeting";
+  return t.length > 60 ? t.slice(0, 59).trimEnd() + "…" : t;
+}
+export const meetingHeadline = (h: { title: string; who: string; day: string; docUrl: string }, tally: string) =>
+  `📝 *${headlineTitle(h.title)}* · ${h.who} · ${h.day} · ${tally} · <${h.docUrl}|notes>`;
+
 /** Gemini notes start with a line like "Sep 9, 2026" or "Tue, 9 Sep 2026 · 3:00 PM". Fall back to the file time. */
 export function heldAtFrom(notes: string, fallback: string): Date {
   const head = notes.slice(0, 400);
@@ -197,8 +209,8 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   const threadKey = `meet-${meetingId}`;
   const who = meetingClient ? meetingClient.name : sorted.meeting_client?.toLowerCase().includes("mango") ? "MangoEyes internal" : "client unclear";
   const day = heldAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
-  const headName = await postHeadline(`📝 *Meeting · ${who}* · ${day} · ${groups.size ? "reading the notes…" : await tallyText(meetingId)} · <${docUrl}|notes>`, threadKey);
-  await sql()`insert into settings (key, value) values (${"meet_head:" + meetingId}, ${JSON.stringify({ name: headName, who, day, docUrl })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+  const headName = await postHeadline(meetingHeadline({ title, who, day, docUrl }, groups.size ? "reading the notes…" : await tallyText(meetingId)), threadKey);
+  await sql()`insert into settings (key, value) values (${"meet_head:" + meetingId}, ${JSON.stringify({ name: headName, title, who, day, docUrl })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
   const summary = (sorted.summary ?? []).slice(0, 4).map((x) => `• ${x}`).join("\n");
   await postDetail([summary ? `*In short*\n${summary}` : "", ideaLines.length ? `*Raised*\n${ideaLines.join("\n")}` : "", clientTodo.length ? `*With the client*\n${clientTodo.join("\n")}` : ""].filter(Boolean).join("\n\n"), threadKey);
 
@@ -261,8 +273,8 @@ export async function tallyText(meetingId: string): Promise<string> {
 export async function refreshMeetingHeadline(meetingId: string): Promise<void> {
   const r = await sql()`select value from settings where key = ${"meet_head:" + meetingId}`;
   if (!r.length) return;
-  const h = r[0].value as { name: string | null; who: string; day: string; docUrl: string };
-  await editHeadline(h.name, `📝 *Meeting · ${h.who}* · ${h.day} · ${await tallyText(meetingId)} · <${h.docUrl}|notes>`);
+  const h = r[0].value as { name: string | null; title?: string; who: string; day: string; docUrl: string };
+  await editHeadline(h.name, meetingHeadline({ title: h.title ?? "Meeting", who: h.who, day: h.day, docUrl: h.docUrl }, await tallyText(meetingId)));
 }
 
 /**

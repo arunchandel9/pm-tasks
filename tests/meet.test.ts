@@ -1,5 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { meetingTitle, heldAtFrom, notesNotReady } from "../src/lib/meet";
+import { meetingTitle, heldAtFrom, notesNotReady, headlineTitle } from "../src/lib/meet";
+
+describe("the feed headline carries the call's name", () => {
+  it("drops Gemini's date-time tail", () => {
+    expect(headlineTitle("Introduction Call  – 2026/09/15 15:22 CEST")).toBe("Introduction Call");
+    expect(headlineTitle("HOH monthly review - 2026-09-15 10:00 AM IST")).toBe("HOH monthly review");
+    expect(headlineTitle("Strategy call")).toBe("Strategy call");
+  });
+  it("a generic title reads Meeting", () => {
+    expect(headlineTitle("Meeting started 2026/09/15 11:23 IST")).toBe("Meeting");
+    expect(headlineTitle("Meeting")).toBe("Meeting");
+  });
+});
 
 describe("a notes doc Gemini has not finished", () => {
   const real = "Sep 15, 2026\n\nSummary\n" + "The client asked for the booking page to be fixed and a new offer banner. ".repeat(12) + "\nAction items\n- Fix the booking page (Vishnu)";
