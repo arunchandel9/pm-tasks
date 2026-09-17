@@ -119,6 +119,7 @@ The soak plan and its results are in `docs/SOAK.md` (progress line under block A
 | `/api/sheet-sync` | Runs the sheet mirror now (`?client=` for one client). | Arun |
 | `/api/pulp-check` | Verifies the Pulp key, boards and lists (`?create=1` creates missing Staging lists). | Arun |
 | `/api/gmail-check` | Verifies mailbox access and shows the last mails seen. | Arun |
+| `/api/slack-check` | Every installed Slack workspace: token still valid, which channels the bot is a member of (the only ones whose messages arrive), and the last event received with its outcome. | Arun |
 | `/api/meet-check` | Lists the Meet folders shared with it, the organisers covered, and the notes docs it can see (`?run=1` processes new notes now). | Arun |
 
 ## 10. Code map (every module, and the feature rows it serves)

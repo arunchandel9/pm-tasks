@@ -34,6 +34,7 @@ Already installed before 15 Sep (Abela): open the install link once more so the 
 - Staff are recognised by the `mangoeyesagency.com` email on their Slack profile. A team member on a personal email gets `STAFF_EMAILS` in Vercel.
 - The app never posts in a client workspace. It only adds an emoji reaction.
 - Reply reminders: 20 min, 1 hour, 1 day, then daily, in the feed, until a team reply in that channel or the Acknowledged button. Marks in `config/noise.yaml`.
+- Nothing arriving from a workspace: `https://pm-tasks.vercel.app/api/slack-check` (with the secret) shows, per workspace, whether the token works and which channels the bot is in, plus the last Slack event the hub received and what became of it.
 
 ## Claude connections (MCP)
 
