@@ -356,22 +356,31 @@ async function meetSince(): Promise<Date> {
 
 export async function pollMeetings(): Promise<{ found: number; processed: string[]; errors: string[] }> {
   const processed: string[] = [], errors: string[] = [];
+  const started = Date.now();
+  const save = async (extra: Record<string, unknown>) => {
+    try { await sql()`insert into settings (key, value) values ('meet_poll_last', ${JSON.stringify({ at: new Date().toISOString(), found: 0, processed, errors, ...extra })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`; } catch { /* ignore */ }
+  };
+  // A trace before any slow step, so a run that is cut short still shows where it was.
+  await save({ phase: "listing" });
   let docs: NoteDoc[] = [];
   try {
     const since = await meetSince();
     docs = (await findNoteDocs()).filter((d) => new Date(d.modifiedTime) > since);
   } catch (e) {
     // A failed Drive query must show on health and in the brief, not vanish.
-    const report = { found: 0, processed, errors: [`drive: ${(e as Error).message.slice(0, 200)}`], at: new Date().toISOString() };
-    try { await sql()`insert into settings (key, value) values ('meet_poll_last', ${JSON.stringify(report)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`; } catch { /* ignore */ }
-    return report;
+    errors.push(`drive: ${(e as Error).message.slice(0, 200)}`);
+    await save({ phase: "failed" });
+    return { found: 0, processed, errors };
   }
   const known = new Set((await sql()`select drive_file_id from meetings where drive_file_id = any(${docs.map((d) => d.id)}::text[])`).map((r) => String(r.drive_file_id)));
+  const todo = docs.filter((d) => !known.has(d.id));
+  await save({ found: docs.length, phase: "reading", todo: todo.map((d) => d.name.slice(0, 50)) });
   let done = 0;
-  for (const doc of docs) {
-    if (known.has(doc.id)) continue;
-    if (done >= 3) break; // bound one tick
-    try { processed.push(await processNoteDoc(doc)); done++; }
+  for (const doc of todo) {
+    // One meeting can take a minute (model call, feed posts); stop while there is still budget and finish next time.
+    if (done >= 2 || Date.now() - started > 70_000) { processed.push(`${todo.length - done} left for the next run`); break; }
+    const t0 = Date.now();
+    try { processed.push(`${await processNoteDoc(doc)} (${Math.round((Date.now() - t0) / 1000)} s)`); done++; }
     catch (e) {
       const msg = (e as Error).message;
       if (/File not found|"code":\s*404/.test(msg)) {
@@ -383,8 +392,8 @@ export async function pollMeetings(): Promise<{ found: number; processed: string
       }
       errors.push(`${doc.name.slice(0, 40)}: ${msg.slice(0, 160)}`);
     }
+    await save({ found: docs.length, phase: "reading" });
   }
-  const report = { found: docs.length, processed, errors, at: new Date().toISOString() };
-  try { await sql()`insert into settings (key, value) values ('meet_poll_last', ${JSON.stringify(report)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`; } catch { /* ignore */ }
-  return report;
+  await save({ found: docs.length, phase: "done", seconds: Math.round((Date.now() - started) / 1000) });
+  return { found: docs.length, processed, errors };
 }
