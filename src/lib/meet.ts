@@ -378,7 +378,8 @@ export async function pollMeetings(): Promise<{ found: number; processed: string
   let done = 0;
   for (const doc of todo) {
     // One meeting can take a minute (model call, feed posts); stop while there is still budget and finish next time.
-    if (done >= 2 || Date.now() - started > 70_000) { processed.push(`${todo.length - done} left for the next run`); break; }
+    // A second meeting starts only with most of the budget left: one can take a minute, and a run cut short records nothing.
+    if (done >= 2 || Date.now() - started > 40_000) { processed.push(`${todo.length - done} left for the next run`); break; }
     const t0 = Date.now();
     try { processed.push(`${await processNoteDoc(doc)} (${Math.round((Date.now() - t0) / 1000)} s)`); done++; }
     catch (e) {

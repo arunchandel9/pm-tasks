@@ -108,7 +108,7 @@ The soak plan and its results are in `docs/SOAK.md` (progress line under block A
 | Endpoint | What it does | Who calls it |
 |---|---|---|
 | `/api/tick` | The minute loop: client map, sheet mirror (every 10 min), mailbox, retry queue, Pulp poll for hub cards, hand-made card check, watchdog (every 10 min), heartbeat. | Vercel Cron, every minute |
-| `/api/meet-tick` | Reads new Gemini notes docs, at most two meetings per run within a 70-second budget, the rest next time; writes its trace before every slow step so a cut-short run still shows where it was. Moved out of the minute loop on 2026-09-17 after a long meeting silently took the whole loop down. | Vercel Cron, every 5 minutes |
+| `/api/meet-tick` | Reads new Gemini notes docs, at most two meetings per run, a second only with most of the budget left, the rest next time; writes its trace before every slow step so a cut-short run still shows where it was. Moved out of the minute loop on 2026-09-17 after a long meeting silently took the whole loop down. | Vercel Cron, every 5 minutes |
 | `/api/inbox-tick` | Reads the Task Hub Drop space three times a minute (0 s, 20 s, 40 s), so a phone share is answered within about 20 seconds. Two-minute budget, so a round that transcribes and runs the model is never cut short. | Vercel Cron, every minute |
 | `/api/eod` | Posts the daily brief to the feed (headline + thread). `?dry=1` returns it without posting. | Vercel Cron, 17:30 UTC weekdays |
 | `/api/gchat` | Google Chat events: Intake and DM messages, `/task` dialog, button clicks, feed-thread replies. | Google Chat |
