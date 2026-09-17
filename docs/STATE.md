@@ -11,7 +11,7 @@ Entries below are dated; a later entry supersedes an earlier one (for example th
 nudges described in older entries are gone: Drop space and 20 min / 1 h / 1 day / daily reminders since 2026-09-15).
 Keep it updated with every change.
 
-Last updated: 2026-09-15 (go-live: soak closed, Slack rebuilt, clean start done, handover pages written; `CLAUDE.md` is the entry point).
+Last updated: 2026-09-17 (two live days: heartbeats on every reader, Meet in its own cron, Slack invites checked per workspace; `CLAUDE.md` is the entry point).
 
 ## Decisions finalised
 
@@ -23,6 +23,16 @@ Last updated: 2026-09-15 (go-live: soak closed, Slack rebuilt, clean start done,
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-17, nothing runs silent (after the first two live days):** the Meet reader had stood still for a day
+  inside the minute loop (a long meeting outran the function budget, the run died without a trace, and that minute's
+  mailbox and queue steps died with it). Now: meetings run in their own 5-minute cron (`/api/meet-tick`), at most two per
+  run, a trace written before every slow step, a doc set aside after three cut-short attempts; the minute loop keeps a
+  budget (queue stops at 50 s, Pulp poll at 95 s); the health page returns 503 and the brief lists an Issue when any
+  reader's heartbeat is stale (5 min; Meet 20 min); every Slack event is recorded with its outcome and `/api/slack-check`
+  shows per workspace which channels the bot is in (nine workspaces had the app but no invites). Meetings: only the
+  agency's actions become cards, the client's to-dos are listed; the sorter knows the team by name; the headline is the
+  call's name; a doc Gemini has not finished is left for later; action items run as queue jobs of five; a message never
+  matches its own cards. Old test cards and the soak records were purged; the daily brief lists every item.
 - **2026-09-15, Slack (Arun):** no test with an outside actor; the Slack path is built to the feed standard and proves
   itself on the first real client message. Reply reminders at 20 min, 1 hour, 1 day, then daily until a team reply or
   the Acknowledged button; never for thank-yous or messages the model reads as closing. Install is a browser step per

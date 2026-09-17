@@ -17,6 +17,8 @@ export const maxDuration = 120; // a round that reads meeting notes (model call,
 export async function GET(req: Request) {
   if (!cronAuthorized(req)) return new NextResponse("unauthorized", { status: 401 });
   const report: Record<string, unknown> = {};
+  const started = Date.now();
+  const elapsed = () => Date.now() - started;
 
   // 1. Client map
   if (sheetsConfigured()) {
@@ -52,6 +54,9 @@ export async function GET(req: Request) {
   const due = await sql()`select id, kind, payload, attempts from queue where done_at is null and next_run_at <= now() order by next_run_at limit 20`;
   let ok = 0, failed = 0;
   for (const job of due) {
+    // The minute has a budget: a job that is long (a meeting group, a transcription) leaves the rest for the next minute
+    // rather than pushing this run past its limit and losing the Pulp poll and the heartbeat with it.
+    if (elapsed() > 50_000) { report.queueDeferred = due.length - ok - failed; break; }
     try {
       await runJob(job.kind as string, job.payload as Record<string, unknown>);
       await sql()`update queue set done_at = now() where id = ${job.id}`;
@@ -80,6 +85,7 @@ export async function GET(req: Request) {
         where t.pulp_card_id is not null and t.origin = 'hub' and (t.completed_at is null or t.completed_at > now() - interval '7 days')
         order by t.last_moved_at asc nulls first limit 150`;
       for (const t of ours) {
+        if (elapsed() > 95_000) { errors.push(`stopped after ${checked} cards: out of time this minute`); break; }
         let card: Awaited<ReturnType<typeof pulp.getCard>>;
         try { card = await pulp.getCard(String(t.pulp_card_id)); checked++; }
         catch (e) {

@@ -20,7 +20,14 @@ export async function GET() {
     const tickLast = last.find((x) => x.key === "tick_last")?.value as string | undefined;
     out.tickLast = tickLast ?? null;
     out.tickAgeSeconds = tickLast ? Math.round((Date.now() - new Date(tickLast).getTime()) / 1000) : null;
-    out.ok = !!tickLast && (out.tickAgeSeconds as number) < 300;
+    // Every reader has a heartbeat; one that stops is a failure whatever the minute loop says (the Meet reader once
+    // stood still for a day while everything else looked fine). Ages in seconds, with the limit each may reach.
+    const ageOf = (key: string) => { const v = last.find((x) => x.key === key)?.value as { at?: string } | string | undefined; const at = typeof v === "string" ? v : v?.at; return at ? Math.round((Date.now() - new Date(at).getTime()) / 1000) : null; };
+    const stale: string[] = [];
+    const limits: Array<[string, number, string]> = [["gmail_poll_last", 300, "mailbox"], ["chat_inbox_last", 300, "Task Hub Drop"], ["meet_poll_last", 1200, "Meet notes"], ["pulp_poll_last", 300, "Pulp"], ["sheet_cards_last", 300, "sheet cards"]];
+    for (const [key, limit, name] of limits) { const age = ageOf(key); if (age === null || age > limit) stale.push(`${name}: ${age === null ? "never ran" : `${Math.round(age / 60)} min ago`}`); }
+    out.stale = stale;
+    out.ok = !!tickLast && (out.tickAgeSeconds as number) < 300 && stale.length === 0;
     out.gchatLastEvent = last.find((x) => x.key === "gchat_last_event")?.value ?? null;
     out.pulpPollLast = last.find((x) => x.key === "pulp_poll_last")?.value ?? null;
     out.gmailPollLast = last.find((x) => x.key === "gmail_poll_last")?.value ?? null;

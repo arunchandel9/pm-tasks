@@ -84,7 +84,7 @@ final round · **Dropped** = decided against, kept here so it is not asked for a
 | 6.1 | Every message stored first | The raw message is saved before anything else happens, with a reason code if skipped. | Live |
 | 6.2 | Retry queue | Card creation, comments, sheet writes, transcription polls and message processing all go through a queue with backoff. Abandoned jobs are reported. | Live |
 | 6.3 | Watchdog | Every 10 min: half-processed messages are reprocessed, tasks without a card get one (without re-approving), stuck jobs are listed under "Needs attention" in the summary. A re-run (client picked, "make it a task") updates the stored message in place, never deletes it, so a run that dies leaves the message for the watchdog rather than losing it (2026-09-15). | Live |
-| 6.4 | Health page | `/api/health` shows what is configured, last poll times, recent messages and errors. Returns 503 when the minute tick is older than 5 minutes. Uptime monitor set by Arun. | Live |
+| 6.4 | Health page | `/api/health` shows what is configured, last poll times, recent messages and errors. Returns 503 when the minute tick is older than 5 minutes or any reader has stopped (mailbox, Drop space, Pulp, sheet cards: 5 min; Meet notes: 20 min), listed under `stale`; the daily brief lists the same under Issues. Added 2026-09-17 after the Meet reader stood still for a day while the page read ok. Uptime monitor set by Arun. | Live |
 | 6.5 | Self-healing sheet | The status the sheet last received is remembered per task and compared with the card every minute, so a failed write is retried until it matches. | Live |
 | 6.6 | Sheet import is idempotent | Keys per tab and card; the same row is never inserted twice; re-runs update in place. | Live |
 
@@ -107,7 +107,7 @@ The soak plan and its results are in `docs/SOAK.md` (progress line under block A
 
 | Endpoint | What it does | Who calls it |
 |---|---|---|
-| `/api/tick` | The minute loop: client map, sheet mirror (every 10 min), mailbox, retry queue, Pulp poll for hub cards, hand-made card check, watchdog (every 10 min), heartbeat. | Vercel Cron, every minute |
+| `/api/tick` | The minute loop, with a budget: the queue stops draining at 50 s and the Pulp poll at 95 s, the rest waits a minute, so no long job can push the run past its limit and lose the heartbeat (2026-09-17). Client map, sheet mirror (every 10 min), mailbox, retry queue, Pulp poll for hub cards, hand-made card check, watchdog (every 10 min), heartbeat. | Vercel Cron, every minute |
 | `/api/meet-tick` | Reads new Gemini notes docs, at most two meetings per run, a second only with most of the budget left, the rest next time; writes its trace before every slow step (which doc, which attempt) so a cut-short run still shows where it was; a doc that was started three times and never finished is set aside with a note and never blocks the meetings behind it (`?reread=` reads it by hand). Moved out of the minute loop on 2026-09-17 after a long meeting silently took the whole loop down. | Vercel Cron, every 5 minutes |
 | `/api/inbox-tick` | Reads the Task Hub Drop space three times a minute (0 s, 20 s, 40 s), so a phone share is answered within about 20 seconds. Two-minute budget, so a round that transcribes and runs the model is never cut short. | Vercel Cron, every minute |
 | `/api/eod` | Posts the daily brief to the feed (headline + thread). `?dry=1` returns it without posting. | Vercel Cron, 17:30 UTC weekdays |

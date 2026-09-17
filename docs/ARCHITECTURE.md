@@ -19,7 +19,7 @@ from Claude. The team never types tasks by hand and nothing that comes in can le
 |---|---|---|
 | Application | Next.js 16 (App Router, TypeScript), Node runtime. One deployment serves every endpoint. | Vercel project `pm-tasks`, https://pm-tasks.vercel.app, branch `claude/mangowise-task-automation-3qnd3k` (every push deploys in about 2 minutes) |
 | Database | Postgres (Neon, via the Vercel integration). Twelve tables (section 4). Kept forever. | env `storage_DATABASE_URL` |
-| Schedules | Vercel Cron. `/api/tick` every minute; `/api/inbox-tick` every minute (three reads inside it, at 0/20/40 s); `/api/eod` at 17:30 UTC on weekdays (23:00 India). All authenticated with `CRON_SECRET` as a bearer token. | `vercel.json` |
+| Schedules | Vercel Cron. `/api/tick` every minute (with a budget: queue stops at 50 s, Pulp poll at 95 s); `/api/inbox-tick` every minute (three reads inside it, at 0/20/40 s); `/api/meet-tick` every 5 minutes (meetings in their own budget, two per run, trace before every slow step); `/api/eod` at 17:30 UTC on weekdays (23:00 India). All authenticated with `CRON_SECRET` as a bearer token. | `vercel.json` |
 | Model | Claude (Anthropic API), `claude-sonnet-5` by default, structured JSON output, prompt caching on the instructions (1 hour). Two calls per message: extract, then classify per ask; one call per meeting. Every call logged with tokens and cost in `llm_calls`. | env `ANTHROPIC_API_KEY`, `LLM_MODEL` |
 | Google Cloud project | `mangoeyes-task-hub` (number `354018118635`). APIs on: Chat, Sheets, Drive, Gmail, Speech-to-Text, Cloud Storage. | env `GOOGLE_PROJECT_NUMBER` |
 | Service account | `task-hub@mangoeyes-task-hub.iam.gserviceaccount.com` (unique id `117215744015492300607`). Acts as the Chat app, reads and writes the sheet (shared with it as Editor), reads Meet notes (folders shared with it as Viewer), runs Speech-to-Text, owns the voice bucket. | env `GOOGLE_SERVICE_ACCOUNT_B64` (the JSON key, base64) |
@@ -32,7 +32,7 @@ from Claude. The team never types tasks by hand and nothing that comes in can le
 | PM Overview sheet | The PMs' record. One tab per client (headers: S. NO., TASK, PULP/CARD LINK, DATE ADDED, DUE DATE, PRIORITY, ASSIGNED TO, STATUS, DEPARTMENT, COMMENTS, some with DATE COMPLETED) with a DONE divider row; a **Config** tab that is the client directory. | env `PM_SHEET_ID`, `PM_SHEET_CONFIG_TAB` |
 | Speech-to-Text | v2 (Chirp 3, then Chirp 2, then "long") with v1 fallback; vocabulary hints from client names and agency words. Notes under about a minute run synchronously; longer ones go to a Cloud Storage bucket and a long-running job polled every minute. | env `VOICE_BUCKET`, `VOICE_BUCKET_LOCATION`, `SPEECH_V2`, `SPEECH_V2_TRIES` |
 | MCP server | `/api/mcp/<key>` over Streamable HTTP. One key per Claude account, stored hashed. Connected as a custom connector in every team Claude account. | `docs/MCP.md` |
-| Health | `/api/health` (no auth): configuration flags, last run of every poll, recent activity; HTTP 503 when the minute loop is older than 5 minutes. An uptime monitor watches it. | |
+| Health | `/api/health` (no auth): configuration flags, last run of every poll, recent activity; HTTP 503 when the minute loop is older than 5 minutes or any reader's heartbeat is stale (mailbox, Drop space, Pulp, sheet cards: 5 min; Meet: 20 min), listed under `stale`. An uptime monitor watches it. `/api/slack-check` shows per workspace which channels the bot is in. | |
 
 Secrets never live in the repository; only their names do (full list in `docs/STATE.md`).
 
@@ -89,9 +89,11 @@ Retention: everything forever. `RAW_RETENTION_DAYS` exists (off) and would only 
 ## 5. The minute loop (`/api/tick`) and the other schedules
 
 Every minute, in order: refresh the client map from the Config tab → (every 10 min) mirror every client tab into
-`tasks` → (every 5 min) read new Meet notes → poll the mailbox → run due queue jobs → poll every hub card in Pulp by id
+`tasks` → poll the mailbox → run due queue jobs (until 50 s) → poll every hub card in Pulp by id (until 95 s)
 (status sync, approvals) → check up to 40 hand-made cards in rotation → (every 10 min) watchdog → heartbeat `tick_last`.
 
+`/api/meet-tick`, every 5 minutes, reads new Meet notes: at most two meetings per run, a second only with most of the
+budget left, a trace written before every slow step, a doc set aside after three cut-short attempts.
 `/api/inbox-tick`, every minute, reads the Drop space at 0, 20 and 40 seconds (two-minute budget so a round that
 transcribes and runs the model is never cut short). Google Chat pushes DM messages and clicks to `/api/gchat` in real
 time. Slack pushes events to `/api/slack/events` in real time (acknowledged within 3 seconds, processed after).
