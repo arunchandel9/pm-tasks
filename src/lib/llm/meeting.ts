@@ -33,7 +33,7 @@ export async function sortMeeting(opts: { title: string; notes: string; attendee
     `Clients (name; aliases): ${opts.clients.join(" | ")}`,
     "",
     "Notes:",
-    opts.notes.slice(0, 24000),
+    opts.notes.slice(0, 16000), // long notes are cut: the summary and action list sit at the top of a Gemini doc, the transcript detail below
   ].join("\n");
   return structuredCall({ step: "meeting", instructions: INSTRUCTIONS, userContent: user, schema: MeetingSchema, maxTokens: 3000, messageId: null }); // llm_calls.message_id references messages; meetings are logged without one
 }

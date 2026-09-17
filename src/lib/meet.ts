@@ -380,8 +380,25 @@ export async function pollMeetings(): Promise<{ found: number; processed: string
     // One meeting can take a minute (model call, feed posts); stop while there is still budget and finish next time.
     // A second meeting starts only with most of the budget left: one can take a minute, and a run cut short records nothing.
     if (done >= 2 || Date.now() - started > 40_000) { processed.push(`${todo.length - done} left for the next run`); break; }
+    // A doc that was started three times and never finished (a run cut short each time) is set aside with a note, so it
+    // can never block the meetings behind it. It can still be read by hand with ?reread=.
+    const attemptKey = `meet_attempt:${doc.id}`;
+    const prior = Number((await sql()`select value from settings where key = ${attemptKey}`)[0]?.value ?? 0);
+    if (prior >= 3) {
+      await sql()`insert into meetings (drive_file_id, title, held_at, organiser, attendees, client_id, scope, doc_url, notes, summary)
+        values (${doc.id}, ${meetingTitle(doc.name)}, ${doc.modifiedTime}, ${doc.owner}, '{}', null, 'unknown', ${"https://docs.google.com/document/d/" + doc.id + "/edit"}, '', ${JSON.stringify(["Could not be read: three attempts ran out of time. Ask for a re-read."])}::jsonb) on conflict (drive_file_id) do nothing`;
+      await sql()`delete from settings where key = ${attemptKey}`;
+      processed.push(`${doc.name.slice(0, 40)}: set aside after 3 cut-short attempts`);
+      errors.push(`${doc.name.slice(0, 40)}: could not be read in time, set aside (reread to retry)`);
+      continue;
+    }
+    await sql()`insert into settings (key, value) values (${attemptKey}, ${JSON.stringify(prior + 1)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+    await save({ found: docs.length, phase: "reading", current: doc.name.slice(0, 50), attempt: prior + 1 });
     const t0 = Date.now();
-    try { processed.push(`${await processNoteDoc(doc)} (${Math.round((Date.now() - t0) / 1000)} s)`); done++; }
+    try {
+      processed.push(`${await processNoteDoc(doc)} (${Math.round((Date.now() - t0) / 1000)} s)`); done++;
+      await sql()`delete from settings where key = ${attemptKey}`;
+    }
     catch (e) {
       const msg = (e as Error).message;
       if (/File not found|"code":\s*404/.test(msg)) {
