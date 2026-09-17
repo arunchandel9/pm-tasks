@@ -41,12 +41,21 @@ export async function POST(req: Request) {
   if (body.type !== "event_callback") return NextResponse.json({ ok: true });
 
   const ev = body.event as SlackMessageEvent;
-  if (ev.type !== "message") return NextResponse.json({ ok: true });
   const teamId: string | null = body.team_id ?? ev.team ?? null;
+  if (ev.type !== "message") { waitUntil(recordLastEvent({ team: teamId, type: ev.type, outcome: "ignored: not a message" })); return NextResponse.json({ ok: true }); }
 
   // Slack retries on slow responses; (channel, ts) is unique so a retry is harmless.
-  waitUntil(handleMessageEvent(ev, teamId).catch((e) => console.error("slack event failed", e)));
+  waitUntil(handleMessageEvent(ev, teamId)
+    .then((outcome) => recordLastEvent({ team: teamId, channel: ev.channel, user: ev.user ?? ev.bot_id ?? null, subtype: ev.subtype ?? null, text: (ev.text ?? "").slice(0, 60), outcome }))
+    .catch((e) => { console.error("slack event failed", e); return recordLastEvent({ team: teamId, channel: ev.channel, user: ev.user ?? null, subtype: ev.subtype ?? null, text: (ev.text ?? "").slice(0, 60), outcome: `failed: ${(e as Error).message.slice(0, 200)}` }); }));
   return NextResponse.json({ ok: true });
+}
+
+/** The last Slack event and what became of it, kept in settings so health and hub_status can show it (nothing fails quietly). */
+async function recordLastEvent(info: Record<string, unknown>) {
+  try {
+    await sql()`insert into settings (key, value) values ('slack_last_event', ${JSON.stringify({ at: new Date().toISOString(), ...info })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+  } catch (e) { console.error("slack recordLastEvent failed", (e as Error).message); }
 }
 
 async function handleMessageEvent(ev: SlackMessageEvent, teamId: string | null) {
@@ -105,6 +114,7 @@ async function handleMessageEvent(ev: SlackMessageEvent, teamId: string | null) 
   );
   const result = await processMessage(m, verdict);
   console.log("processed", result);
+  return `${result.outcome}${result.reason ? `: ${result.reason}` : ""} · client ${m.clientId ?? "none"} · ${senderIsStaff ? "staff" : "client"} ${m.sender}`;
 }
 
 async function handleSlashCommand(form: URLSearchParams) {
