@@ -265,13 +265,21 @@ export function rowColour(hex: string | undefined): { red: number; green: number
 }
 
 /** Find a task's current row by its Pulp link (unique), else by title + created date. Rows may have been rearranged by hand. */
+/** The card id in a Pulp link (`?card=<id>` or `/card/<id>`), lower-cased, or null. */
+export const cardIdInLink = (link: string): string | null => (link.match(/[?&]card=([0-9a-f-]{8,})/i)?.[1] ?? link.match(/\/card\/([0-9a-f-]{8,})/i)?.[1] ?? null)?.toLowerCase() ?? null;
+
 export async function locateTaskRow(tab: string, f: { pulpLink?: string | null; title?: string | null; created?: string | null }): Promise<number | null> {
   const cfg = sheetConfig();
   const map = mapHeaders(await tabHeaders(tab), cfg);
   const rows = await tabRows(tab);
   const link = (f.pulpLink ?? "").trim();
   if (link && map.pulp_link !== undefined) {
-    for (let i = cfg.header_row; i < rows.length; i++) if ((rows[i][map.pulp_link] ?? "").trim() === link) return i + 1;
+    // The card id is what identifies a row: the board part of the link changes when a card is moved to another board.
+    const want = cardIdInLink(link);
+    for (let i = cfg.header_row; i < rows.length; i++) {
+      const cell = (rows[i][map.pulp_link] ?? "").trim();
+      if (cell === link || (want && cardIdInLink(cell) === want)) return i + 1;
+    }
   }
   const title = (f.title ?? "").trim().toLowerCase();
   if (title && map.title !== undefined) {

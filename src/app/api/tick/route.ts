@@ -80,8 +80,9 @@ export async function GET(req: Request) {
     let synced = 0, sheetUpdates = 0, checked = 0;
     try {
       const { sheetsConfigured, updateTaskCells, sheetConfig, locateTaskRow, moveRowBelowDivider } = await import("@/lib/sheets");
-      const ours = await sql()`select t.id, t.pulp_card_id, t.list_id, t.staging, t.title, t.board_id, t.sheet_row, tab.value as tab, st.value as sheet_stage
-        from tasks t left join settings tab on tab.key = 'sheet_tab:' || t.id::text left join settings st on st.key = 'sheet_stage:' || t.id::text
+      const { moveOutcome, sheetIsManual, cardChangedBoard, writeSheetRow, approveRequest } = await import("@/lib/tasks");
+      const ours = await sql()`select t.id, t.pulp_card_id, t.list_id, t.staging, t.title, t.board_id, t.sheet_row, c.name as client_name, tab.value as tab, st.value as sheet_stage
+        from tasks t left join clients c on c.id = t.client_id left join settings tab on tab.key = 'sheet_tab:' || t.id::text left join settings st on st.key = 'sheet_stage:' || t.id::text
         where t.pulp_card_id is not null and t.origin = 'hub' and (t.completed_at is null or t.completed_at > now() - interval '7 days')
         order by t.last_moved_at asc nulls first limit 150`;
       for (const t of ours) {
@@ -95,26 +96,39 @@ export async function GET(req: Request) {
         }
         const listName = card.listName ?? (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
         const done = isDoneList(listName);
-        seen.push({ title: String(t.title).slice(0, 40), listName, done, tab: t.tab ?? null, sheetStage: t.sheet_stage ?? null, moved: card.listId !== t.list_id });
+        const boardChanged = !!card.boardId && card.boardId !== t.board_id;
+        seen.push({ title: String(t.title).slice(0, 40), listName, done, tab: t.tab ?? null, sheetStage: t.sheet_stage ?? null, moved: card.listId !== t.list_id, boardChanged });
 
         if (card.listId !== t.list_id) {
           const wasStaging = t.staging as boolean;
+          // Moved to another board (Development Staging → Writers To Do, PMs board → SEO): the department follows the board.
+          if (boardChanged) {
+            try { await cardChangedBoard(String(t.id), card.id, card.boardId, (t.client_name as string | null) ?? null); t.board_id = card.boardId; }
+            catch (e) { errors.push(`board ${String(t.title).slice(0, 40)}: ${(e as Error).message.slice(0, 160)}`); }
+          }
           await sql()`update tasks set list_id = ${card.listId}, staging = false, last_moved_at = now() where id = ${t.id}`;
           await sql()`insert into status_events (task_id, from_list, to_list, source) values (${t.id}, ${t.list_id}, ${card.listId}, 'poll')`;
           if (done) await sql()`update tasks set completed_at = now() where id = ${t.id} and completed_at is null`;
           else await sql()`update tasks set completed_at = null where id = ${t.id}`; // moved back out of Done
-          if (wasStaging) {
-            // Dragging out of Staging is the approval: mark the request, write the sheet row. The card stays where the PM put it.
-            try {
+          // Dragging out of Staging is the approval, wherever the card went. The sheet row is written the first time
+          // the card sits on a board whose rows the hub writes: at once on a department board, later for a PMs-board
+          // card once it is moved to a department board (within the PMs board the PM adds the row by hand).
+          const outcome = moveOutcome({ wasStaging, hasRow: !!t.tab, manualBoard: await sheetIsManual(card.boardId) });
+          try {
+            let wrote = false;
+            if (outcome.approve) {
               const req = await sql()`select r.id from requests r join tasks t2 on t2.request_id = r.id where t2.id = ${t.id} and r.status in ('pending_review','needs_scope')`;
-              if (req.length) {
-                const { approveRequest } = await import("@/lib/tasks");
-                await approveRequest(String(req[0].id), "pulp:drag", { moveCard: false });
-                t.tab = (await sql()`select value from settings where key = ${"sheet_tab:" + t.id}`)[0]?.value ?? null;
-                t.sheet_stage = sheetConfig().stage_values.created; // approveRequest wrote the initial status
-              }
-            } catch (e) { errors.push(`approve ${String(t.title).slice(0, 40)}: ${(e as Error).message}`); }
-          }
+              if (req.length) { await approveRequest(String(req[0].id), "pulp:drag", { moveCard: false }); wrote = outcome.writeRow; }
+            }
+            if (outcome.writeRow && !wrote) {
+              const req = await sql()`select r.decided_by from requests r join tasks t2 on t2.request_id = r.id where t2.id = ${t.id}`;
+              wrote = await writeSheetRow(String(t.id), String(req[0]?.decided_by ?? "pulp:drag"));
+            }
+            if (wrote) {
+              t.tab = (await sql()`select value from settings where key = ${"sheet_tab:" + t.id}`)[0]?.value ?? null;
+              t.sheet_stage = sheetConfig().stage_values.created; // the row was written with the initial status
+            }
+          } catch (e) { errors.push(`approve ${String(t.title).slice(0, 40)}: ${(e as Error).message}`); }
           synced++;
         } else {
           await sql()`update tasks set last_moved_at = coalesce(last_moved_at, now()) where id = ${t.id}`;
@@ -125,7 +139,7 @@ export async function GET(req: Request) {
         if (!sheetsConfigured() || !t.tab || t.sheet_stage === wanted) continue;
         try {
           const tab = String(t.tab);
-          const link = pulp.cardUrl(String(t.board_id), card.id);
+          const link = pulp.cardUrl(card.boardId || String(t.board_id), card.id);
           const row = (await locateTaskRow(tab, { pulpLink: link, title: String(t.title) })) ?? (t.sheet_row ? Number(t.sheet_row) : null);
           if (!row) { errors.push(`row not found for ${String(t.title).slice(0, 40)} in ${tab}`); continue; }
           await updateTaskCells(tab, row, { stage: wanted, completed: done ? new Date() : undefined });

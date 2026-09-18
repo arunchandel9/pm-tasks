@@ -10,7 +10,8 @@ function loadYaml<T>(file: string): T {
   return YAML.parse(readFileSync(path.join(configDir, file), "utf8")) as T;
 }
 
-interface BoardsConfig { base_url: string; card_url?: string; departments: Record<string, { board: string; list: string; staging?: string; assignee?: string }> }
+/** `sheet: manual` on a department: no sheet row is written while a card sits on that board (the PMs board). */
+interface BoardsConfig { base_url: string; card_url?: string; departments: Record<string, { board: string; list: string; staging?: string; assignee?: string; sheet?: "auto" | "manual" }> }
 let boardsCache: BoardsConfig | null = null;
 export function boards(): BoardsConfig {
   if (!boardsCache) boardsCache = loadYaml<BoardsConfig>("boards.yaml");

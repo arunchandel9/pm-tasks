@@ -25,8 +25,17 @@ Last updated: 2026-09-17 (two live days: heartbeats on every reader, Meet in its
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
 - **2026-09-18, PMs board (Arun):** asks that belong to no department (general: coordination, follow-ups, "share the
   document") and MangoEyes-internal items go to a **PMs** board, where a PM decides what they are; the Development board
-  is no longer the catch-all. `config/boards.yaml` names the board "PMs"; Pulp's API has no board creation, so Arun
-  creates it by hand with the usual lists and the hub adds Staging.
+  is no longer the catch-all. Pulp's API has no board creation, so Arun created it by hand the same day, named
+  **"PMs - Board"** (`config/boards.yaml` uses the exact name). Rules that came with it: (1) a card on the PMs board gets
+  **no sheet row from the hub** (`sheet: manual`); the drag out of Staging is still the approval, and the PM adds the row
+  by hand when wanted, after which Status follows the card like any hub card (the mirror adopts the row within 10
+  minutes and fills a blank Task cell from the card title). (2) **Moving a card to another board counts like any drag
+  out of Staging**: Development Staging → Writers To Do, or PMs Staging → SEO To Do, writes the sheet row at once with
+  the department of the new board; only moves within the PMs board's own lists write nothing. A card with a row keeps
+  it whatever board it moves to; rows are found by card id, so the board part of the link may change. The hub puts the
+  `Task Hub` and client labels back on the new board. Sibling fixed on the way: approval from the feed thread ("yes")
+  now moves the card to the department's default To Do when the client has no board override (before, only overrides
+  moved it).
 - **2026-09-17, nothing runs silent (after the first two live days):** the Meet reader had stood still for a day
   inside the minute loop (a long meeting outran the function budget, the run died without a trace, and that minute's
   mailbox and queue steps died with it). Now: meetings run in their own 5-minute cron (`/api/meet-tick`), at most two per

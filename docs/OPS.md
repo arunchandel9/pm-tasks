@@ -74,7 +74,8 @@ The app's avatar is an image URL in Cloud Console → Google Chat API → Config
 - Rows are found by their **Pulp link**. Move rows freely within a tab; never clear the link; never move a row to another tab.
 - Only lists named **Done / Completed / Closed** count as finished. "Ready to Use" does not.
 - Sheet Status shows the Pulp **list name as spelled in Pulp**. Keep list names matching the sheet dropdown (fix "Dependancy" → "Dependency" in Pulp).
-- Every hub card carries the label `Task Hub`. Boards are the six department boards plus the **PMs** board for general and internal asks; no client boards.
+- Every hub card carries the label `Task Hub`. Boards are the six department boards plus **PMs - Board** for general and internal asks; no client boards. Cards may be moved between boards freely: the hub follows the card, re-derives the department from the new board and puts its labels back.
+- **PMs - Board writes no sheet rows.** A PM adds the row by hand when wanted (`sheet: manual` in `config/boards.yaml`; set it on any department to get the same behaviour). Moving a card from there to a department board writes the row.
 - The hub never touches priority, assignee or comments after a row is written.
 
 ## Google side (do not change casually)

@@ -11,6 +11,54 @@ export interface TaskRow { id: string; pulpCardId: string | null; boardId: strin
 export const HUB_LABEL = "Task Hub";
 
 /**
+ * The department a board belongs to, from boards.yaml: the first department (in file order, `scope` aside) whose board
+ * resolves to this id. `general` comes before `internal`, so the PMs board reads as general.
+ */
+export function pickDepartment(boardId: string, entries: Array<[dep: string, boardId: string | null]>): string | null {
+  const want = boardId.toLowerCase();
+  for (const [dep, id] of entries) if (dep !== "scope" && id && id.toLowerCase() === want) return dep;
+  return null;
+}
+
+let boardMapCache: { at: number; entries: Array<[string, string | null]> } | null = null;
+/** boards.yaml departments with their board ids resolved in Pulp; cached five minutes (boards are renamed weekly, not moved). */
+async function boardMap(): Promise<Array<[string, string | null]>> {
+  if (boardMapCache && Date.now() - boardMapCache.at < 300_000) return boardMapCache.entries;
+  const entries: Array<[string, string | null]> = [];
+  for (const [dep, d] of Object.entries(boardsConfig().departments)) {
+    let id: string | null = null;
+    try { id = pulp.configured() ? await pulp.resolveBoardId(d.board) : null; } catch { id = null; }
+    entries.push([dep, id]);
+  }
+  boardMapCache = { at: Date.now(), entries };
+  return entries;
+}
+
+export async function departmentForBoard(boardId: string | null | undefined): Promise<string | null> {
+  return boardId ? pickDepartment(boardId, await boardMap()) : null;
+}
+
+/**
+ * A board whose cards get no sheet row from the hub (`sheet: manual` in boards.yaml: the PMs board). The PM adds the
+ * row by hand when wanted; from then on Status follows the card. Moving the card to any other board writes the row.
+ */
+export async function sheetIsManual(boardId: string | null | undefined): Promise<boolean> {
+  if (!boardId) return false;
+  const manual = new Set(Object.entries(boardsConfig().departments).filter(([, d]) => d.sheet === "manual").map(([dep]) => dep));
+  if (!manual.size) return false;
+  const want = boardId.toLowerCase();
+  return (await boardMap()).some(([dep, id]) => manual.has(dep) && !!id && id.toLowerCase() === want);
+}
+
+/**
+ * What one observed card move means. `approve`: the request was waiting in Staging and the drag decides it.
+ * `writeRow`: the card has no sheet row yet and now sits on a board whose rows the hub writes.
+ */
+export function moveOutcome(p: { wasStaging: boolean; hasRow: boolean; manualBoard: boolean }): { approve: boolean; writeRow: boolean } {
+  return { approve: p.wasStaging, writeRow: !p.manualBoard && !p.hasRow };
+}
+
+/**
  * Where a new card waits for a person: "Staging" for ordinary asks, "Needs scope" for gated types (new page, new feature).
  * Both are hold lists: dragging the card out of either is the approval.
  */
@@ -101,12 +149,10 @@ export async function createCardForTask(taskId: string): Promise<boolean> {
  */
 export async function approveRequest(requestId: string, decidedBy: string, opts: { moveCard?: boolean } = {}): Promise<void> {
   const rows = await sql()`
-    select t.id as task_id, t.pulp_card_id, t.board_id, t.title, t.priority, r.department, r.request_type, r.client_id, r.decided_by,
-           c.name as client_name, c.boards, c.sheet_tab, m.channel, m.permalink, m.sender
+    select t.id as task_id, t.pulp_card_id, t.board_id, coalesce(t.department, r.department) as department, r.decided_by, c.boards
     from requests r
     left join tasks t on t.request_id = r.id
     left join clients c on c.id = r.client_id
-    join messages m on m.id = r.message_id
     where r.id = ${requestId}`;
   if (!rows.length) throw new Error("request not found");
   const x = rows[0];
@@ -116,8 +162,9 @@ export async function approveRequest(requestId: string, decidedBy: string, opts:
   await sql()`update requests set status = 'approved', decided_by = ${approver}, decided_at = coalesce(decided_at, now()) where id = ${requestId}`;
 
   if (opts.moveCard !== false && x.task_id && x.pulp_card_id && pulp.configured()) {
+    // The client's own board override, else the department's default list from boards.yaml.
     const boards = (x.boards ?? {}) as Client["boards"];
-    const target = boards[x.department as string];
+    const target = boards[x.department as string] ?? boardsConfig().departments[x.department as string];
     const listId = target ? await pulp.ensureList(x.board_id as string, target.list) : null;
     if (listId) {
       await pulp.moveCard(x.pulp_card_id as string, listId);
@@ -126,27 +173,66 @@ export async function approveRequest(requestId: string, decidedBy: string, opts:
     }
   }
 
-  if (x.task_id && sheetsConfigured()) {
-    try {
-      const client = x.client_id ? { id: String(x.client_id), name: String(x.client_name ?? x.client_id), sheetTab: x.sheet_tab as string | null } as Client : null;
-      const tab = await findClientTab(client);
-      if (!tab) throw new Error(`no tab for ${client?.name ?? "Internal"} in the PM sheet`);
-      const t = (await sql()`select due_at, assignee, priority from tasks where id = ${x.task_id}`)[0];
-      const r = await insertTaskRow(tab, {
-        title: String(x.title), department: String(x.department), priority: String(t?.priority ?? "P3"), assignee: String(t?.assignee ?? ""),
-        pulp_link: x.pulp_card_id ? pulp.cardUrl(String(x.board_id), String(x.pulp_card_id)) : "",
-        source_link: String(x.permalink ?? ""), created: new Date(), due: t?.due_at ? new Date(t.due_at as string) : null,
-        addedBy: approver, source: sourceText(String(x.channel), String(x.sender ?? "")),
-      });
-      await sql()`update tasks set sheet_row = ${r.row} where id = ${x.task_id}`;
-      await sql()`insert into settings (key, value) values (${"sheet_tab:" + x.task_id}, ${JSON.stringify(tab)}::jsonb) on conflict (key) do update set value = excluded.value`;
-    } catch (e) {
-      await enqueue("sync_sheet", { taskId: x.task_id }, 120);
-      console.error("sheet append failed, queued:", (e as Error).message);
-    }
-  }
+  if (x.task_id) await writeSheetRow(String(x.task_id), approver);
 
   await sql()`update requests set status = 'created' where id = ${requestId} and ${!!x.task_id}`;
+}
+
+/**
+ * The sheet row for a hub task, written once: skipped when the task already has one (settings sheet_tab:<task>) or
+ * while its card sits on a board whose rows are manual (the PMs board). A failure is queued for retry, never thrown.
+ * Returns true only when a row was written now.
+ */
+export async function writeSheetRow(taskId: string, addedBy: string): Promise<boolean> {
+  if (!sheetsConfigured()) return false;
+  const rows = await sql()`
+    select t.id as task_id, t.pulp_card_id, t.board_id, t.title, t.priority, t.assignee, t.due_at, coalesce(t.department, r.department) as department, r.client_id, r.decided_by,
+           c.name as client_name, c.sheet_tab, m.channel, m.permalink, m.sender, tab.value as tab
+    from tasks t
+    join requests r on r.id = t.request_id
+    left join clients c on c.id = t.client_id
+    left join messages m on m.id = r.message_id
+    left join settings tab on tab.key = 'sheet_tab:' || t.id::text
+    where t.id = ${taskId} and t.origin = 'hub'`;
+  if (!rows.length) return false;
+  const x = rows[0];
+  if (x.tab) return false;
+  if (await sheetIsManual(x.board_id as string | null)) return false;
+  const who = addedBy.startsWith("system:") && x.decided_by ? String(x.decided_by) : addedBy;
+  try {
+    const client = x.client_id ? { id: String(x.client_id), name: String(x.client_name ?? x.client_id), sheetTab: x.sheet_tab as string | null } as Client : null;
+    const tab = await findClientTab(client);
+    if (!tab) throw new Error(`no tab for ${client?.name ?? "Internal"} in the PM sheet`);
+    const r = await insertTaskRow(tab, {
+      title: String(x.title), department: String(x.department), priority: String(x.priority ?? "P3"), assignee: String(x.assignee ?? ""),
+      pulp_link: x.pulp_card_id ? pulp.cardUrl(String(x.board_id), String(x.pulp_card_id)) : "",
+      source_link: String(x.permalink ?? ""), created: new Date(), due: x.due_at ? new Date(x.due_at as string) : null,
+      addedBy: who, source: sourceText(String(x.channel ?? ""), String(x.sender ?? "")),
+    });
+    await sql()`update tasks set sheet_row = ${r.row} where id = ${taskId}`;
+    await sql()`insert into settings (key, value) values (${"sheet_tab:" + taskId}, ${JSON.stringify(tab)}::jsonb) on conflict (key) do update set value = excluded.value`;
+    return true;
+  } catch (e) {
+    await enqueue("sync_sheet", { taskId }, 120);
+    console.error("sheet append failed, queued:", (e as Error).message);
+    return false;
+  }
+}
+
+/**
+ * A hub card that changed board: remember the board, re-derive the department from boards.yaml (the sheet's Department
+ * cell and the target list follow it) and put the hub's labels back, since Pulp labels belong to a board.
+ */
+export async function cardChangedBoard(taskId: string, cardId: string, boardId: string, clientName: string | null): Promise<string | null> {
+  const dep = await departmentForBoard(boardId);
+  await sql()`update tasks set board_id = ${boardId}, department = coalesce(${dep}, department) where id = ${taskId}`;
+  if (dep) await sql()`update requests r set department = ${dep} from tasks t where t.request_id = r.id and t.id = ${taskId}`;
+  if (pulp.configured()) {
+    for (const name of [HUB_LABEL, ...(clientName ? [clientName] : [])]) {
+      try { await pulp.addLabel(boardId, cardId, name); } catch { /* label is a convenience; the move stands */ }
+    }
+  }
+  return dep;
 }
 
 export async function dismissRequest(requestId: string, decidedBy: string): Promise<void> {

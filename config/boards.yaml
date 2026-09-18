@@ -15,8 +15,11 @@ departments:
   video:   { board: 8f4eb438-d311-4e6a-8288-9b73bd64271b, list: "To Do", staging: "Staging" }   # Video Production sprint
   # Anything that is not a department's work is the PMs' to judge: coordination, "share the document", follow-ups,
   # internal MangoEyes items. They go to the PMs board (decision 2026-09-18; before that the Development board was the
-  # catch-all and filled with cards that were not development). Named by board name; create the board "PMs" in Pulp
-  # with the usual lists, the hub adds Staging if missing.
-  general: { board: "PMs", list: "To Do", staging: "Staging" }
-  internal: { board: "PMs", list: "To Do", staging: "Staging" }
+  # catch-all and filled with cards that were not development). Named by its exact board name ("PMs - Board", created
+  # by Arun 2026-09-18); the hub adds Staging if missing.
+  # `sheet: manual`: the hub writes no sheet row for a card while it sits on this board. Dragging it out of Staging
+  # within the board is still the approval; the PM adds the row by hand when wanted, and from then on Status follows
+  # the card. Moving the card to a department board (any list) writes the row at that moment.
+  general: { board: "PMs - Board", list: "To Do", staging: "Staging", sheet: manual }
+  internal: { board: "PMs - Board", list: "To Do", staging: "Staging", sheet: manual }
   scope:   { board: 0fac54b7-3a47-4645-9d67-87f7d24ed32a, list: "Needs scope" }

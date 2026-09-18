@@ -1,5 +1,5 @@
 import { sql, allClients } from "./db";
-import { findClientTab, tabHeaders, tabRows, mapHeaders, sheetConfig, sheetsConfigured, dividerIndex } from "./sheets";
+import { findClientTab, tabHeaders, tabRows, mapHeaders, sheetConfig, sheetsConfigured, dividerIndex, updateTaskCells } from "./sheets";
 import { normList } from "./pulp";
 
 /**
@@ -7,7 +7,8 @@ import { normList } from "./pulp";
  * This reads every client tab and mirrors its rows into `tasks` (origin = 'sheet'), so the MCP hub and the summary
  * answer from the same record the PMs keep. Runs once at setup and every 10 minutes. Never writes to the sheet,
  * never creates Pulp cards, never posts to PM Review. Hub-made rows are recognised by their Pulp link and only pick
- * up the Assigned To a PM filled in.
+ * up the Assigned To a PM filled in. The one write: a hub card added to a tab by hand (PMs-board cards get no row
+ * from the hub) is adopted, and its blank Task cell, if blank, gets the card's title.
  */
 
 export interface SyncReport { tabs: Record<string, { rows: number; imported: number; updated: number; hubRows: number; removed: number }>; errors: string[]; at: string }
@@ -108,17 +109,31 @@ export async function syncClientTab(client: { id: string; name: string; sheetTab
     });
   }
 
-  // Rows the hub wrote itself: recognised by Pulp card id; only learn a PM-typed assignee.
-  const hub = await sql()`select id, pulp_card_id, assignee from tasks where client_id = ${client.id} and origin = 'hub' and pulp_card_id is not null`;
+  // Rows the hub wrote itself: recognised by Pulp card id; only learn a PM-typed assignee. A hub card that has no row
+  // yet (its card sits on the PMs board, where rows are the PM's to add) and appears here by hand is adopted: the hub
+  // remembers the tab and row, fills a blank Task cell from its title, and from then on Status follows the card.
+  const cardIds = parsed.map((p) => p.cardId).filter((c): c is string => !!c);
+  const hub = cardIds.length ? await sql()`select t.id, t.pulp_card_id, t.assignee, t.client_id, t.title, tab.value as tab from tasks t
+    left join settings tab on tab.key = 'sheet_tab:' || t.id::text
+    where t.origin = 'hub' and t.pulp_card_id = any(${cardIds}::text[]) and (t.client_id = ${client.id} or tab.value is null)` : [];
   const hubByCard = new Map(hub.map((h) => [String(h.pulp_card_id), h]));
   const hubAssign: Array<{ id: string; assignee: string }> = [];
+  const adopt: Array<{ id: string; row: number; status: string | null; blankTitle: boolean; title: string }> = [];
   const mine = parsed.filter((p) => {
     const h = p.cardId ? hubByCard.get(p.cardId) : undefined;
     if (!h) return true;
     if (p.assignee && !h.assignee) hubAssign.push({ id: String(h.id), assignee: p.assignee });
+    if (!h.tab) adopt.push({ id: String(h.id), row: p.sheetRow, status: p.status, blankTitle: isUntitled(p.title), title: String(h.title) });
     return false;
   });
   if (hubAssign.length) await sql()`update tasks t set assignee = v.assignee from (select unnest(${hubAssign.map((x) => x.id)}::uuid[]) as id, unnest(${hubAssign.map((x) => x.assignee)}::text[]) as assignee) v where t.id = v.id`;
+  for (const a of adopt) {
+    await sql()`update tasks set sheet_row = ${a.row} where id = ${a.id}`;
+    await sql()`insert into settings (key, value) values (${"sheet_tab:" + a.id}, ${JSON.stringify(tab)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+    // The status the row carries now counts as written, so the minute poll changes it only when the card's list differs.
+    if (a.status) await sql()`insert into settings (key, value) values (${"sheet_stage:" + a.id}, ${JSON.stringify(a.status)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+    if (a.blankTitle && a.title.trim()) { try { await updateTaskCells(tab, a.row, { title: a.title.trim() }); } catch (e) { console.error("title fill failed:", (e as Error).message); } }
+  }
 
   const existing = new Set((await sql()`select sheet_key from tasks where origin = 'sheet' and (client_id = ${client.id} or sheet_tab = ${tab})`).map((x) => String(x.sheet_key)));
   const ins = mine.filter((p) => !existing.has(p.key)), upd = mine.filter((p) => existing.has(p.key));
@@ -148,7 +163,7 @@ export async function syncClientTab(client: { id: string; name: string; sheetTab
   // A tab that reads back empty is left alone: that is a read problem, not a cleared tab.
   let removed = 0;
   if (parsed.length) {
-    const keep = parsed.map((p) => p.key);
+    const keep = mine.map((p) => p.key); // a row the hub owns is never a mirrored row as well
     const gone = await sql()`select id from tasks where origin = 'sheet' and sheet_tab = ${tab} and (sheet_key is null or sheet_key <> all(${keep}::text[]))`;
     if (gone.length) {
       const ids = gone.map((g) => String(g.id));
