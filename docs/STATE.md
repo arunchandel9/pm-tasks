@@ -23,6 +23,10 @@ Last updated: 2026-09-18 (PMs board rules, short headlines, `main` branch; `CLAU
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-18, weekends (Arun):** Slack reply reminders keep running on Saturday and Sunday, unchanged. Considered
+  and decided against: holding weekend reminders until 07:00 London on Monday. Reason: the team ignores Slack on the
+  weekend and will ignore the feed the same way, but an urgent client problem must still reach someone; and the 🔴
+  day-old lines are Monday morning's list of what is still unanswered. Holidays: not handled, by decision, for now.
 - **2026-09-18, Vercel cost (Arun):** nine live days used about the whole 20-dollar Pro credit, most of it the hub and
   Pulp. Cause: the minute function fetched every hub card from Pulp one after another (about 80 requests a minute) and
   so lived most of every minute, and Vercel bills every second a function is alive; the Drop reader idles 45 s a
