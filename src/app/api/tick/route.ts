@@ -73,7 +73,10 @@ export async function GET(req: Request) {
   // 3. Pulp poll: each hub card is fetched by id (GET /cards/{id}); the board-cards list is capped at 1000 and the
   //    sprint boards are bigger than that. A card whose list differs from ours has been moved. The sheet is reconciled
   //    independently: the status the sheet last got (settings sheet_stage:<task>) is compared with the card's current
-  //    list every minute, so a failed write is retried and nothing is lost.
+  //    list, so a failed write is retried and nothing is lost.
+  //    Cost (2026-09-18): Vercel bills the function for every second it is alive, and fetching 80 cards one after
+  //    another kept it alive most of the minute. Cards are fetched ten at a time, and only Staging cards every minute;
+  //    a card already out of Staging is looked at every two minutes (its move is a status change, not an approval).
   if (pulp.configured()) {
     const errors: string[] = [];
     const seen: Array<Record<string, unknown>> = [];
@@ -81,19 +84,20 @@ export async function GET(req: Request) {
     try {
       const { sheetsConfigured, updateTaskCells, sheetConfig, locateTaskRow, moveRowBelowDivider } = await import("@/lib/sheets");
       const { moveOutcome, sheetIsManual, cardChangedBoard, writeSheetRow, approveRequest } = await import("@/lib/tasks");
+      const { fetchCards } = await import("@/lib/sheet-cards");
       const ours = await sql()`select t.id, t.pulp_card_id, t.list_id, t.staging, t.title, t.board_id, t.sheet_row, c.name as client_name, tab.value as tab, st.value as sheet_stage
         from tasks t left join clients c on c.id = t.client_id left join settings tab on tab.key = 'sheet_tab:' || t.id::text left join settings st on st.key = 'sheet_stage:' || t.id::text
         where t.pulp_card_id is not null and t.origin = 'hub' and (t.completed_at is null or t.completed_at > now() - interval '7 days')
-        order by t.last_moved_at asc nulls first limit 150`;
-      for (const t of ours) {
-        if (elapsed() > 95_000) { errors.push(`stopped after ${checked} cards: out of time this minute`); break; }
-        let card: Awaited<ReturnType<typeof pulp.getCard>>;
-        try { card = await pulp.getCard(String(t.pulp_card_id)); checked++; }
-        catch (e) {
-          const msg = (e as Error).message;
-          if (/→ 404/.test(msg)) { seen.push({ title: String(t.title).slice(0, 40), found: false }); continue; } // archived or deleted in Pulp: leave the sheet as it is
-          errors.push(`card ${String(t.title).slice(0, 40)}: ${msg.slice(0, 160)}`); continue;
+          and (t.staging or t.pulp_checked_at is null or t.pulp_checked_at < now() - interval '2 minutes')
+        order by t.pulp_checked_at asc nulls first, t.last_moved_at asc nulls first limit 150`;
+      if (ours.length) await sql()`update tasks set pulp_checked_at = now() where id = any(${ours.map((t) => String(t.id))}::uuid[])`;
+      for await (const { row: t, card, error } of fetchCards(ours, () => elapsed() > 95_000)) {
+        if (error === "timeout") { errors.push(`stopped after ${checked} cards: out of time this minute`); break; }
+        if (!card) {
+          if (/→ 404/.test(error ?? "")) { seen.push({ title: String(t.title).slice(0, 40), found: false }); continue; } // archived or deleted in Pulp: leave the sheet as it is
+          errors.push(`card ${String(t.title).slice(0, 40)}: ${(error ?? "").slice(0, 160)}`); continue;
         }
+        checked++;
         const listName = card.listName ?? (await pulp.listsOnBoard(card.boardId)).find((l) => l.id === card.listId)?.name ?? card.listId;
         const done = isDoneList(listName);
         const boardChanged = !!card.boardId && card.boardId !== t.board_id;
@@ -152,15 +156,16 @@ export async function GET(req: Request) {
     } catch (e) { errors.push((e as Error).message); }
     report.pulp = { checked, synced, sheetUpdates, errors };
     try {
-      await sql()`insert into settings (key, value) values ('pulp_poll_last', ${JSON.stringify({ at: new Date().toISOString(), checked, synced, sheetUpdates, errors, tasks: seen.slice(0, 10) })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+      await sql()`insert into settings (key, value) values ('pulp_poll_last', ${JSON.stringify({ at: new Date().toISOString(), checked, synced, sheetUpdates, tickSeconds: Math.round(elapsed() / 100) / 10, errors, tasks: seen.slice(0, 10) })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
     } catch { /* ignore */ }
   }
 
-  // 3a. Cards made by hand in Pulp and linked in the sheet by a PM: check a few per minute, write Status only when the card moved.
+  // 3a. Cards made by hand in Pulp and linked in the sheet by a PM: each looked at every two minutes, ten at a time,
+  //     Status written only when the card moved.
   if (pulp.configured() && sheetsConfigured()) {
     try {
       const { pollSheetCards } = await import("@/lib/sheet-cards");
-      report.sheetCards = await pollSheetCards(40);
+      report.sheetCards = await pollSheetCards(60, () => elapsed() > 100_000);
     } catch (e) { report.sheetCards = { error: (e as Error).message }; }
   }
 

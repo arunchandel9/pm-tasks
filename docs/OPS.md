@@ -87,6 +87,7 @@ The app's avatar is an image URL in Cloud Console → Google Chat API → Config
 
 ## Costs
 
+- Vercel: the hub is billed for every second its functions are alive. Two minute-crons (`tick`, `inbox-tick`) run all day; Pulp cards are fetched ten at a time and the Drop space reader idles about 45 s a minute for the 20-second pick-up Arun chose (2026-09-18: the first nine live days cost about the whole 20-dollar Pro credit because cards were fetched one after another; fixed, expected 8 to 10 dollars a month with the function size set to **Basic** in Vercel → pm-tasks → Settings → Functions → Function CPU). `hub status` → `pulp_poll_last.tickSeconds` shows how long the minute loop lived. Pulp's own Vercel project gets about 30,000 hub requests a day (was 115,000).
 - Model calls: only for understanding a message (about two per message, cached instructions). Logged per call with cost; `hub status` shows the 30-day total. Expect a few dollars a month.
 - Speech-to-Text: about 2 cents per audio minute.
 - Reading through Claude costs the hub nothing; it is plain database lookups.

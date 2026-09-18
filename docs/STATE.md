@@ -23,6 +23,14 @@ Last updated: 2026-09-18 (PMs board rules, short headlines, `main` branch; `CLAU
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-18, Vercel cost (Arun):** nine live days used about the whole 20-dollar Pro credit, most of it the hub and
+  Pulp. Cause: the minute function fetched every hub card from Pulp one after another (about 80 requests a minute) and
+  so lived most of every minute, and Vercel bills every second a function is alive; the Drop reader idles 45 s a
+  minute for the 20-second pick-up. Arun's budget: about 12 dollars a month, speed kept where it is felt. Done: cards
+  fetched ten in parallel; Staging cards every minute, other hub cards and hand-made cards every 2 minutes; Drop
+  space unchanged at 0/20/40 s; function size to Basic (Arun's click in Vercel). Expected 8 to 10 dollars a month;
+  `pulp_poll_last.tickSeconds` in hub status shows the loop's life. Not done, kept for later: Google Workspace Events
+  push for the Drop space (no polling at all, instant pick-up, needs admin scopes).
 - **2026-09-18, headlines (Arun):** a feed headline says what the thread is about and nothing more: client, what
   happened, source. Titles, the sender's words, card links, tagged names, tallies and counts live in the thread. Every
   headline shape changed: `🆕 *HOH* · new task · Dev · Slack, Dr Mehta` (`🔴 … · P1 task`, `… · 3 new tasks, one P1`),

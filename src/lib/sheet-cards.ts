@@ -41,22 +41,43 @@ export const locateRowByCardId = async (tab: string, cardId: string): Promise<nu
 
 export interface SheetCardsReport { checked: number; baselined: number; written: number; closed: number; titled: number; errors: string[] }
 
-export async function pollSheetCards(limit = 40): Promise<SheetCardsReport> {
+export const FETCH_BATCH = 10;
+export type Fetched<R> = { row: R; card: Awaited<ReturnType<typeof pulp.getCard>> | null; error: string | null };
+
+/**
+ * Cards fetched from Pulp ten at a time. One request after another kept the minute function alive for most of the
+ * minute, and Vercel bills every second of that; ten in parallel finish in the time of one. Yields one result per
+ * row, in order; a row whose fetch failed carries the error text. `outOfTime` stops the rest (error "timeout").
+ */
+export async function* fetchCards<R>(rows: R[], outOfTime: () => boolean = () => false): AsyncGenerator<Fetched<R>> {
+  for (let i = 0; i < rows.length; i += FETCH_BATCH) {
+    if (outOfTime()) { yield { row: rows[i], card: null, error: "timeout" }; return; }
+    const batch = rows.slice(i, i + FETCH_BATCH);
+    const results = await Promise.all(batch.map(async (row): Promise<Fetched<R>> => {
+      try { return { row, card: await pulp.getCard(String((row as { pulp_card_id?: unknown }).pulp_card_id)), error: null }; }
+      catch (e) { return { row, card: null, error: (e as Error).message }; }
+    }));
+    for (const r of results) yield r;
+  }
+}
+
+export async function pollSheetCards(limit = 60, outOfTime: () => boolean = () => false): Promise<SheetCardsReport> {
   const report: SheetCardsReport = { checked: 0, baselined: 0, written: 0, closed: 0, titled: 0, errors: [] };
   if (!pulp.configured() || !sheetsConfigured()) return report;
+  // Each card is looked at every two minutes (2026-09-18: was 40 a minute, one request at a time).
   const rows = await sql()`
     select id, pulp_card_id, board_id, list_id, title, sheet_tab, sheet_row, sheet_status
     from tasks where origin = 'sheet' and pulp_card_id is not null and sheet_tab is not null and completed_at is null
+      and (pulp_checked_at is null or pulp_checked_at < now() - interval '2 minutes')
     order by pulp_checked_at asc nulls first, created_at desc limit ${limit}`;
-  for (const t of rows) {
-    await sql()`update tasks set pulp_checked_at = now() where id = ${t.id}`;
-    let card: Awaited<ReturnType<typeof pulp.getCard>>;
-    try { card = await pulp.getCard(String(t.pulp_card_id)); report.checked++; }
-    catch (e) {
-      const msg = (e as Error).message;
-      if (!/→ 404/.test(msg)) report.errors.push(`${String(t.title).slice(0, 40)}: ${msg.slice(0, 120)}`);
+  if (rows.length) await sql()`update tasks set pulp_checked_at = now() where id = any(${rows.map((t) => String(t.id))}::uuid[])`;
+  for await (const { row: t, card, error } of fetchCards(rows, outOfTime)) {
+    if (error === "timeout") { report.errors.push(`stopped after ${report.checked} cards: out of time this minute`); break; }
+    if (!card) {
+      if (!/→ 404/.test(error ?? "")) report.errors.push(`${String(t.title).slice(0, 40)}: ${(error ?? "").slice(0, 120)}`);
       continue; // 404: archived or deleted in Pulp; the row stays as the PM left it
     }
+    report.checked++;
     // A row mirrored from a link with no Task text: give it the card's title, in the hub and in the sheet's blank cell.
     if (isUntitled(String(t.title)) && card.title.trim()) {
       try {
