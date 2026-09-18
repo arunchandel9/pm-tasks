@@ -23,6 +23,10 @@ Last updated: 2026-09-17 (two live days: heartbeats on every reader, Meet in its
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-18, PMs board (Arun):** asks that belong to no department (general: coordination, follow-ups, "share the
+  document") and MangoEyes-internal items go to a **PMs** board, where a PM decides what they are; the Development board
+  is no longer the catch-all. `config/boards.yaml` names the board "PMs"; Pulp's API has no board creation, so Arun
+  creates it by hand with the usual lists and the hub adds Staging.
 - **2026-09-17, nothing runs silent (after the first two live days):** the Meet reader had stood still for a day
   inside the minute loop (a long meeting outran the function budget, the run died without a trace, and that minute's
   mailbox and queue steps died with it). Now: meetings run in their own 5-minute cron (`/api/meet-tick`), at most two per

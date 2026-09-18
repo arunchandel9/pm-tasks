@@ -74,7 +74,7 @@ The app's avatar is an image URL in Cloud Console → Google Chat API → Config
 - Rows are found by their **Pulp link**. Move rows freely within a tab; never clear the link; never move a row to another tab.
 - Only lists named **Done / Completed / Closed** count as finished. "Ready to Use" does not.
 - Sheet Status shows the Pulp **list name as spelled in Pulp**. Keep list names matching the sheet dropdown (fix "Dependancy" → "Dependency" in Pulp).
-- Every hub card carries the label `Task Hub`. Boards are the six department boards; no client or internal boards.
+- Every hub card carries the label `Task Hub`. Boards are the six department boards plus the **PMs** board for general and internal asks; no client boards.
 - The hub never touches priority, assignee or comments after a row is written.
 
 ## Google side (do not change casually)
