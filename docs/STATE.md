@@ -23,6 +23,10 @@ Last updated: 2026-09-17 (two live days: heartbeats on every reader, Meet in its
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-18, `main` branch (Arun):** the repository now has a `main` branch, created from the working branch at the
+  PMs board commit. Work continues on `claude/mangowise-task-automation-3qnd3k`; a finished change is merged into `main`.
+  Arun switches GitHub's default branch and Vercel's Production Branch (project `pm-tasks` → Settings → Git) to `main`;
+  until then Vercel still deploys the working branch.
 - **2026-09-18, PMs board (Arun):** asks that belong to no department (general: coordination, follow-ups, "share the
   document") and MangoEyes-internal items go to a **PMs** board, where a PM decides what they are; the Development board
   is no longer the catch-all. Pulp's API has no board creation, so Arun created it by hand the same day, named

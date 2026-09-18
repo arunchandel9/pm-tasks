@@ -3,8 +3,8 @@
 The hub is live (go-live 2026-09-15). It turns client asks from Google Chat (DM and the "Task Hub Drop" space),
 email (taskhub@mangoeyesagency.com), client Slack channels and Google Meet notes into Pulp cards and PM Overview
 sheet rows, posts one line per message in the "Task Hub Feed" space, and answers questions over MCP from the
-team's Claude accounts. Deployed on Vercel from branch `claude/mangowise-task-automation-3qnd3k`
-(project `pm-tasks`, https://pm-tasks.vercel.app). Nothing runs locally; the sandbox cannot reach vercel.app.
+team's Claude accounts. Developed on branch `claude/mangowise-task-automation-3qnd3k`, merged into `main` when finished
+(Vercel project `pm-tasks`, https://pm-tasks.vercel.app, deploys `main` once Arun switches the Production Branch). Nothing runs locally; the sandbox cannot reach vercel.app.
 
 ## Where everything is (reading order)
 
