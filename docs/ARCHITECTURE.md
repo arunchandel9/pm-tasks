@@ -141,9 +141,12 @@ time. Slack pushes events to `/api/slack/events` in real time (acknowledged with
 
 ## 9. The feed (Task Hub Feed)
 
-One line per source message at the top level; everything about it in that line's thread (the words, per-card lines,
-the "which client?" card, context, links, the voice-note notice, "nothing created"). The line names the client, what
-happened, the card link and the source ("Task Hub, Arun" / "Slack, Dr Mehta" / "Email, name" / "Anuj via Claude-Arun").
+One line per source message at the top level; everything about it in that line's thread (the words, per-card lines
+with titles and links, the "which client?" card, context, the tally of a meeting, the counts of the brief, the
+voice-note notice, "nothing created"). The headline says only what the thread is about: the client, what happened,
+the source ("Task Hub, Arun" / "Slack, Dr Mehta" / "Email, name" / "Anuj via Claude-Arun"), e.g. `🆕 *HOH* · new task ·
+Dev · Slack, Dr Mehta`, `💬 *Abela* · no reply for 20 min · Slack`, `📝 *Introduction Call* · TED · 15 Sep`. Nothing
+else goes in it (Arun, 2026-09-18): a headline that carries the content makes the thread a repeat of itself.
 Icons: 🆕 card · 🔁 repeat noted on a card · ℹ️ noted, no card · ⚠️ unhappy client · ❓ needs a person · 📝 meeting ·
 🔴 P1 · 💬 ⏰ 🔴 reply reminders · 📋 daily brief. Typed replies in a thread answer that thread: a client name, "not a
 task", "make it a task", "approve", "merge", "ack". The receipt rule for the team: no line within 2 minutes → send again.

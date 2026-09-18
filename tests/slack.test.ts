@@ -52,11 +52,10 @@ describe("a message from a client workspace", () => {
 });
 
 describe("reply reminders", () => {
-  it("reads as one feed line, escalating with time", () => {
-    expect(reminderHeadline({ clientName: "Abela", mins: 20, tagged: ["Renu"], words: "the booking form is down on mobile", source: "Slack, Dr Mehta" }))
-      .toBe('💬 *Abela* · no reply for 20 min · tagged Renu · "the booking form is down on mobile" · Slack, Dr Mehta');
-    expect(reminderHeadline({ clientName: "Abela", mins: 60, tagged: [], words: "x", source: "Slack, Dr Mehta" }).startsWith("⏰ *Abela* · no reply for 1 hour · \"x\"")).toBe(true);
-    expect(reminderHeadline({ clientName: "Abela", mins: 1440, tagged: [], words: "x", source: "s" }).startsWith("🔴 *Abela* · no reply for 1 day")).toBe(true);
+  it("reads as one short headline, escalating with time; the words and names are in the thread", () => {
+    expect(reminderHeadline({ clientName: "Abela", mins: 20 })).toBe("💬 *Abela* · no reply for 20 min · Slack");
+    expect(reminderHeadline({ clientName: "Abela", mins: 60 })).toBe("⏰ *Abela* · no reply for 1 hour · Slack");
+    expect(reminderHeadline({ clientName: "Abela", mins: 1440 })).toBe("🔴 *Abela* · no reply for 1 day · Slack");
     expect(markLabel(2880)).toBe("2 days");
   });
   it("runs 20 min, 1 hour, 1 day, then daily until handled", () => {

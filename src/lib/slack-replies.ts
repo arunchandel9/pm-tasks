@@ -19,11 +19,10 @@ export function markLabel(mins: number): string {
   return `${mins} min`;
 }
 
-export function reminderHeadline(p: { clientName: string; mins: number; tagged: string[]; words: string; source: string }): string {
+/** `💬 *Abela* · no reply for 20 min · Slack`: the headline says only what the thread is about; words, names and the link are inside. */
+export function reminderHeadline(p: { clientName: string; mins: number }): string {
   const icon = p.mins >= 1440 ? "🔴" : p.mins >= 60 ? "⏰" : "💬";
-  const tag = p.tagged.length ? ` · tagged ${p.tagged.join(", ")}` : "";
-  const w = p.words.replace(/\s+/g, " ").trim();
-  return `${icon} *${p.clientName}* · no reply for ${markLabel(p.mins)}${tag} · "${w.length > 90 ? w.slice(0, 89).trimEnd() + "…" : w}" · ${p.source}`;
+  return `${icon} *${p.clientName}* · no reply for ${markLabel(p.mins)} · Slack`;
 }
 
 const ackKey = (channelId: string) => `reply_acked:${channelId}`;
@@ -82,9 +81,9 @@ export async function replyCheck(messageId: string, mins: number): Promise<"repl
   const tagged = (raw.mentions ?? []).filter(Boolean);
   const msg: Message = { channel: "slack", externalId: String(m.external_id), teamId: null, clientId: m.client_id as string | null, scope: "client", sender: String(m.sender), senderIsStaff: false, sentAt, text: String(m.text), permalink: (m.permalink as string | null) ?? null, threadRef: null, raw: m.raw };
   const clientName = String(m.client_name ?? "A client");
-  const headline = reminderHeadline({ clientName, mins, tagged, words: String(m.text), source: sourceLabel(msg).replace(" · ", ", ") });
+  const headline = reminderHeadline({ clientName, mins });
   const detail = [
-    `"${String(m.text).trim()}"`,
+    `${sourceLabel(msg).replace(" · ", ", ")}: "${String(m.text).trim()}"`,
     tagged.length ? `Tagged: ${tagged.join(", ")}` : "",
     m.permalink ? `<${m.permalink}|Open in Slack>` : "",
     "Reply in Slack and the reminders stop. Or mark it acknowledged below (or type \"ack\" here).",

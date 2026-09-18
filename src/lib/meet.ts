@@ -100,8 +100,9 @@ export function headlineTitle(title: string): string {
   if (!t || /^meeting( started)?$/i.test(t)) return "Meeting";
   return t.length > 60 ? t.slice(0, 59).trimEnd() + "…" : t;
 }
-export const meetingHeadline = (h: { title: string; who: string; day: string; docUrl: string }, tally: string) =>
-  `📝 *${headlineTitle(h.title)}* · ${h.who} · ${h.day} · ${tally} · <${h.docUrl}|notes>`;
+export const meetingHeadline = (h: { title: string; who: string; day: string }) => `📝 *${headlineTitle(h.title)}* · ${h.who} · ${h.day}`;
+/** The first reply in the meeting's thread: the tally (edited as the action jobs finish) and the notes link. */
+export const meetingTallyLine = (tally: string, docUrl: string) => `${tally} · <${docUrl}|notes>`;
 
 /** Gemini notes start with a line like "Sep 9, 2026" or "Tue, 9 Sep 2026 · 3:00 PM". Fall back to the file time. */
 export function heldAtFrom(notes: string, fallback: string): Date {
@@ -209,8 +210,9 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   const threadKey = `meet-${meetingId}`;
   const who = meetingClient ? meetingClient.name : sorted.meeting_client?.toLowerCase().includes("mango") ? "MangoEyes internal" : "client unclear";
   const day = heldAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
-  const headName = await postHeadline(meetingHeadline({ title, who, day, docUrl }, groups.size ? "reading the notes…" : await tallyText(meetingId)), threadKey);
-  await sql()`insert into settings (key, value) values (${"meet_head:" + meetingId}, ${JSON.stringify({ name: headName, title, who, day, docUrl })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+  const headName = await postHeadline(meetingHeadline({ title, who, day }), threadKey);
+  const tallyName = await postHeadline(meetingTallyLine(groups.size ? "reading the notes…" : await tallyText(meetingId), docUrl), threadKey);
+  await sql()`insert into settings (key, value) values (${"meet_head:" + meetingId}, ${JSON.stringify({ name: headName, tallyName, title, who, day, docUrl })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
   const summary = (sorted.summary ?? []).slice(0, 4).map((x) => `• ${x}`).join("\n");
   await postDetail([summary ? `*In short*\n${summary}` : "", ideaLines.length ? `*Raised*\n${ideaLines.join("\n")}` : "", clientTodo.length ? `*With the client*\n${clientTodo.join("\n")}` : ""].filter(Boolean).join("\n\n"), threadKey);
 
@@ -269,12 +271,16 @@ export async function tallyText(meetingId: string): Promise<string> {
   ].filter(Boolean).join(" · ") || "nothing to act on";
 }
 
-/** Rewrite the meeting's headline with the current tally. */
+/** Rewrite the meeting's tally reply with the current counts (a meeting from before 2026-09-18 gets the reply posted now). */
 export async function refreshMeetingHeadline(meetingId: string): Promise<void> {
   const r = await sql()`select value from settings where key = ${"meet_head:" + meetingId}`;
   if (!r.length) return;
-  const h = r[0].value as { name: string | null; title?: string; who: string; day: string; docUrl: string };
-  await editHeadline(h.name, meetingHeadline({ title: h.title ?? "Meeting", who: h.who, day: h.day, docUrl: h.docUrl }, await tallyText(meetingId)));
+  const h = r[0].value as { name: string | null; tallyName?: string | null; title?: string; who: string; day: string; docUrl: string };
+  const line = meetingTallyLine(await tallyText(meetingId), h.docUrl);
+  if (h.tallyName) return editHeadline(h.tallyName, line);
+  if (h.tallyName === null) return; // no message to edit on this surface
+  const tallyName = await postHeadline(line, `meet-${meetingId}`);
+  await sql()`update settings set value = value || ${JSON.stringify({ tallyName })}::jsonb, updated_at = now() where key = ${"meet_head:" + meetingId}`;
 }
 
 /**
@@ -308,8 +314,10 @@ export async function rereadNoteDoc(fileId: string): Promise<string> {
     await sql()`delete from meetings where id = ${m.id}`;
     // The old headline goes, so the feed shows one line for the meeting, not a stale one beside the new one.
     const head = await sql()`select value from settings where key = ${"meet_head:" + m.id}`;
-    const name = (head[0]?.value as { name?: string | null } | undefined)?.name;
-    if (name) { try { const { deleteMessage } = await import("./gchat"); await deleteMessage(name); } catch (e) { console.error("old headline not deleted", (e as Error).message); } }
+    const v = (head[0]?.value as { name?: string | null; tallyName?: string | null } | undefined) ?? {};
+    for (const name of [v.name, v.tallyName]) {
+      if (name) { try { const { deleteMessage } = await import("./gchat"); await deleteMessage(name); } catch (e) { console.error("old headline not deleted", (e as Error).message); } }
+    }
     await sql()`delete from settings where key = ${"meet_head:" + m.id}`;
     await sql()`delete from queue where done_at is null and kind = 'meet_group' and payload->>'meetingId' = ${String(m.id)}`;
   }

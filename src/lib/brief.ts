@@ -101,11 +101,11 @@ export function renderBrief(d: BriefData): { headline: string; detail: string | 
     d.overdue.length ? `${d.overdue.length} overdue` : null,
     d.done.length ? `${d.done.length} done` : null,
   ].filter(Boolean);
-  const title = `📋 *Daily brief · ${d.day}*`;
-  if (!counts.length) return { headline: `${title} · quiet day: nothing new, nothing waiting, no issues.`, detail: null };
-  const headline = `${title} · ${counts.join(" · ")}${waiting || d.issues.length ? " · details in the thread" : ""}`;
+  // The headline is the label of the thread; the counts open it (Arun, 2026-09-18: a headline carries no content).
+  const headline = `📋 *Daily brief · ${d.day}*`;
+  if (!counts.length) return { headline: `${headline} · quiet day`, detail: null };
 
-  const s: string[] = [];
+  const s: string[] = [counts.join(" · ")];
   if (d.newToday.length) {
     s.push(`*New today (${d.newToday.length})*`);
     for (const t of d.newToday) s.push(`• ${t.priority === "P1" ? "🔴 " : ""}${t.client} · ${clip(t.title, 70)}${t.hold ? " · in Staging" : ""}${card(t.link)}`);

@@ -7,7 +7,7 @@ import { classify } from "./llm/classify";
 import { route } from "./route";
 import type { Message, Client } from "./types";
 import { addReaction, postThreadFollowupComment } from "./slack";
-import { postReview, postP1Ping, postText, postFeed, wordsLine, reviewMode, draftLine, followupLine, messageThreadKey, suggestedClientOf, sourceLabel, feedThreadKeyOf, inSharedThread } from "./review";
+import { postReview, postP1Ping, postText, postFeed, wordsLine, reviewMode, draftLine, followupLine, feedHeadline, newTasksHeadline, followupHeadline, messageThreadKey, suggestedClientOf, feedThreadKeyOf, inSharedThread } from "./review";
 import { createStagingCard } from "./tasks";
 
 export interface ProcessResult {
@@ -121,7 +121,8 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
       const chasing = /\b(any update|update on|status|eta|any news|when will|still waiting|following up|follow up)\b|\?\s*$/i.test(m.text);
       await postThreadFollowupComment({ taskId: root[0].task_id, requestId: root[0].request_id, message: m, flag: chasing ? "client_waiting" : undefined });
       if (m.channel === "intake" && reviewMode() === "notify") {
-        await postFeed({ headline: followupLine({ client, existingTitle: String(root[0].title ?? "the task"), kind: "followup_change", message: m, pulpLink: await cardLink(root[0].task_id as string | null) }), detail: wordsLine(m.text), threadKey: messageThreadKey(String(root[0].root_message_id)) });
+        const line = followupLine({ client, existingTitle: String(root[0].title ?? "the task"), kind: "followup_change", pulpLink: await cardLink(root[0].task_id as string | null) });
+        await postFeed({ headline: followupHeadline({ client, message: m, kind: "followup_change" }), detail: [line, wordsLine(m.text)].filter(Boolean).join("\n"), threadKey: messageThreadKey(String(root[0].root_message_id)) });
       }
       return { messageId, outcome: "attached", requestIds: [String(root[0].request_id)] };
     }
@@ -136,8 +137,9 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     if ((m.channel === "intake" || m.channel === "task_cmd" || m.channel === "slack" || inSharedThread(m)) && reviewMode() === "notify") {
       // The feed is the team's record: a repeat that was noted on its card gets a line too, not only the sender's thread.
       const t = await sql()`select coalesce(draft->>'title', '') as title from requests where id = ${dd.requestId}`;
-      if (inSharedThread(m)) await postText(followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m, pulpLink: await cardLink(dd.taskId) }), { threadKey: feedThreadKeyOf(m, messageId) });
-      else await postFeed({ headline: followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", message: m, pulpLink: await cardLink(dd.taskId) }), detail: wordsLine(m.text), threadKey: messageThreadKey(messageId) });
+      const line = followupLine({ client, existingTitle: String(t[0]?.title || "the task"), kind: "possible_duplicate", pulpLink: await cardLink(dd.taskId) });
+      if (inSharedThread(m)) await postText(line, { threadKey: feedThreadKeyOf(m, messageId) });
+      else await postFeed({ headline: followupHeadline({ client, message: m, kind: "possible_duplicate" }), detail: [line, wordsLine(m.text)].filter(Boolean).join("\n"), threadKey: messageThreadKey(messageId) });
     }
     return { messageId, outcome: "attached", reason: dd.kind, requestIds: [dd.requestId] };
   }
@@ -172,8 +174,8 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
       // A displeased client with no ask is not "nothing": someone should reply. One ⚠️ line in the feed, listed in the brief until handled.
       await sql()`update messages set skip_reason = 'client_unhappy' where id = ${messageId}`;
       await postFeed({
-        headline: `⚠️ *${client?.name ?? "Unknown client"}* · client sounds unhappy · ${sourceLabel(m).replace(" · ", ", ")} · no task made, a person should reply`,
-        detail: [wordsLine(m.text), ex.summary.length ? `Context: ${ex.summary.join(" ")}` : "", m.permalink ? `<${m.permalink}|Open the message>` : ""].filter(Boolean).join("\n"),
+        headline: feedHeadline({ icon: "⚠️", client, what: "client unhappy, reply needed", message: m }),
+        detail: [wordsLine(m.text), ex.summary.length ? `Context: ${ex.summary.join(" ")}` : "", "No task made. A person should reply.", m.permalink ? `<${m.permalink}|Open the message>` : ""].filter(Boolean).join("\n"),
         threadKey: messageThreadKey(messageId),
       });
       return { messageId, outcome: "skipped", reason: "client_unhappy" };
@@ -188,6 +190,8 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
   // notify mode: one short line per task, all asks from one message in a single post. No buttons; Staging is the approval.
   const notify = reviewMode() === "notify";
   const feed: string[] = [];
+  const cards: Array<{ priority: string; department: string }> = []; // what the headline counts; the lines above are the thread
+  let followKind: "possible_duplicate" | "followup_change" | null = null;
   const noCard: string[] = [];
 
   for (let i = 0; i < ex.asks.length; i++) {
@@ -231,7 +235,8 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
         // If the PM disagrees, /task in Intake makes it a separate task.
         await sql()`update requests set status = 'merged', merged_into = ${target.id}, decided_by = 'system:same_thread' where id = ${requestId}`;
         await postThreadFollowupComment({ taskId: target.taskId, requestId: target.id, message: m });
-        feed.push(followupLine({ client, existingTitle: target.title, kind, message: m, pulpLink: await cardLink(target.taskId) }));
+        feed.push(followupLine({ client, existingTitle: target.title, kind, pulpLink: await cardLink(target.taskId) }));
+        followKind ??= kind;
         continue;
       }
       await postReview({ kind, requestId, client, message: m, duplicateOf: target.id });
@@ -248,7 +253,8 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     const task = await createStagingCard({ requestId, client, route: r, draft: { title: cl.title, description: cl.description, labels: r.labels }, message: m, quote: a.quote });
     const pulpLink = task?.pulpCardId ? pulp.cardUrl(task.boardId ?? r.board ?? "", task.pulpCardId) : null;
     if (notify && pulpLink) {
-      feed.push(draftLine({ client, title: cl.title, department: r.department, priority: r.priority, gated: r.gated, pulpLink, message: m }));
+      feed.push(draftLine({ client, title: cl.title, department: r.department, priority: r.priority, gated: r.gated, pulpLink }));
+      cards.push({ priority: r.priority, department: r.department });
       continue;
     }
     // No Staging card exists (Pulp not connected) or approve mode: the card with buttons is the only way to approve.
@@ -261,7 +267,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     // sender is told (the DM/Drop thread reply comes from the caller via reason "no_card").
     await sql()`update messages set skip_reason = 'no_card' where id = ${messageId}`;
     if (notify && !inSharedThread(m)) {
-      await postFeed({ headline: `ℹ️ *${client?.name ?? "Unknown client"}* · noted, no card · ${clip(noCard[0], 70)}${noCard.length > 1 ? ` +${noCard.length - 1}` : ""} · ${sourceLabel(m).replace(" · ", ", ")}`, detail: [noCard.map((t) => `• ${t}`).join("\n"), wordsLine(m.text)].filter(Boolean).join("\n"), threadKey: messageThreadKey(messageId) });
+      await postFeed({ headline: feedHeadline({ icon: "ℹ️", client, what: "noted, no task", message: m }), detail: [noCard.map((t) => `• ${t}`).join("\n"), wordsLine(m.text)].filter(Boolean).join("\n"), threadKey: messageThreadKey(messageId) });
     } else if (inSharedThread(m)) await postText(`ℹ️ noted, no card: ${noCard.join("; ")}`, { threadKey: feedThreadKeyOf(m, messageId) });
     await addReaction(m, "eyes");
     return { messageId, outcome: "skipped", reason: "no_card", requestIds };
@@ -270,12 +276,10 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     // Part of a bigger post (a meeting): the card lines are replies in that thread; the meeting headline carries the counts.
     await postText(feed.join("\n"), { threadKey: feedThreadKeyOf(m, messageId) });
   } else if (feed.length) {
-    // One line in the feed per message. One card: its line is the headline and the words sit in the thread.
-    // Several cards: a count line on top, the per-card lines with links in the thread.
-    const src = sourceLabel(m).replace(" · ", ", ");
-    const titles = feed.map((l) => l.split(" · ")[1] ?? "").filter(Boolean);
-    const headline = feed.length === 1 ? feed[0] : `${feed.some((l) => l.startsWith("🔴")) ? "🔴" : "🆕"} *${client?.name ?? "Unknown client"}* · ${feed.length} cards · ${titles.join("; ").slice(0, 90)} · ${src}`;
-    const detail = [...(feed.length > 1 ? feed : []), wordsLine(m.text)].filter(Boolean).join("\n");
+    // One line in the feed per message: client, what happened, source. The card lines (title, department, priority,
+    // link) and the sender's words sit in the thread, however many cards there are.
+    const headline = cards.length ? newTasksHeadline({ client, message: m, cards }) : followupHeadline({ client, message: m, kind: followKind ?? "followup_change" });
+    const detail = [...feed, wordsLine(m.text)].filter(Boolean).join("\n");
     await postFeed({ headline, detail, threadKey: messageThreadKey(messageId) });
   }
   await addReaction(m, "eyes");

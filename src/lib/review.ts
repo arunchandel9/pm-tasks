@@ -33,23 +33,48 @@ const DEPT: Record<string, string> = { dev: "Dev", content: "Content", design: "
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
 /**
- * One feed line: `🆕 *HOH* · Fix Book Now button on mobile · Dev · P2 · Staging card · Slack, Dr Mehta`. P1 lines start with 🔴.
- * Gated asks (new page, new feature) say `Needs scope card` instead: the card waits in the Needs scope list until a person scopes it.
+ * The headline rule (Arun, 2026-09-18): a headline says what the thread is about and nothing more. Client, what
+ * happened, where it came from. The words, titles, card links, names and counts all live in the thread. A headline
+ * that carries the content makes the thread a repeat of itself.
  */
-export function draftLine(p: { client: Client | null; title: string; department: string; priority: string; gated: boolean; pulpLink: string | null; message: Message }): string {
+const clientName = (c: Client | null) => `*${c?.name ?? "Unknown client"}*${c?.scope === "internal" ? " (internal)" : ""}`;
+const from = (m: Message) => sourceLabel(m).replace(" · ", ", ");
+export function feedHeadline(p: { icon: string; client: Client | null; what: string; message: Message; extra?: string | null }): string {
+  return [`${p.icon} ${clientName(p.client)}`, p.what, p.extra ?? null, from(p.message)].filter(Boolean).join(" · ");
+}
+
+/** Headline for a message that made cards: `🆕 *HOH* · new task · Dev · Slack, Dr Mehta`; P1 `🔴 *HOH* · P1 task · Dev · …`; several `🆕 *HOH* · 3 new tasks · …`. */
+export function newTasksHeadline(p: { client: Client | null; message: Message; cards: Array<{ priority: string; department: string }> }): string {
+  const p1 = p.cards.filter((c) => c.priority === "P1").length;
+  const depts = [...new Set(p.cards.map((c) => DEPT[c.department] ?? c.department))];
+  const n = p.cards.length;
+  const what = n === 1 ? (p1 ? "P1 task" : "new task") : `${n} new tasks${p1 ? `, ${p1 === 1 ? "one" : p1} P1` : ""}`;
+  return feedHeadline({ icon: p1 ? "🔴" : "🆕", client: p.client, what, extra: depts.length === 1 ? depts[0] : null, message: p.message });
+}
+
+/** Headline for a message that belongs to an existing task: `🔁 *HOH* · update to a task · Slack, Dr Mehta`. */
+export function followupHeadline(p: { client: Client | null; message: Message; kind: "possible_duplicate" | "followup_change" }): string {
+  return feedHeadline({ icon: "🔁", client: p.client, what: p.kind === "possible_duplicate" ? "same as an open task" : "update to a task", message: p.message });
+}
+
+/**
+ * The card line inside the thread: `🆕 Fix Book Now button on mobile · Dev · P2 · Staging card`. P1 lines start with 🔴.
+ * The client name is kept because a meeting's thread lists several clients' cards. Gated asks (new page, new feature)
+ * say `Needs scope card` instead: the card waits in the Needs scope list until a person scopes it.
+ */
+export function draftLine(p: { client: Client | null; title: string; department: string; priority: string; gated: boolean; pulpLink: string | null; message?: Message }): string {
   const icon = p.priority === "P1" ? "🔴 *P1*" : "🆕";
-  const name = `*${p.client?.name ?? "Unknown client"}*${p.client?.scope === "internal" ? " (internal)" : ""}`;
   const hold = p.gated ? "Needs scope card" : "Staging card";
   const where = p.pulpLink ? `<${p.pulpLink}|${hold}>` : p.gated ? "needs scope, card pending" : "card pending";
-  const parts = [`${icon} ${name}`, clip(p.title, 90), DEPT[p.department] ?? p.department, p.priority === "P1" ? null : p.priority, where, sourceLabel(p.message).replace(" · ", ", ")];
+  const parts = [`${icon} ${clientName(p.client)}`, clip(p.title, 90), DEPT[p.department] ?? p.department, p.priority === "P1" ? null : p.priority, where];
   return parts.filter(Boolean).join(" · ");
 }
 
-/** One feed line for a message that belongs to an existing task: noted on that card, nothing new created. The words go in the thread. */
-export function followupLine(p: { client: Client | null; existingTitle: string; kind: "possible_duplicate" | "followup_change"; message: Message; pulpLink?: string | null }): string {
+/** The line inside the thread for a message noted on an existing card: which task, and its link. */
+export function followupLine(p: { client: Client | null; existingTitle: string; kind: "possible_duplicate" | "followup_change"; message?: Message; pulpLink?: string | null }): string {
   const what = p.kind === "possible_duplicate" ? "same as" : "update to";
   const card = p.pulpLink ? `<${p.pulpLink}|card>` : "card";
-  return `🔁 *${p.client?.name ?? "Unknown client"}* · ${what} *${clip(p.existingTitle, 60)}* · noted on its ${card} · ${sourceLabel(p.message).replace(" · ", ", ")}`;
+  return `🔁 ${clientName(p.client)} · ${what} *${clip(p.existingTitle, 60)}* · noted on its ${card}`;
 }
 
 /** The sender's own words, for the thread under a feed line. */
@@ -146,7 +171,8 @@ export async function postReview(p: ReviewPost): Promise<void> {
       clients: rows.map((r) => ({ id: String(r.id), name: String(r.name) })),
     });
     // One headline line in the feed; the words and the card with the dropdown sit in its thread.
-    const head = p.why.startsWith("unknown") ? `❓ *Which client?* · ${sourceLabel(p.message).replace(" · ", ", ")} · ${clip(wordsLine(p.message.text), 70)}` : `❓ *Needs a person* · ${p.why.replace(/_/g, " ")} · ${sourceLabel(p.message).replace(" · ", ", ")}`;
+    const why = { attachment_only: "image only", daily_cap: "daily cap reached", voice_too_long: "voice note too long" }[p.why] ?? p.why.replace(/_/g, " ");
+    const head = p.why.startsWith("unknown") ? `❓ *Which client?* · ${from(p.message)}` : `❓ *Needs a person* · ${why} · ${from(p.message)}`;
     const tk = feedThreadKeyOf(p.message, p.messageId);
     const headName = await gchat.sendText(space, head, undefined, tk);
     const sent = await gchat.sendCard(space, card, "Pick the client below, or reply here with the name.", `human-${p.messageId}`, tk);

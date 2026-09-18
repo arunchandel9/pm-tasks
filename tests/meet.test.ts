@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { meetingTitle, heldAtFrom, notesNotReady, headlineTitle } from "../src/lib/meet";
+import { meetingTitle, heldAtFrom, notesNotReady, headlineTitle, meetingHeadline, meetingTallyLine } from "../src/lib/meet";
+
+describe("meeting headline", () => {
+  it("names the call, whose it was and the day; the tally and notes link are the first reply", () => {
+    expect(meetingHeadline({ title: "Introduction Call – 2026/09/15 15:22 CEST", who: "Leicester MediSpa", day: "15 Sep" })).toBe("📝 *Introduction Call* · Leicester MediSpa · 15 Sep");
+    expect(meetingTallyLine("5 cards · 1 idea", "https://docs/x")).toBe("5 cards · 1 idea · <https://docs/x|notes>");
+  });
+});
 
 describe("the feed headline carries the call's name", () => {
   it("drops Gemini's date-time tail", () => {

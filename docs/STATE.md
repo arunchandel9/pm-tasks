@@ -11,7 +11,7 @@ Entries below are dated; a later entry supersedes an earlier one (for example th
 nudges described in older entries are gone: Drop space and 20 min / 1 h / 1 day / daily reminders since 2026-09-15).
 Keep it updated with every change.
 
-Last updated: 2026-09-17 (two live days: heartbeats on every reader, Meet in its own cron, Slack invites checked per workspace; `CLAUDE.md` is the entry point).
+Last updated: 2026-09-18 (PMs board rules, short headlines, `main` branch; `CLAUDE.md` is the entry point).
 
 ## Decisions finalised
 
@@ -23,6 +23,14 @@ Last updated: 2026-09-17 (two live days: heartbeats on every reader, Meet in its
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-18, headlines (Arun):** a feed headline says what the thread is about and nothing more: client, what
+  happened, source. Titles, the sender's words, card links, tagged names, tallies and counts live in the thread. Every
+  headline shape changed: `🆕 *HOH* · new task · Dev · Slack, Dr Mehta` (`🔴 … · P1 task`, `… · 3 new tasks, one P1`),
+  `🔁 *HOH* · update to a task · …`, `ℹ️ *HOH* · noted, no task · …`, `⚠️ *HOH* · client unhappy, reply needed · …`,
+  `❓ *Which client?* · Task Hub, Arun`, `💬 *Abela* · no reply for 20 min · Slack`, `📝 *Introduction Call* · TED · 15 Sep`
+  (tally and notes link are the first reply, rewritten as jobs finish), `📋 *Daily brief · Mon 14 Sep*` (counts open the
+  thread). Reason: the headline carried the whole context and the thread repeated it. The rule applies to every future
+  feed line. Kept in the headline on purpose: the client name (how the feed is scanned) and the P1 mark.
 - **2026-09-18, `main` branch (Arun):** the repository now has a `main` branch, created from the working branch at the
   PMs board commit. Work continues on `claude/mangowise-task-automation-3qnd3k`; a finished change is merged into `main`.
   Arun switches GitHub's default branch and Vercel's Production Branch (project `pm-tasks` → Settings → Git) to `main`;
@@ -125,7 +133,7 @@ Last updated: 2026-09-17 (two live days: heartbeats on every reader, Meet in its
 - **Review = Staging in Pulp, not buttons in Chat** (decided 2026-09-08). Every task becomes a real card in the board's
   `Staging` list; the PM drags it out and assigns it, and that is the approval (sheet row written then, stamp says
   "drag in Pulp"). PM Review is a short feed, one line per task, all asks from one message in a single post
-  (`🆕 *HOH* · title · Dev · P2 · Staging card · Slack, Dr Mehta`; P1 lines start with 🔴). Messages that belong to an
+  (headline `🆕 *HOH* · new task · Dev · Slack, Dr Mehta` since 2026-09-18, the card line with title and link in the thread; P1 lines start with 🔴). Messages that belong to an
   existing task are commented onto that card and get one 🔁 line, nothing new created. Only these still need a
   person in Chat: "needs a person" cards (unknown client, voice note too long) and the unanswered-client nudges.
   Those cards are answered either with the dropdown/buttons or by a typed reply in the card's thread that mentions

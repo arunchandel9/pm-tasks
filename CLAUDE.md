@@ -22,7 +22,7 @@ team's Claude accounts. Developed on branch `claude/mangowise-task-automation-3q
 - Nothing built may exist only in code: add a row to `docs/FEATURES.md`, note the decision in `docs/STATE.md`, keep `docs/SOAK.md` current.
 - Every bug is fixed at the root and its siblings checked; the same thing must not happen twice.
 - Do not build before the doubt is cleared and Arun says go. Ask one crisp question, no loops.
-- The feed is one line per message; everything else goes in that line's thread. A headline must look like a headline.
+- The feed is one line per message; everything else goes in that line's thread. A headline says only what the thread is about (client, what happened, source): no titles, words, links, names or counts. That applies to every feed line, present and future.
 - A client is set only with full clarity; near-misses are suggestions the sender confirms.
 - Writes from Claude ask who is asking (label "Anuj via Claude-Arun"); reads ask nothing.
 - One Staging list per board; no client or internal boards; no separate Needs scope list.
@@ -37,4 +37,4 @@ same for a browser.
 
 ## Checks before pushing
 
-`npx tsc --noEmit` and `npx vitest run` (121 tests). Vercel deploys the branch in about two minutes.
+`npx tsc --noEmit` and `npx vitest run` (125 tests). Vercel deploys the branch in about two minutes.

@@ -20,7 +20,7 @@ Put the client first when the message does not say it: `HOH: the booking form is
 1. **The feed line is the receipt.** Every message gets one line in **Task Hub Feed** (📋). Nothing within 2 minutes → send it again.
 2. **Answer the hub in its thread.** "Which client?" → reply with the name, or `yes` to its suggestion. "Heard: …" on a voice note → if it misheard, reply with the correction and the card follows.
 3. **Say the client name in a voice note.** No name → the hub asks, nothing is filed until you answer.
-4. **Nothing vanishes.** An update with no ask gets an ℹ️ "noted, no card" line. An unhappy client gets a ⚠️ line: a person replies to the client, the hub never does.
+4. **Nothing vanishes.** An update with no ask gets an ℹ️ "noted, no task" line. An unhappy client gets a ⚠️ line: a person replies to the client, the hub never does.
 5. **Do not send twice.** A repeat gets a 🔁 line pointing at the card that already exists. Add detail by replying in the feed thread or the DM thread; it lands on the card.
 
 ## PMs
