@@ -11,7 +11,7 @@ Entries below are dated; a later entry supersedes an earlier one (for example th
 nudges described in older entries are gone: Drop space and 20 min / 1 h / 1 day / daily reminders since 2026-09-15).
 Keep it updated with every change.
 
-Last updated: 2026-09-18 (PMs board rules, short headlines, `main` branch; `CLAUDE.md` is the entry point).
+Last updated: 2026-09-21 (no Slack reactions; 18 Sep: PMs board rules, short headlines, Vercel cost, `main` branch; `CLAUDE.md` is the entry point).
 
 ## Decisions finalised
 
@@ -23,6 +23,9 @@ Last updated: 2026-09-18 (PMs board rules, short headlines, `main` branch; `CLAU
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-21, no reactions in Slack (Arun):** the hub used to put a 👀 on every client Slack message it read (🔁 on a
+  repeat, 🔗 on a follow-up) as a silent receipt; a client saw "Task Hub reacted with :eyes:". Removed: the hub writes
+  nothing at all in a client workspace. The `reactions:*` scopes stay in the app so no workspace needs reinstalling.
 - **2026-09-18, weekends (Arun):** Slack reply reminders keep running on Saturday and Sunday, unchanged. Considered
   and decided against: holding weekend reminders until 07:00 London on Monday. Reason: the team ignores Slack on the
   weekend and will ignore the feed the same way, but an urgent client problem must still reach someone; and the 🔴

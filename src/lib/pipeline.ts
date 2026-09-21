@@ -6,7 +6,7 @@ import { extract } from "./llm/extract";
 import { classify } from "./llm/classify";
 import { route } from "./route";
 import type { Message, Client } from "./types";
-import { addReaction, postThreadFollowupComment } from "./slack";
+import { postThreadFollowupComment } from "./slack";
 import { postReview, postP1Ping, postText, postFeed, wordsLine, reviewMode, draftLine, followupLine, feedHeadline, newTasksHeadline, followupHeadline, messageThreadKey, suggestedClientOf, feedThreadKeyOf, inSharedThread } from "./review";
 import { createStagingCard } from "./tasks";
 
@@ -132,7 +132,6 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
   const dd = await dedupe(m.clientId, latestPart(m.text), hash, messageId);
   if (dd.kind === "exact_duplicate" || dd.kind === "likely_duplicate") {
     await sql()`update messages set skip_reason = ${dd.kind} where id = ${messageId}`;
-    await addReaction(m, "repeat");
     await postThreadFollowupComment({ taskId: dd.taskId, requestId: dd.requestId, message: m });
     if ((m.channel === "intake" || m.channel === "task_cmd" || m.channel === "slack" || inSharedThread(m)) && reviewMode() === "notify") {
       // The feed is the team's record: a repeat that was noted on its card gets a line too, not only the sender's thread.
@@ -269,7 +268,6 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     if (notify && !inSharedThread(m)) {
       await postFeed({ headline: feedHeadline({ icon: "ℹ️", client, what: "noted, no task", message: m }), detail: [noCard.map((t) => `• ${t}`).join("\n"), wordsLine(m.text)].filter(Boolean).join("\n"), threadKey: messageThreadKey(messageId) });
     } else if (inSharedThread(m)) await postText(`ℹ️ noted, no card: ${noCard.join("; ")}`, { threadKey: feedThreadKeyOf(m, messageId) });
-    await addReaction(m, "eyes");
     return { messageId, outcome: "skipped", reason: "no_card", requestIds };
   }
   if (feed.length && inSharedThread(m)) {
@@ -282,7 +280,6 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     const detail = [...feed, wordsLine(m.text)].filter(Boolean).join("\n");
     await postFeed({ headline, detail, threadKey: messageThreadKey(messageId) });
   }
-  await addReaction(m, "eyes");
   return { messageId, outcome: "review", requestIds };
 }
 

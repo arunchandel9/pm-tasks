@@ -157,22 +157,9 @@ export function verifySlackSignature(rawBody: string, timestamp: string, signatu
 
 // ---- posting ----
 
-function slackChannelAndTs(m: Message): { channel: string; ts: string } | null {
-  if (m.channel !== "slack" && m.channel !== "intake") return null;
-  const [channel, ts] = m.externalId.split(":");
-  return channel && ts ? { channel, ts } : null;
-}
 
-/** Internal acknowledgement: a reaction on the source message in its own workspace. Never a client-facing reply. */
-export async function addReaction(m: Message, name: string): Promise<void> {
-  const ref = slackChannelAndTs(m);
-  if (!ref) return;
-  try {
-    await (await web(m.teamId)).reactions.add({ channel: ref.channel, timestamp: ref.ts, name });
-  } catch {
-    /* already reacted or no permission: not worth failing the pipeline */
-  }
-}
+// The hub never writes anything in a client's Slack, not even a reaction (Arun, 2026-09-21: a 👀 on a client's message
+// was seen; the feed is the receipt). The `reactions:*` scopes stay in the manifest so no workspace needs reinstalling.
 
 type ReviewPost =
   | { kind: "draft"; requestId: string; taskId: string | null; client: Client | null; message: Message; route: RouteDecision; draft: Draft; confidence: number; reason: string }
@@ -274,5 +261,4 @@ export async function postP1Ping(p: { requestId: string; client: Client | null; 
 export async function postThreadFollowupComment(p: { taskId: string | null; requestId: string; message: Message; flag?: "client_waiting" }): Promise<void> {
   await sql()`
     insert into queue (kind, payload) values ('card_comment', ${JSON.stringify({ taskId: p.taskId, requestId: p.requestId, text: p.message.text, permalink: p.message.permalink, flag: p.flag ?? null })}::jsonb)`;
-  await addReaction(p.message, "link");
 }
