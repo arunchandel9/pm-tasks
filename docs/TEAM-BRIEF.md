@@ -17,10 +17,40 @@ Guide, one page per role: `docs/GUIDE.md` (link). Questions to me.
 
 ## What changed on 22 September (post this as a second message)
 
-Task Hub now makes fewer cards, and none without you.
+```
+Task Hub, round two: fewer cards, nothing without you
 
-- Every message becomes one of five things: a task, a reminder, an idea, a rule for a client, or a note. Only a task can become a card.
-- A task comes to you as a card in the feed thread, with Department, Assign to, Priority and Due filled in. Check, change if needed, tap **Create card**. It lands in To Do on the board, assigned, sheet row written. **Remind me instead** sets a reminder for you. **No card** makes nothing. No more Staging, no more dragging.
-- Say "remind me tomorrow" or "chase this on Friday" in the Drop and the hub reminds you, @mentioned, until you press Done.
-- Ideas come back every Monday at 10:00 for a decision: Make it a task, or Not now.
-- The daily brief now comes at 10:00, lists only what is waiting on a named person, and does not post when nothing is.
+Thank you for the honest feedback last week. You were right: too many cards, a Staging list nobody wanted to drag, and a feed that did not tell you what to do. Since this morning the hub works the way you asked.
+
+What is different
+
+1. Only real work becomes a card.
+   Every message is now sorted into one of five things: a task, a reminder, an idea, a rule for a client, or a note. Scheduling, access, "look at this", feedback and conversation are notes: on record, no card. Last week that would have stopped about half of the 80 cards.
+
+2. You decide, in one tap.
+   A task comes to you as a card in the feed thread, addressed to you, with Department, Assign to, Priority and Due already filled in. Check them, change any that is wrong, tap Create card. The Pulp card appears in To Do, assigned, and the sheet row is written at the same moment. Not a card? Tap No card. Want to be nudged later? Tap Remind me instead. No more Staging, no more dragging, no more assigning afterwards.
+
+3. The hub remembers for you.
+   Say "remind me tomorrow" or "chase this on Friday" in the Drop, and it comes back to you in the feed, @mentioned, every morning until you press Done.
+
+4. Ideas do not get lost.
+   Every idea comes back on Monday at 10:00 in one post: Make it a task, or Not now. An idea nobody decides on comes back the next Monday.
+
+5. A rule stays with the client.
+   "Ask my permission before changing appointment durations" is printed on every card for that client from now on.
+
+6. One brief that means something.
+   At 10:00 on weekdays the feed shows only what is waiting on a named person, with you @mentioned on yours. Nothing waiting, no post.
+
+7. Urgent is urgent.
+   "Most urgent", "asap", "within 24 hours" make it P1 with a 4-hour due, shown on the card before you tap.
+
+What this means for you
+
+Your feed is now a list of decisions, not a log. Everything else the hub handles by itself. When a card is addressed to you, it needs ten seconds of your attention. That is the whole job.
+
+Two small asks
+
+- The cards still sitting in Staging from before today: drag them out or delete them this week. After that, Staging is history.
+- If a card is proposed that should not have been, tap No card and tell me. Every one of those makes the hub sharper.
+```
