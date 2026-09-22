@@ -162,7 +162,7 @@ export async function recentMessages(q: Window & { client?: string | null; chann
   const { since, until } = windowBounds(q, 7), limit = Math.min(Math.max(q.limit ?? 30, 1), 200);
   const rows = await sql()`
     select m.id, c.name as client, m.channel, m.sender, m.sender_is_staff, m.sent_at, left(m.text, 500) as text, m.skip_reason, m.permalink,
-           (select count(*) from requests r where r.message_id = m.id and r.status in ('created','approved','pending_review','needs_scope'))::int as tasks
+           (select count(*) from requests r where r.message_id = m.id and r.status in ('proposed','created','approved','pending_review','needs_scope'))::int as tasks
     from messages m left join clients c on c.id = m.client_id
     where (${clientId}::text is null or m.client_id = ${clientId}) and (${q.channel ?? null}::text is null or m.channel = ${q.channel ?? null})
       and m.sent_at >= ${since}::timestamptz and (${until}::timestamptz is null or m.sent_at < ${until}::timestamptz)

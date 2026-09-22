@@ -3,7 +3,7 @@
 One link per Claude account (accounts are shared, so the hub asks who is filing a request). Add it to Claude, Codex or Cursor once, then ask in plain language:
 "what is open for HOH", "anything overdue this week", "what did Dr Mehta ask on Tuesday", "summarise today",
 "add a request for PSS: the gallery page shows old photos". Answers come from the hub's database, not from a model
-guessing. Filing a request goes through the normal pipeline: a Staging card for a PM to approve.
+guessing. Filing a request goes through the normal pipeline: a proposal card in the feed that the person confirms with one tap.
 
 ## Get a link
 
@@ -43,7 +43,7 @@ codex mcp add task-hub --url https://pm-tasks.vercel.app/api/mcp/mh_YOUR_KEY
 | `client_summary` | one client at a glance: counts + open list |
 | `recent_messages` | what came in, by client/channel, incl. updates that were not tasks |
 | `daily_summary` | the PM summary for today, the last N days, or a past day / range (from/to) |
-| `add_request` | file a client ask → Staging card + PM Review line |
+| `add_request` | file a client ask → feed line + proposal card (Create card / Remind me instead / No card) |
 | `meetings`, `meeting_detail`, `ideas`, `decisions` | Meet notes: what was said, raised and agreed, by client and days or from/to |
 | `hub_status` | volumes, spend, last polls |
 

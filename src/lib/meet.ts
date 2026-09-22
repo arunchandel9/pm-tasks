@@ -4,6 +4,7 @@ import { resolveClientFromText } from "./resolve";
 import { sortMeeting } from "./llm/meeting";
 import { processMessage } from "./pipeline";
 import { postHeadline, editHeadline, postDetail } from "./review";
+import { pulp } from "./pulp";
 import type { Client, Message } from "./types";
 
 /**
@@ -183,6 +184,7 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   // (that left a meeting stuck at "reading the notes…" on 2026-09-15). The headline tally follows as jobs finish.
   const groups = new Map<string, { client: Client | null; items: typeof sorted.items }>();
   const ideaLines: string[] = [];
+  const decidedLines: string[] = [];
   const clientTodo: string[] = [];
   for (const it of sorted.items) {
     const c = clientByName(it.client, clients) ?? meetingClient ?? (it.kind === "action" ? internal : null);
@@ -202,8 +204,16 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
     }
     const outcome = it.kind === "idea" ? "idea" : it.kind === "decision" ? "decision" : "noted";
     await sql()`insert into meeting_items (meeting_id, kind, client_id, text, owner, due_text, outcome) values (${meetingId}, ${it.kind}, ${c?.id ?? null}, ${it.text}, ${it.owner}, ${it.due}, ${outcome})`;
-    if (it.kind === "idea" && ideaLines.length < 6) ideaLines.push(`💡 *${c?.name ?? "Unassigned"}* · ${it.text}`);
-    if (it.kind === "decision" && ideaLines.length < 6) ideaLines.push(`📌 *${c?.name ?? "Unassigned"}* · ${it.text}`);
+    if (it.kind === "idea") {
+      // Ideas wait for Monday's decision, like an idea said in Slack.
+      await sql()`insert into ideas (client_id, meeting_id, text, said_by, source, source_link, said_at) values (${c?.id ?? null}, ${meetingId}, ${it.text}, ${it.owner}, ${"Meeting · " + headlineTitle(title)}, ${docUrl}, ${heldAt.toISOString()})`;
+      ideaLines.push(`💡 *${c?.name ?? "MangoEyes"}* · ${it.text}`);
+    }
+    if (it.kind === "decision") {
+      // A decision about work that already has a card is written on that card, so the person doing it sees it.
+      const onCard = await noteDecisionOnCard(c?.id ?? null, it.text, headlineTitle(title), heldAt);
+      decidedLines.push(`📌 *${c?.name ?? "MangoEyes"}* · ${it.text}${onCard ? ` · <${onCard.link}|on the card "${onCard.title.slice(0, 40)}"> ` : ""}`);
+    }
   }
 
   // One headline in the feed per meeting; the cards, ideas, decisions and summary all go inside its thread.
@@ -213,8 +223,11 @@ export async function processNoteDoc(doc: NoteDoc): Promise<string> {
   const headName = await postHeadline(meetingHeadline({ title, who, day }), threadKey);
   const tallyName = await postHeadline(meetingTallyLine(groups.size ? "reading the notes…" : await tallyText(meetingId), docUrl), threadKey);
   await sql()`insert into settings (key, value) values (${"meet_head:" + meetingId}, ${JSON.stringify({ name: headName, tallyName, title, who, day, docUrl })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
-  const summary = (sorted.summary ?? []).slice(0, 4).map((x) => `• ${x}`).join("\n");
-  await postDetail([summary ? `*In short*\n${summary}` : "", ideaLines.length ? `*Raised*\n${ideaLines.join("\n")}` : "", clientTodo.length ? `*With the client*\n${clientTodo.join("\n")}` : ""].filter(Boolean).join("\n\n"), threadKey);
+  // The thread, in reading order (2026-09-22): In short · Decided · To do (the proposal cards follow from the jobs) · Also raised.
+  const summary = (sorted.summary ?? []).slice(0, 5).map((x) => `• ${x}`).join("\n");
+  const todoNote = groups.size ? `*To do*\nThe team's action items follow below, one card each. Tap Create card, Remind me instead or No card on each.` : "";
+  const raised = [...ideaLines.map((l) => `${l} · up for a decision on Monday`), ...clientTodo.map((l) => `${l} · the client's to-do, no card`)];
+  await postDetail([summary ? `*In short*\n${summary}` : "", decidedLines.length ? `*Decided*\n${decidedLines.join("\n")}` : "", todoNote, raised.length ? `*Also raised*\n${raised.join("\n")}` : ""].filter(Boolean).join("\n\n"), threadKey);
 
   // Five action items per job: each ask costs a model call and a card, and a job must finish well inside a minute.
   let jobs = 0;
@@ -251,7 +264,23 @@ export async function teamNames(attendees: string[]): Promise<string[]> {
   return [...names];
 }
 
-/** The headline tally from what is recorded: cards made, on existing cards, ideas, decisions, actions without a client. */
+/**
+ * A decision about work that already has a card: find that card by title similarity among the client's open tasks and
+ * write the decision on it. Returns the card, or null when nothing matches well enough.
+ */
+async function noteDecisionOnCard(clientId: string | null, text: string, meeting: string, heldAt: Date): Promise<{ title: string; link: string } | null> {
+  if (!clientId || !pulp.configured()) return null;
+  try {
+    const hit = await sql()`select id, title, board_id, pulp_card_id, similarity(title, ${text}) as sim from tasks
+      where client_id = ${clientId} and completed_at is null and pulp_card_id is not null and similarity(title, ${text}) > 0.3 order by sim desc limit 1`;
+    if (!hit.length) return null;
+    const day = heldAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+    await pulp.addComment(String(hit[0].pulp_card_id), `Decided in "${meeting}" (${day}): ${text}`);
+    return { title: String(hit[0].title), link: pulp.cardUrl(String(hit[0].board_id ?? ""), String(hit[0].pulp_card_id)) };
+  } catch (e) { console.error("decision on card failed", (e as Error).message); return null; }
+}
+
+/** The headline tally from what is recorded: tasks proposed, on existing cards, ideas, decisions, actions without a client. */
 export async function tallyText(meetingId: string): Promise<string> {
   const r = (await sql()`
     select count(*) filter (where kind = 'action' and outcome = 'task')::int as tasks,
@@ -264,7 +293,7 @@ export async function tallyText(meetingId: string): Promise<string> {
     from meeting_items where meeting_id = ${meetingId}`)[0];
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
   return [
-    Number(r.tasks) ? n(Number(r.tasks), "card") : null, Number(r.on_card) ? `${r.on_card} on existing cards` : null,
+    Number(r.tasks) ? `${r.tasks} to confirm` : null, Number(r.on_card) ? `${r.on_card} on existing cards` : null,
     Number(r.ideas) ? n(Number(r.ideas), "idea") : null, Number(r.decisions) ? n(Number(r.decisions), "decision") : null,
     Number(r.with_client) ? `${r.with_client} with the client` : null,
     Number(r.unclear) ? `${r.unclear} with no clear client` : null, Number(r.pending) ? `${r.pending} still reading` : null,

@@ -6,7 +6,7 @@ Everything you may need to do or check. Replace `<SECRET>` with the value of `CR
 
 - **https://pm-tasks.vercel.app/api/health** → `ok: true`, every `…Last` within its interval, `queueErrors: []`. Returns 503 when the minute loop is older than 5 minutes; the uptime monitor alerts on that.
 - In Claude: **"hub status"** → the same, readable.
-- In the feed: the daily brief's **Issues** section (only appears when there is one).
+- In the feed: the Today brief's **Issues (Arun)** section (only appears when there is one; the brief itself posts at 10:00 India on weekdays, and not at all when nothing is waiting).
 
 ## When the feed is quiet and it should not be
 

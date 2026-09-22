@@ -7,8 +7,12 @@ import { classify } from "./llm/classify";
 import { route } from "./route";
 import type { Message, Client } from "./types";
 import { postThreadFollowupComment } from "./slack";
-import { postReview, postP1Ping, postText, postFeed, wordsLine, reviewMode, draftLine, followupLine, feedHeadline, newTasksHeadline, followupHeadline, messageThreadKey, suggestedClientOf, feedThreadKeyOf, inSharedThread } from "./review";
-import { createStagingCard } from "./tasks";
+import { postReview, postText, postFeed, wordsLine, reviewMode, followupLine, feedHeadline, followupHeadline, messageThreadKey, suggestedClientOf, feedThreadKeyOf, inSharedThread, sourceLabel, senderUserOf, DEPT } from "./review";
+import { postProposal } from "./proposal";
+import { reminderFromMessage, senderName } from "./reminders";
+import { whenLabel } from "./when";
+import type { AskKindT } from "./llm/extract";
+import type { Draft, RouteDecision } from "./types";
 
 export interface ProcessResult {
   messageId: string;
@@ -55,16 +59,16 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
   // stored row in place and clears its earlier requests, so the message is never without a row, even if the run dies.
   const stored = opts.rerun
     ? await sql()`
-      insert into messages (channel, external_id, client_id, scope, sender, sender_is_staff, sent_at, text, text_hash, permalink, thread_ref, raw, skip_reason)
+      insert into messages (channel, external_id, client_id, scope, sender, sender_is_staff, sent_at, text, text_hash, permalink, thread_ref, raw, skip_reason, sender_user)
       values (${m.channel}, ${m.externalId}, ${m.clientId}, ${m.scope}, ${m.sender}, ${m.senderIsStaff}, ${m.sentAt.toISOString()},
-              ${m.text}, ${hash}, ${m.permalink}, ${m.threadRef}, ${JSON.stringify(m.raw)}::jsonb, ${noiseVerdict.skip ? noiseVerdict.reason : null})
-      on conflict (channel, external_id) do update set client_id = excluded.client_id, scope = excluded.scope, text = excluded.text, text_hash = excluded.text_hash, raw = excluded.raw, skip_reason = excluded.skip_reason
+              ${m.text}, ${hash}, ${m.permalink}, ${m.threadRef}, ${JSON.stringify(m.raw)}::jsonb, ${noiseVerdict.skip ? noiseVerdict.reason : null}, ${senderUserOf(m)})
+      on conflict (channel, external_id) do update set client_id = excluded.client_id, scope = excluded.scope, text = excluded.text, text_hash = excluded.text_hash, raw = excluded.raw, skip_reason = excluded.skip_reason, sender_user = excluded.sender_user
       returning id`
     : await sql()`
-      insert into messages (channel, external_id, client_id, scope, sender, sender_is_staff, sent_at, text, text_hash, permalink, thread_ref, raw, skip_reason)
+      insert into messages (channel, external_id, client_id, scope, sender, sender_is_staff, sent_at, text, text_hash, permalink, thread_ref, raw, skip_reason, sender_user)
       values (${m.channel}, ${m.externalId}, ${m.clientId}, ${m.scope}, ${m.sender}, ${m.senderIsStaff}, ${m.sentAt.toISOString()},
               ${m.text}, ${hash}, ${m.permalink}, ${m.threadRef}, ${JSON.stringify(m.raw)}::jsonb,
-              ${noiseVerdict.skip ? noiseVerdict.reason : null})
+              ${noiseVerdict.skip ? noiseVerdict.reason : null}, ${senderUserOf(m)})
       on conflict (channel, external_id) do nothing
       returning id`;
   if (!stored.length) return { messageId: "", outcome: "skipped", reason: "already_seen" };
@@ -157,7 +161,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
 
   // Model call 1.
   const voice = !!(m.raw as { voice?: boolean } | null)?.voice;
-  const ex = await extract({ text: m.text, channel: m.channel, clientName: client?.name ?? null, messageId, voice, knownNames: voice ? clients.filter((c) => c.scope === "client").map((c) => c.name) : undefined });
+  const ex = await extract({ text: m.text, channel: m.channel, clientName: client?.name ?? null, messageId, voice, senderIsStaff: m.senderIsStaff, knownNames: voice ? clients.filter((c) => c.scope === "client").map((c) => c.name) : undefined });
   // A client message that closes the exchange ("perfect, that works now, thanks") needs no reply: the reply reminders stand down.
   if (m.channel === "slack" && !m.senderIsStaff && ex.needs_reply === false) {
     await sql()`update messages set raw = coalesce(raw, '{}'::jsonb) || '{"needsReply": false}'::jsonb where id = ${messageId}`;
@@ -166,7 +170,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
   const own = latestPart(m.text);
   if ((!ex.is_request || ex.asks.length === 0) && PROBLEM.test(own) && own.split(/\s+/).length >= 3) {
     ex.is_request = true;
-    ex.asks = [{ ask: `Fix: ${own}`, quote: own, deadline: null, urls: [] }];
+    ex.asks = [{ kind: "task", ask: `Fix: ${own}`, quote: own, deadline: null, urgent: false, remind_at: null, owner: null, urls: [] }];
   }
   if (!ex.is_request || ex.asks.length === 0) {
     if (ex.tone === "unhappy" && !m.senderIsStaff) {
@@ -186,15 +190,42 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
 
   const open = await openRequests(m.clientId);
   const requestIds: string[] = [];
-  // notify mode: one short line per task, all asks from one message in a single post. No buttons; Staging is the approval.
-  const notify = reviewMode() === "notify";
-  const feed: string[] = [];
-  const cards: Array<{ priority: string; department: string }> = []; // what the headline counts; the lines above are the thread
+  const feed: string[] = [];                         // thread lines: follow-ups noted on existing cards
+  const proposals: Array<{ requestId: string; draft: Draft; route: RouteDecision; owner: string | null; quote: string }> = [];
+  const other: string[] = [];                        // reminders, ideas, rules, notes: one line each, in the thread
+  const kindsSeen = new Set<AskKindT>();
   let followKind: "possible_duplicate" | "followup_change" | null = null;
-  const noCard: string[] = [];
+  const who = senderName(m);
+  const src = sourceLabel(m).replace(" · ", ", ");
 
   for (let i = 0; i < ex.asks.length; i++) {
     const a = ex.asks[i];
+
+    // Not a task: it has its own home and never a card (2026-09-22). Recorded as a request row so the record is complete.
+    if (a.kind !== "task") {
+      kindsSeen.add(a.kind);
+      const status = { reminder: "reminder", idea: "idea", rule: "rule", note: "noted" }[a.kind];
+      const ins = await sql()`
+        insert into requests (message_id, client_id, scope, ask_index, summary, quote, request_type, department, priority, priority_reason, confidence, confidence_reason, draft, status, kind, decided_by, decided_at)
+        values (${messageId}, ${m.clientId}, ${m.scope}, ${i}, ${a.ask}, ${a.quote}, ${a.kind}, 'general', 'P3', null, 1, 'sorted by kind',
+                ${JSON.stringify({ title: a.ask, description: "", labels: [] })}::jsonb, ${status}, ${a.kind}, 'system:kind', now())
+        returning id`;
+      const requestId = String(ins[0].id);
+      if (a.kind === "reminder") {
+        const rem = await reminderFromMessage({ m, messageId, text: a.ask, remindAt: a.remind_at, requestId });
+        other.push(`⏰ Reminder set for ${who} · ${whenLabel(rem.dueAt, true)} · ${a.ask} · it comes back to you in the feed then`);
+      } else if (a.kind === "idea") {
+        await sql()`insert into ideas (client_id, message_id, text, said_by, source, source_link, said_at, request_id) values (${m.clientId}, ${messageId}, ${a.ask}, ${who}, ${src}, ${m.permalink}, ${m.sentAt.toISOString()}, ${requestId})`;
+        other.push(`💡 Idea, up for a decision on Monday: ${a.ask}`);
+      } else if (a.kind === "rule") {
+        if (m.clientId) await sql()`insert into client_rules (client_id, message_id, text, said_by, said_at) values (${m.clientId}, ${messageId}, ${a.ask}, ${who}, ${m.sentAt.toISOString()})`;
+        other.push(`📌 Rule for ${client?.name ?? "this client"}, printed on their cards from now on: ${a.ask}`);
+      } else {
+        other.push(`ℹ️ Noted: ${a.ask}`);
+      }
+      continue;
+    }
+
     // Model call 2.
     const cl = await classify({
       ask: a.ask, quote: a.quote, deadline: a.deadline, urls: a.urls,
@@ -206,20 +237,19 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     const r = route({
       requestType: cl.request_type, modelDepartment: cl.department,
       priorityHint: cl.priority_hint, priorityReason: cl.priority_reason,
-      text: `${a.ask} ${a.quote}`, client,
+      text: `${a.ask} ${a.quote}`, client, urgent: a.urgent || ex.tone === "urgent", deadline: a.deadline,
     });
 
-    const status = r.gated ? "needs_scope" : "pending_review";
     const ins = await sql()`
-      insert into requests (message_id, client_id, scope, ask_index, summary, quote, request_type, department, priority, priority_reason, confidence, confidence_reason, draft, status)
+      insert into requests (message_id, client_id, scope, ask_index, summary, quote, request_type, department, priority, priority_reason, confidence, confidence_reason, draft, status, kind)
       values (${messageId}, ${m.clientId}, ${m.scope}, ${i}, ${a.ask}, ${a.quote}, ${cl.request_type}, ${r.department},
               ${r.priority}, ${r.priorityReason}, ${cl.confidence}, ${cl.confidence_reason},
-              ${JSON.stringify({ title: cl.title, description: cl.description, labels: r.labels })}::jsonb, ${status})
+              ${JSON.stringify({ title: cl.title, description: cl.description, labels: r.labels })}::jsonb, 'proposed', 'task')
       returning id`;
     const requestId = ins[0].id as string;
     requestIds.push(requestId);
 
-    // Three-way thread handling when the model says it matches an open request.
+    // Belongs to an open request: noted on its card, nothing new proposed.
     if (cl.same_as_open !== null && open[cl.same_as_open]) {
       const target = open[cl.same_as_open];
       if (cl.same_as_kind === "nudge") {
@@ -229,56 +259,56 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
         continue;
       }
       const kind = cl.same_as_kind === "duplicate" && dd.kind === "possible_duplicate" ? "possible_duplicate" : "followup_change";
-      if (notify) {
-        // Nothing new is created: the message is added as a comment on the existing card and the feed gets one line.
-        // If the PM disagrees, /task in Intake makes it a separate task.
-        await sql()`update requests set status = 'merged', merged_into = ${target.id}, decided_by = 'system:same_thread' where id = ${requestId}`;
-        await postThreadFollowupComment({ taskId: target.taskId, requestId: target.id, message: m });
-        feed.push(followupLine({ client, existingTitle: target.title, kind, pulpLink: await cardLink(target.taskId) }));
-        followKind ??= kind;
-        continue;
-      }
-      await postReview({ kind, requestId, client, message: m, duplicateOf: target.id });
+      await sql()`update requests set status = 'merged', merged_into = ${target.id}, decided_by = 'system:same_thread' where id = ${requestId}`;
+      await postThreadFollowupComment({ taskId: target.taskId, requestId: target.id, message: m });
+      feed.push(followupLine({ client, existingTitle: target.title, kind, pulpLink: await cardLink(target.taskId) }));
+      followKind ??= kind;
       continue;
     }
 
+    // The classifier still reads it as an update or a question: a note, never a card.
     if (r.noCard) {
-      await sql()`update requests set status = 'dismissed', decided_by = 'system:no_card' where id = ${requestId}`;
-      noCard.push(`${cl.title} (${cl.request_type.replace(/_/g, " ")})`);
+      await sql()`update requests set status = 'noted', kind = 'note', decided_by = 'system:no_card', decided_at = now() where id = ${requestId}`;
+      requestIds.pop();
+      kindsSeen.add("note");
+      other.push(`ℹ️ Noted: ${cl.title}`);
       continue;
     }
 
-    // A real card in the Staging list. Dragging it out (or Approve, in approve mode) is the approval.
-    const task = await createStagingCard({ requestId, client, route: r, draft: { title: cl.title, description: cl.description, labels: r.labels }, message: m, quote: a.quote });
-    const pulpLink = task?.pulpCardId ? pulp.cardUrl(task.boardId ?? r.board ?? "", task.pulpCardId) : null;
-    if (notify && pulpLink) {
-      feed.push(draftLine({ client, title: cl.title, department: r.department, priority: r.priority, gated: r.gated, pulpLink }));
-      cards.push({ priority: r.priority, department: r.department });
-      continue;
-    }
-    // No Staging card exists (Pulp not connected) or approve mode: the card with buttons is the only way to approve.
-    await postReview({ kind: "draft", requestId, taskId: task?.id ?? null, client, message: m, route: r, draft: { title: cl.title, description: cl.description, labels: r.labels }, confidence: cl.confidence, reason: cl.confidence_reason });
-    if (r.priority === "P1") await postP1Ping({ requestId, client, title: cl.title, message: m, reason: r.priorityReason });
+    proposals.push({ requestId, draft: { title: cl.title, description: cl.description, labels: r.labels }, route: r, owner: a.owner, quote: a.quote });
   }
 
-  if (!feed.length && noCard.length && requestIds.length === noCard.length) {
-    // Understood, but nothing to build: an update, a question, an idea. Never silent: one line in the feed, and the
-    // sender is told (the DM/Drop thread reply comes from the caller via reason "no_card").
-    await sql()`update messages set skip_reason = 'no_card' where id = ${messageId}`;
-    if (notify && !inSharedThread(m)) {
-      await postFeed({ headline: feedHeadline({ icon: "ℹ️", client, what: "noted, no task", message: m }), detail: [noCard.map((t) => `• ${t}`).join("\n"), wordsLine(m.text)].filter(Boolean).join("\n"), threadKey: messageThreadKey(messageId) });
-    } else if (inSharedThread(m)) await postText(`ℹ️ noted, no card: ${noCard.join("; ")}`, { threadKey: feedThreadKeyOf(m, messageId) });
-    return { messageId, outcome: "skipped", reason: "no_card", requestIds };
+  const threadKey = inSharedThread(m) ? feedThreadKeyOf(m, messageId) : messageThreadKey(messageId);
+  const detail = [...feed, ...other, wordsLine(m.text)].filter(Boolean).join("\n");
+
+  if (!proposals.length) {
+    // Every item found its home; nothing to build. One feed line so the message is on record, never silent.
+    const first = [...kindsSeen][0];
+    const reason = feed.length ? undefined : kindsSeen.size === 1 && first !== "note" ? first : kindsSeen.size > 1 ? "noted" : "no_card";
+    if (!feed.length) await sql()`update messages set skip_reason = ${reason === "noted" ? "no_card" : reason ?? "no_card"} where id = ${messageId}`;
+    const head = feed.length
+      ? followupHeadline({ client, message: m, kind: followKind ?? "followup_change" })
+      : first === "reminder" && kindsSeen.size === 1 ? feedHeadline({ icon: "⏰", client, what: `reminder set for ${who}`, message: m })
+      : first === "idea" && kindsSeen.size === 1 ? feedHeadline({ icon: "💡", client, what: "idea noted for Monday", message: m })
+      : first === "rule" && kindsSeen.size === 1 ? feedHeadline({ icon: "📌", client, what: "rule noted", message: m })
+      : feedHeadline({ icon: "ℹ️", client, what: "noted, no task", message: m });
+    if (inSharedThread(m)) { if (detail) await postText(detail, { threadKey }); }
+    else await postFeed({ headline: head, detail, threadKey });
+    return feed.length ? { messageId, outcome: "review", requestIds } : { messageId, outcome: "skipped", reason, requestIds };
   }
-  if (feed.length && inSharedThread(m)) {
-    // Part of a bigger post (a meeting): the card lines are replies in that thread; the meeting headline carries the counts.
-    await postText(feed.join("\n"), { threadKey: feedThreadKeyOf(m, messageId) });
-  } else if (feed.length) {
-    // One line in the feed per message: client, what happened, source. The card lines (title, department, priority,
-    // link) and the sender's words sit in the thread, however many cards there are.
-    const headline = cards.length ? newTasksHeadline({ client, message: m, cards }) : followupHeadline({ client, message: m, kind: followKind ?? "followup_change" });
-    const detail = [...feed, wordsLine(m.text)].filter(Boolean).join("\n");
-    await postFeed({ headline, detail, threadKey: messageThreadKey(messageId) });
+
+  // Tasks: one feed line for the message; the words, the other items and one proposal card per task in its thread.
+  const p1 = proposals.filter((p) => p.route.priority === "P1").length;
+  const depts = [...new Set(proposals.map((p) => DEPT[p.route.department] ?? p.route.department))];
+  const what = proposals.length === 1 ? (p1 ? "P1 task to confirm" : "task to confirm") : `${proposals.length} tasks to confirm${p1 ? `, ${p1 === 1 ? "one" : p1} P1` : ""}`;
+  if (!inSharedThread(m)) await postFeed({ headline: feedHeadline({ icon: p1 ? "🔴" : "🆕", client, what, extra: depts.length === 1 ? depts[0] : null, message: m }), detail, threadKey });
+  else if (detail) await postText(detail, { threadKey });
+  for (const p of proposals) {
+    try { await postProposal({ requestId: p.requestId, client, message: m, messageId, draft: p.draft, route: p.route, owner: p.owner, quote: p.quote }); }
+    catch (e) {
+      console.error("proposal card failed, queued:", (e as Error).message);
+      await enqueue("post_proposal", { requestId: p.requestId }, 60);
+    }
   }
   return { messageId, outcome: "review", requestIds };
 }
@@ -289,7 +319,7 @@ async function openRequests(clientId: string | null): Promise<Array<{ id: string
     select r.id, t.id as task_id, r.draft->>'title' as title, r.status
     from requests r left join tasks t on t.request_id = r.id
     where r.client_id = ${clientId} and r.created_at > now() - interval '14 days'
-      and r.status in ('pending_review','approved','created','needs_scope')
+      and r.status in ('proposed','pending_review','approved','created','needs_scope')
       and (t.id is null or t.completed_at is null)
     order by r.created_at desc limit 20`;
   return rows.map((x) => ({ id: x.id as string, taskId: (x.task_id as string | null), title: x.title as string, status: x.status as string }));

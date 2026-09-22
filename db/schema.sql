@@ -197,3 +197,59 @@ create table if not exists meeting_items (
   created_at  timestamptz not null default now()
 );
 create index if not exists meeting_items_kind on meeting_items (kind, client_id, created_at desc);
+
+-- 2026-09-22: every message becomes one of five things (task, reminder, idea, rule, note). A task is proposed in the
+-- feed and made only when a person confirms; the other kinds have their own homes below.
+alter table messages add column if not exists sender_user text;                       -- Chat user (users/<id>) or email, so the hub can @mention the sender
+alter table requests add column if not exists kind text not null default 'task';       -- task | reminder | idea | rule | note
+alter table requests add column if not exists asked_user text;                         -- who the proposal @mentions (users/<id> or email)
+alter table requests add column if not exists proposal jsonb;                          -- {cardName, thread, assignee, dueAt, department, priority}
+
+-- "Remind me on Friday": to the person who asked, at that time, every morning until Done.
+create table if not exists reminders (
+  id             uuid primary key default gen_random_uuid(),
+  message_id     uuid references messages(id),
+  request_id     uuid references requests(id) on delete set null,
+  client_id      text references clients(id),
+  owner_name     text not null,
+  owner_user     text,                        -- users/<id> or email, for the @mention
+  text           text not null,
+  due_at         timestamptz not null,
+  last_posted_at timestamptz,
+  post_name      text,                        -- the latest feed message, replaced by the outcome on Done
+  thread_key     text,
+  done_at        timestamptz,
+  done_by        text,
+  created_at     timestamptz not null default now()
+);
+create index if not exists reminders_due on reminders (due_at) where done_at is null;
+
+-- Ideas wait for a decision on Monday: Make it a task, or Not now. Undecided ones come back the next Monday.
+create table if not exists ideas (
+  id          uuid primary key default gen_random_uuid(),
+  client_id   text references clients(id),
+  message_id  uuid references messages(id),
+  meeting_id  uuid references meetings(id),
+  text        text not null,
+  said_by     text,
+  source      text,                           -- "Slack, Dr Mehta" / "Meeting · Intro call"
+  source_link text,
+  said_at     timestamptz not null default now(),
+  decided_at  timestamptz,
+  decision    text,                           -- task | not_now
+  decided_by  text,
+  request_id  uuid references requests(id) on delete set null,
+  card_name   text,                           -- the Monday card, replaced by the outcome
+  created_at  timestamptz not null default now()
+);
+create index if not exists ideas_open on ideas (client_id, said_at) where decided_at is null;
+
+-- A client's standing instruction ("ask my permission before changing appointment durations"): printed on that client's cards.
+create table if not exists client_rules (
+  id          uuid primary key default gen_random_uuid(),
+  client_id   text references clients(id),
+  message_id  uuid references messages(id),
+  text        text not null,
+  said_by     text,
+  said_at     timestamptz not null default now()
+);

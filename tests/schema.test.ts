@@ -12,6 +12,6 @@ describe("schema bundle", () => {
     expect(statements.length).toBeGreaterThan(15);
     for (const s of statements) expect(s.startsWith("--")).toBe(false);
     const tables = statements.filter((s) => /^create table/i.test(s)).length;
-    expect(tables).toBe(12);
+    expect(tables).toBe(15); // + reminders, ideas, client_rules (2026-09-22)
   });
 });

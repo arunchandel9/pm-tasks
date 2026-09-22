@@ -11,7 +11,7 @@ Entries below are dated; a later entry supersedes an earlier one (for example th
 nudges described in older entries are gone: Drop space and 20 min / 1 h / 1 day / daily reminders since 2026-09-15).
 Keep it updated with every change.
 
-Last updated: 2026-09-21 (no Slack reactions; 18 Sep: PMs board rules, short headlines, Vercel cost, `main` branch; `CLAUDE.md` is the entry point).
+Last updated: 2026-09-22 (five kinds, the proposal card, reminders, Monday ideas, the 10:00 Today brief; 21 Sep: no Slack reactions; 18 Sep: PMs board rules, short headlines, Vercel cost, `main` branch; `CLAUDE.md` is the entry point).
 
 ## Decisions finalised
 
@@ -23,6 +23,24 @@ Last updated: 2026-09-21 (no Slack reactions; 18 Sep: PMs board rules, short hea
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-22, five kinds and the proposal card (Arun, locked item by item):** the team said the hub was turning
+  everything into cards (80 Staging cards in a week, about half scheduling, access, feedback, conversation, internal
+  meeting items). Locked: (1) a card is proposed only when someone on the team has to produce something; every item is
+  exactly one of task / reminder / idea / rule / note. (2) The proposal is a card in the feed thread with four visible
+  dropdowns (Department, Assign to, Priority, Due), pre-filled and changeable, and three buttons: Create card (straight
+  to To Do, assigned, sheet row written), Remind me instead (a reminder for the person who tapped), No card. The card is
+  replaced by the outcome line; unanswered proposals sit in the brief. No Staging list any more; old Staging cards
+  still work by drag. (3) Reminders only when a team member asks ("remind me", "chase"): to them, at that time, @mention
+  and a Done button, every morning until Done; a client never gets one. (4) Urgent words give P1 and the 4-hour due;
+  priority and due show on the card. (5) Ideas come back every Monday 10:00 India, one line to the PMs ("Decide which
+  become tasks"), one card per idea with Make it a task / Not now; undecided ideas return with their age. Client
+  rules are stored and printed on that client's cards, nothing more. (6) The daily brief moves to 10:00 India, Monday
+  to Friday, lists only what a named person must do today, @mentions them, and posts nothing when nothing is waiting.
+  (7) Internal meetings are not a special case: the thread reads In short / Decided (decisions written onto existing
+  cards) / To do (proposal cards) / Also raised. (8) Wording rule for every line: who it is for and what to do, in the
+  team's words, the action on the button in full. Abigail Chapman is the appointment setter and does not use Pulp.
+  Tables added: `reminders`, `ideas`, `client_rules`; `requests.kind`, `requests.status = 'proposed'`,
+  `messages.sender_user` (the Chat account for @mentions). Cron `/api/eod` now 04:30 UTC Mon–Fri.
 - **2026-09-21, no reactions in Slack (Arun):** the hub used to put a 👀 on every client Slack message it read (🔁 on a
   repeat, 🔗 on a follow-up) as a silent receipt; a client saw "Task Hub reacted with :eyes:". Removed: the hub writes
   nothing at all in a client workspace. The `reactions:*` scopes stay in the app so no workspace needs reinstalling.

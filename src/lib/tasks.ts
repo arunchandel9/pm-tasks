@@ -116,6 +116,65 @@ export async function createStagingCard(p: { requestId: string; client: Client |
   return { id: ins[0].id as string, pulpCardId, boardId };
 }
 
+/** A client's standing rules, newest first, printed on their cards. */
+export async function rulesFor(clientId: string): Promise<string[]> {
+  const rows = await sql()`select text from client_rules where client_id = ${clientId} order by said_at desc limit 8`;
+  return rows.map((r) => String(r.text));
+}
+
+/** The card's description as the team reads it in Pulp: the draft, the original words, the source, the client's rules. */
+export function cardDescription(p: { draft: Draft; quote: string; channel: string; sender: string; permalink: string | null; requestId: string; rules: string[] }): string {
+  return [
+    p.draft.description,
+    "",
+    `Original (${p.channel}, ${p.sender}):`,
+    `> ${p.quote}`,
+    p.permalink ? `Source: ${p.permalink}` : "",
+    p.rules.length ? `\nClient rules:\n${p.rules.map((r) => `- ${r}`).join("\n")}` : "",
+    `Request: ${p.requestId}`,
+  ].filter((l) => l !== "").join("\n");
+}
+
+/**
+ * Create card was tapped on a proposal (2026-09-22): the card goes straight to the department's To Do, assigned, with
+ * the due date, and the sheet row is written at the same moment. No Staging, no drag.
+ */
+export async function createFromProposal(p: { requestId: string; department: string; assignee: string | null; priority: string; dueAt: Date | null; who: string }): Promise<{ taskId: string; cardId: string | null; link: string }> {
+  const rows = await sql()`
+    select r.id, r.client_id, r.quote, r.draft, c.name as client_name, c.boards, m.channel, m.sender, m.permalink
+    from requests r left join clients c on c.id = r.client_id join messages m on m.id = r.message_id where r.id = ${p.requestId}`;
+  if (!rows.length) throw new Error("request not found");
+  const x = rows[0];
+  const draft = (x.draft ?? {}) as Draft;
+  const own = (x.boards ?? {}) as Record<string, { board?: string; list?: string; staging?: string }>;
+  const def = boardsConfig().departments[p.department];
+  const boardRef = own[p.department]?.board || def?.board;
+  if (!boardRef) throw new Error(`no board for department "${p.department}"`);
+  const listName = own[p.department]?.list || def?.list || "To Do";
+  const rules = x.client_id ? await rulesFor(String(x.client_id)) : [];
+  const description = cardDescription({ draft, quote: String(x.quote ?? ""), channel: String(x.channel), sender: String(x.sender ?? ""), permalink: (x.permalink as string | null) ?? null, requestId: p.requestId, rules });
+  const labels = [HUB_LABEL, ...(x.client_name ? [String(x.client_name)] : []), ...(draft.labels ?? []).filter((l) => !/^P[123]$/.test(l)), p.priority];
+
+  let cardId: string | null = null, boardId: string | null = null, listId: string | null = null;
+  if (pulp.configured()) {
+    boardId = await pulp.resolveBoardId(boardRef);
+    if (!boardId) throw new Error(`board "${boardRef}" not found in Pulp`);
+    listId = await pulp.ensureList(boardId, listName);
+    const card = await pulp.createCard({ boardId, listId, title: draft.title, description, labels, assignee: p.assignee, dueAt: p.dueAt });
+    cardId = card.id;
+  }
+  const ins = await sql()`
+    insert into tasks (request_id, client_id, pulp_card_id, board_id, list_id, title, priority, assignee, due_at, staging, department, last_moved_at)
+    values (${p.requestId}, ${x.client_id ?? null}, ${cardId}, ${boardId}, ${listId}, ${draft.title}, ${p.priority}, ${p.assignee}, ${p.dueAt?.toISOString() ?? null}, false, ${p.department}, now())
+    returning id`;
+  const taskId = String(ins[0].id);
+  await sql()`update requests set status = 'created', decided_by = ${p.who}, decided_at = now(), department = ${p.department}, priority = ${p.priority},
+    proposal = coalesce(proposal, '{}'::jsonb) || ${JSON.stringify({ assignee: p.assignee, dueAt: p.dueAt?.toISOString() ?? null, department: p.department, priority: p.priority })}::jsonb where id = ${p.requestId}`;
+  await sql()`insert into status_events (task_id, from_list, to_list, source) values (${taskId}, null, ${listId ?? listName}, 'hub')`;
+  await writeSheetRow(taskId, p.who);
+  return { taskId, cardId, link: cardId && boardId ? pulp.cardUrl(boardId, cardId) : "" };
+}
+
 /** Retry path: a task whose hold card (Staging / Needs scope) was never created. Creates it now; never approves anything. */
 export async function createCardForTask(taskId: string): Promise<boolean> {
   if (!pulp.configured()) return false;

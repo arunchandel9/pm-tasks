@@ -86,7 +86,7 @@ export async function replyCheck(messageId: string, mins: number): Promise<"repl
     `${sourceLabel(msg).replace(" · ", ", ")}: "${String(m.text).trim()}"`,
     tagged.length ? `Tagged: ${tagged.join(", ")}` : "",
     m.permalink ? `<${m.permalink}|Open in Slack>` : "",
-    "Reply in Slack and the reminders stop. Or mark it acknowledged below (or type \"ack\" here).",
+    "PMs: reply to them in Slack and these reminders stop. Already handled? Press Acknowledged below, or type \"ack\" here.",
   ].filter(Boolean).join("\n");
   const threadKey = `nudge-${messageId}-${mins}`;
   await postFeed({ headline, detail, threadKey });

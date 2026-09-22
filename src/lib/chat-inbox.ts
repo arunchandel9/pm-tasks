@@ -50,7 +50,7 @@ export function toChatMessage(m: chat_v1.Schema$Message, names: Map<string, stri
   const who = m.sender?.displayName ?? (m.sender?.name ? names.get(m.sender.name) : undefined) ?? undefined;
   return {
     name: m.name ?? "", thread: m.thread?.name ? { name: m.thread.name } : undefined, text: m.text ?? "", argumentText: m.argumentText ?? m.text ?? "",
-    createTime: m.createTime ?? undefined, sender: { displayName: who },
+    createTime: m.createTime ?? undefined, sender: { displayName: who, name: m.sender?.name ?? undefined },
     attachment: (m.attachment ?? []).map((a) => ({ name: a.name ?? undefined, contentName: a.contentName ?? undefined, contentType: a.contentType ?? undefined, attachmentDataRef: a.attachmentDataRef?.resourceName ? { resourceName: a.attachmentDataRef.resourceName } : undefined })),
   };
 }

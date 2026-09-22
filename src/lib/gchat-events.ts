@@ -6,7 +6,7 @@
  */
 
 export interface ChatAttachment { name?: string; contentName?: string; contentType?: string; attachmentDataRef?: { resourceName?: string } }
-export interface ChatMessage { name: string; thread?: { name?: string }; text?: string; argumentText?: string; createTime?: string; sender?: { email?: string; displayName?: string }; attachment?: ChatAttachment[]; slashCommand?: { commandId?: string | number } }
+export interface ChatMessage { name: string; thread?: { name?: string }; text?: string; argumentText?: string; createTime?: string; sender?: { email?: string; displayName?: string; name?: string }; attachment?: ChatAttachment[]; slashCommand?: { commandId?: string | number } }
 
 export interface NormalisedEvent {
   format: "classic" | "addon";
@@ -16,7 +16,8 @@ export interface NormalisedEvent {
   spaceName?: string;
   /** Direct message with the app: every message is delivered, no mention needed. Treated like the Intake space. */
   isDm: boolean;
-  user: { email?: string; displayName?: string };
+  /** `name` is the Chat user resource (users/<id>), what an @mention needs. */
+  user: { email?: string; displayName?: string; name?: string };
   message: ChatMessage | null;
   commandId: string | null;
   invokedFunction: string;
@@ -38,7 +39,7 @@ export function normaliseChatEvent(ev: any, fnHint?: string | null): NormalisedE
   const dmOf = (sp: any) => !!sp && (sp.spaceType === "DIRECT_MESSAGE" || sp.type === "DM");
   if (ev.chat) {
     const c = ev.chat;
-    const user = { email: c.user?.email, displayName: c.user?.displayName };
+    const user = { email: c.user?.email, displayName: c.user?.displayName, name: c.user?.name };
     const isDm = dmOf(c.addedToSpacePayload?.space ?? c.appCommandPayload?.space ?? c.buttonClickedPayload?.space ?? c.messagePayload?.space ?? c.messagePayload?.message?.space);
     if (c.addedToSpacePayload) return { format: "addon", kind: "added", space: c.addedToSpacePayload.space?.name ?? "", spaceName: c.addedToSpacePayload.space?.displayName ?? undefined, isDm, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
     if (c.appCommandPayload) {
@@ -57,7 +58,7 @@ export function normaliseChatEvent(ev: any, fnHint?: string | null): NormalisedE
     return { format: "addon", kind: "other", space: "", isDm, user, message: null, commandId: null, invokedFunction, parameters, formInputs };
   }
 
-  const user = { email: ev.user?.email, displayName: ev.user?.displayName };
+  const user = { email: ev.user?.email, displayName: ev.user?.displayName, name: ev.user?.name };
   const space: string = ev.space?.name ?? ev.message?.space?.name ?? "";
   const isDm = dmOf(ev.space ?? ev.message?.space);
   if (ev.type === "ADDED_TO_SPACE") return { format: "classic", kind: "added", space, spaceName: ev.space?.displayName ?? undefined, isDm, user, message: null, commandId: null, invokedFunction, parameters, formInputs };

@@ -229,7 +229,65 @@ export function needsHumanCard(p: { messageId: string; clientName: string; why: 
     { text: "Make it a task", fn: "make_task", params: { messageId: p.messageId }, primary: true },
     { text: "Not a task", fn: "dismiss_message", params: { messageId: p.messageId }, danger: true },
   ]));
-  return { header: { title: `${p.clientName} · needs a person`, subtitle: p.why.replace(/_/g, " ") }, sections: [{ widgets }] };
+  const ask = p.why.startsWith("unknown") ? "Which client is this for? Pick it below, or reply here with the name." : p.why === "attachment_only" ? "This came with no words. Reply here with what it asks for, and the client." : "This needs a person: read it and decide below.";
+  return { header: { title: `${p.clientName} · ${ask.split("?")[0].split(".")[0]}`, subtitle: ask }, sections: [{ widgets }] };
+}
+
+/**
+ * The proposal (2026-09-22): a task is made only after one tap here. Four dropdowns, pre-filled and changeable, all
+ * visible, then three buttons. Create card puts it in To Do, assigned; Remind me instead sets a reminder for the
+ * person who tapped; No card records it and makes nothing. The card is replaced by the outcome line.
+ */
+export interface ProposalOptions {
+  requestId: string; askedName: string | null; askedUser: string | null; clientName: string; title: string; description: string; quote: string;
+  departments: Array<{ value: string; text: string }>; department: string;
+  people: string[]; assignee: string | null;
+  priority: "P1" | "P2" | "P3";
+  dues: Array<{ value: string; text: string }>; due: string;
+  rules: string[]; urgentReason: string | null;
+}
+export function proposalCard(p: ProposalOptions): chat_v1.Schema$GoogleAppsCardV1Card {
+  const who = p.askedUser && /^users\/\d+$/.test(p.askedUser) ? `<${p.askedUser}>` : p.askedName ? `@${esc(p.askedName)}` : "PMs";
+  const widgets: chat_v1.Schema$GoogleAppsCardV1Widget[] = [
+    { textParagraph: { text: `${who}: this needs your decision. Check the four fields, then tap one button.` } },
+    { decoratedText: { topLabel: "Task", text: `<b>${esc(p.title)}</b>`, wrapText: true } },
+    ...(p.description.trim() ? [{ textParagraph: { text: esc(p.description.slice(0, 600)) } }] : []),
+    ...(p.urgentReason ? [{ textParagraph: { text: `🔴 <b>P1</b>: ${esc(p.urgentReason)}` } }] : []),
+    ...(p.rules.length ? [{ textParagraph: { text: `<b>${esc(p.clientName)} rules:</b> ${p.rules.map(esc).join(" · ")}` } }] : []),
+    { selectionInput: { name: "department", label: "Department", type: "DROPDOWN", items: p.departments.map((d) => ({ text: d.text, value: d.value, selected: d.value === p.department })) } },
+    { selectionInput: { name: "assignee", label: "Assign to", type: "DROPDOWN", items: [{ text: "choose…", value: "", selected: !p.assignee }, ...p.people.map((n) => ({ text: n, value: n, selected: n === p.assignee }))] } },
+    { selectionInput: { name: "priority", label: "Priority", type: "DROPDOWN", items: (["P1", "P2", "P3"] as const).map((x) => ({ text: x === "P1" ? "P1 · urgent, due in 4 hours" : x === "P2" ? "P2 · normal" : "P3 · when there is time", value: x, selected: x === p.priority })) } },
+    { selectionInput: { name: "due", label: "Due", type: "DROPDOWN", items: p.dues.map((d) => ({ text: d.text, value: d.value, selected: d.value === p.due })) } },
+    buttons([
+      { text: "Create card", fn: "proposal_create", params: { requestId: p.requestId }, primary: true },
+      { text: "Remind me instead", fn: "proposal_remind", params: { requestId: p.requestId } },
+      { text: "No card", fn: "proposal_no", params: { requestId: p.requestId }, danger: true },
+    ]),
+  ];
+  return { header: { title: `${p.clientName} · task to confirm`, subtitle: `"${p.quote.replace(/\s+/g, " ").slice(0, 90)}${p.quote.length > 90 ? "…" : ""}"` }, sections: [{ widgets }] };
+}
+
+/** Under a reminder: the one button that closes it. */
+export function doneCard(p: { reminderId: string }): chat_v1.Schema$GoogleAppsCardV1Card {
+  return { sections: [{ widgets: [buttons([{ text: "Done", fn: "reminder_done", params: { reminderId: p.reminderId }, primary: true }])] }] };
+}
+
+/** Monday's list: one card per idea, two decisions. */
+export function ideaCard(p: { ideaId: string; threadKey: string; clientName: string; text: string; saidBy: string | null; source: string | null; sourceLink: string | null; since: string; weeks: number }): chat_v1.Schema$GoogleAppsCardV1Card {
+  const src = p.sourceLink ? `<a href="${p.sourceLink}">${esc(p.source ?? "source")}</a>` : esc(p.source ?? "");
+  const age = p.weeks >= 1 ? ` · still waiting for a decision since ${esc(p.since)}` : ` · ${esc(p.since)}`;
+  return {
+    sections: [{
+      widgets: [
+        { decoratedText: { topLabel: p.clientName, text: `<b>${esc(p.text)}</b>`, wrapText: true } },
+        { textParagraph: { text: `${p.saidBy ? esc(p.saidBy) + " · " : ""}${src}${age}` } },
+        buttons([
+          { text: "Make it a task", fn: "idea_task", params: { ideaId: p.ideaId, threadKey: p.threadKey }, primary: true },
+          { text: "Not now", fn: "idea_not_now", params: { ideaId: p.ideaId, threadKey: p.threadKey } },
+        ]),
+      ],
+    }],
+  };
 }
 
 /** Under a "no reply yet" reminder: one button that stops the reminders for that Slack channel. */

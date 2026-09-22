@@ -29,7 +29,7 @@ export function sourceLabel(m: Message): string {
   return `${where} · ${m.sender}`;
 }
 
-const DEPT: Record<string, string> = { dev: "Dev", content: "Content", design: "Graphics", seo: "SEO", automation: "Automation", video: "Video", general: "PM", internal: "PM" };
+export const DEPT: Record<string, string> = { dev: "Dev", content: "Content", design: "Graphics", seo: "SEO", automation: "Automation", video: "Video", general: "PM", internal: "PM" };
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
 /**
@@ -187,7 +187,21 @@ export async function postReview(p: ReviewPost): Promise<void> {
 }
 
 /** What a PM Review card thread is about, so a typed reply in that thread can answer it. */
-export type ThreadTopic = { kind: "needs_human"; messageId: string } | { kind: "request"; requestId: string; duplicateOf?: string } | { kind: "nudge"; messageId: string; channelId: string };
+export type ThreadTopic =
+  | { kind: "needs_human"; messageId: string }
+  | { kind: "request"; requestId: string; duplicateOf?: string }
+  | { kind: "nudge"; messageId: string; channelId: string }
+  | { kind: "proposal"; requestId: string }
+  | { kind: "reminder"; reminderId: string }
+  | { kind: "ideas"; day: string };
+
+/** The sender's Chat account (users/<id>) or email, so a proposal or reminder can @mention them. Null for a client in Slack or a meeting. */
+export function senderUserOf(m: Message): string | null {
+  const raw = (m.raw as { senderUser?: string } | null) ?? {};
+  if (raw.senderUser) return raw.senderUser;
+  if (m.channel === "email") return m.sender.match(/<([^>]+)>/)?.[1] ?? null;
+  return null;
+}
 export async function rememberThread(thread: string | null, topic: ThreadTopic): Promise<void> {
   if (!thread) return;
   await sql()`insert into settings (key, value) values (${"gchat_thread:" + thread}, ${JSON.stringify(topic)}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
@@ -244,7 +258,11 @@ export function humanOutcome(outcome: string, reason?: string | null): string {
     acknowledgement: "just a thank-you or OK, nothing to do.",
     noise: "not a request, nothing to do.",
     client_unhappy: "no task, but the client sounds unhappy; a person should reply.",
-    no_card: "read as an update, question or idea, not a task; nothing created. If it should be a task, say what should be done, with the client name.",
+    no_card: "read as information, not a task; nothing created. If it should be a task, say what should be done, with the client name.",
+    reminder: "reminder set; it comes back to you in the feed at that time.",
+    idea: "noted as an idea; it comes up for a decision on Monday.",
+    rule: "noted as a standing rule for this client; it is printed on their cards from now on.",
+    noted: "recorded (reminders, ideas and notes); nothing to build.",
   };
   if (known[r]) return known[r];
   if (outcome === "attached") return "added to an existing task's card.";

@@ -73,7 +73,7 @@ function buildHandler(owner: McpKeyOwner) {
       }, async ({ days, from, to }) => text(await dailySummaryText(days ?? 1, { from, to })));
 
       server.registerTool("add_request", {
-        title: "Add a request", description: "File a client request. It goes through the normal pipeline: a card in Staging for a PM to approve, one line in the Task Hub Feed. Use the client's words. This assistant account may be shared by several people, so `by` (the name of the person asking you) is required: ask them if you do not know it, never guess it.",
+        title: "Add a request", description: "File a client request. It goes through the normal pipeline: one line in the Task Hub Feed and, for a task, a proposal card in its thread that the person confirms with one tap (Create card, Remind me instead, No card). Use the client's words. This assistant account may be shared by several people, so `by` (the name of the person asking you) is required: ask them if you do not know it, never guess it.",
         inputSchema: z.object({
           client: z.string().describe("Client name, id or alias"),
           request: z.string().describe("What was asked, as close to the original words as possible"),
@@ -95,7 +95,7 @@ function buildHandler(owner: McpKeyOwner) {
         };
         const r = await processMessage(m, { skip: false, reason: null });
         const n = r.requestIds?.length ?? 0;
-        return text(n ? `${n} task${n > 1 ? "s" : ""} created in Staging for ${c.name}; a PM will approve by dragging the card out.` : humanOutcome(r.outcome, r.reason));
+        return text(n ? `${n} task${n > 1 ? "s" : ""} proposed for ${c.name} in the Task Hub Feed; ${who} confirms each with one tap on the card there (Create card, Remind me instead, or No card).` : humanOutcome(r.outcome, r.reason));
       });
 
       server.registerTool("meetings", {

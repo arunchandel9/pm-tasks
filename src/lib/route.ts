@@ -1,4 +1,5 @@
 import { routing, boards as boardDefaults } from "./config";
+import { parseWhen } from "./when";
 import type { Client, Priority, RouteDecision, RequestTypeRule } from "./types";
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -45,14 +46,18 @@ export function route(opts: {
   text: string;
   client: Client | null;
   now?: Date;
+  /** The sender said it is urgent in plain words (extract.urgent): P1 with the 4-hour due, shown on the proposal. */
+  urgent?: boolean;
+  /** Timing the sender gave, verbatim ("by Friday", "within 24 hours"): becomes the due date when it parses. */
+  deadline?: string | null;
 }): RouteDecision {
   const now = opts.now ?? new Date();
   const rule = ruleFor(opts.requestType);
   const department = (rule?.department ?? opts.modelDepartment) as RouteDecision["department"];
 
   const kw = keywordPriority(opts.text);
-  const priority: Priority = kw.p1 ? "P1" : opts.priorityHint;
-  const priorityReason = kw.p1 ? `keyword: "${kw.keyword}"` : opts.priorityReason;
+  const priority: Priority = kw.p1 || opts.urgent ? "P1" : opts.priorityHint;
+  const priorityReason = kw.p1 ? `keyword: "${kw.keyword}"` : opts.urgent ? "the sender said it is urgent" : opts.priorityReason;
 
   const noCard = !!rule?.no_card;
   const gated = !!rule?.gated;
@@ -63,8 +68,11 @@ export function route(opts: {
 
   let dueAt: Date | null = null;
   if (!noCard) {
-    if (priority === "P1") dueAt = new Date(now.getTime() + routing().p1_sla_hours * 3600 * 1000);
+    const said = parseWhen(opts.deadline, now);
+    if (said && said > now) dueAt = said;
+    else if (priority === "P1") dueAt = new Date(now.getTime() + routing().p1_sla_hours * 3600 * 1000);
     else if (rule?.sla_days) dueAt = addWorkingDays(now, rule.sla_days);
+    else dueAt = addWorkingDays(now, priority === "P2" ? 3 : 5);
   }
 
   return {

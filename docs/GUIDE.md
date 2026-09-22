@@ -20,19 +20,21 @@ Put the client first when the message does not say it: `HOH: the booking form is
 1. **The feed line is the receipt.** Every message gets one line in **Task Hub Feed** (📋). Nothing within 2 minutes → send it again.
 2. **Answer the hub in its thread.** "Which client?" → reply with the name, or `yes` to its suggestion. "Heard: …" on a voice note → if it misheard, reply with the correction and the card follows.
 3. **Say the client name in a voice note.** No name → the hub asks, nothing is filed until you answer.
-4. **Nothing vanishes.** An update with no ask gets an ℹ️ "noted, no task" line. An unhappy client gets a ⚠️ line: a person replies to the client, the hub never does.
+4. **Nothing vanishes, nothing becomes a card on its own.** Every message becomes one of five things: a **task** (the hub proposes a card, you confirm with one tap), a **reminder** ("remind me tomorrow": it comes back to you in the feed, @mentioned, until you press Done), an **idea** (comes back on Monday for a decision), a **rule** for a client (printed on their cards), or a **note** (on record, ℹ️ line). An unhappy client gets a ⚠️ line: a person replies to the client, the hub never does.
 5. **Do not send twice.** A repeat gets a 🔁 line pointing at the card that already exists. Add detail by replying in the feed thread or the DM thread; it lands on the card.
 
 ## PMs
 
-- **Staging is the inbox.** Every new card lands in **Staging** on the department board (Development, Writers, Graphics, SEO, Onboarding & Automations, Video) with the labels `Task Hub`, client and priority, the original words and the source link.
-- **Drag = approval.** Drag the card out of Staging to where it belongs and assign it, on the same board or another one (a Development Staging card that is really writing work goes straight to Writers' To Do). Within a minute the row appears in the client's tab of PM Overview, **yellow**. Check the row, move it up or down if needed, make it white. Never clear the Pulp link, never move rows between tabs.
-- **The PMs board is different.** Asks that belong to no department (coordination, follow-ups, "share the document", internal items) land in Staging on **PMs - Board**. Drag them out to approve as usual, but no sheet row is written while the card stays on that board: add the row yourself when it deserves one (paste the card link in the client's tab, the Task cell may stay blank) and Status follows from then on. Move the card to a department board and the row is written at once.
+- **The proposal is the inbox.** When a message holds a task, the hub posts a card in that message's feed thread, addressed to you: the task, and four fields already filled in: Department, Assign to, Priority, Due. Check them, change any that is wrong, then tap **Create card**. The Pulp card appears in To Do on that board, assigned, and the sheet row is written at the same moment. No dragging, no assigning afterwards.
+- **Not a card?** Tap **No card** and nothing is made. Want to be nudged later instead? Tap **Remind me instead**: it comes back to you in two days (reply "Friday" or "next week" in the thread to change that).
+- **You can also type in the thread:** "create", "create for Anuj", "remind me Friday", "no card".
+- **Cards on PMs - Board** get no sheet row from the hub: add the row yourself when it deserves one (paste the card link in the client's tab) and Status follows from then on. Move the card to a department board and the row is written at once.
 - **Status is automatic from then on.** Move the card, the row follows. Done fills Date Completed where the tab has that column and moves the row below the DONE divider. Moving back out of Done reopens it.
 - **Not a task?** Archive the card in Pulp. No row exists yet, nothing else to do.
 - **Cards you make by hand in Pulp:** paste the card link in a new row of the client's tab. The Task cell may stay blank, the hub fills it from the card within 10 minutes. Status follows from the next move.
 - **Ask the hub from Claude:** "what is pending for HOH", "what happened in the last meeting with TED", "what happened on 12 September", "anything overdue this week". To file a request from Claude it asks who is asking: answer with your name, and the card reads "Anuj via Claude-Arun".
-- **The daily brief** lands in the feed at 23:00 on weekdays: one line, details in its thread. **Waiting on you** is your list for the morning.
+- **Today, at 10:00** on weekdays: one line in the feed, and in its thread every item that is waiting on a named person, you @mentioned on yours: proposals you have not answered, reminders due, clients waiting in Slack. Nothing waiting, no post.
+- **Monday, 10:00:** the week's ideas, one card each. Tap **Make it a task** or **Not now**. An idea nobody decides on comes back the next Monday.
 
 ## Arun
 

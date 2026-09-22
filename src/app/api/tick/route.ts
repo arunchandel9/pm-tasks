@@ -20,6 +20,10 @@ export async function GET(req: Request) {
   const started = Date.now();
   const elapsed = () => Date.now() - started;
 
+  // 0. The schema applies itself after a deploy that changed it (idempotent statements, once per schema).
+  try { const { ensureSchema } = await import("@/lib/schema-apply"); const r = await ensureSchema(); if (r.applied) report.schema = r; }
+  catch (e) { report.schema = { error: (e as Error).message }; }
+
   // 1. Client map
   if (sheetsConfigured()) {
     try {
@@ -169,6 +173,12 @@ export async function GET(req: Request) {
     } catch (e) { report.sheetCards = { error: (e as Error).message }; }
   }
 
+  // 3b. Reminders: posted when their time comes, again every morning (10:00 India) until Done.
+  try {
+    const { postDueReminders } = await import("@/lib/reminders");
+    report.reminders = await postDueReminders();
+  } catch (e) { report.reminders = { error: (e as Error).message }; }
+
   // 4. Housekeeping, off by default: RAW_RETENTION_DAYS=90 would drop the raw envelope of old messages.
   // Text, sender, links, classifications, decisions, tasks and status history are always kept.
   const retention = Number(process.env.RAW_RETENTION_DAYS || 0);
@@ -305,6 +315,12 @@ async function runJob(kind: string, payload: Record<string, unknown>) {
       const { createCardForTask } = await import("@/lib/tasks");
       const tid = payload.taskId ?? (await sql()`select id from tasks where request_id = ${payload.requestId as string}`)[0]?.id;
       if (tid) await createCardForTask(String(tid));
+      return;
+    }
+    case "post_proposal": {
+      // The proposal card failed to post (Chat hiccup): post it now from the stored request.
+      const { repostProposal } = await import("@/lib/proposal");
+      await repostProposal(String(payload.requestId));
       return;
     }
     case "sync_sheet": {

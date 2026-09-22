@@ -25,7 +25,8 @@ team's Claude accounts. Developed on branch `claude/mangowise-task-automation-3q
 - The feed is one line per message; everything else goes in that line's thread. A headline says only what the thread is about (client, what happened, source): no titles, words, links, names or counts. That applies to every feed line, present and future.
 - A client is set only with full clarity; near-misses are suggestions the sender confirms.
 - Writes from Claude ask who is asking (label "Anuj via Claude-Arun"); reads ask nothing.
-- One Staging list per board; no client or internal boards; no separate Needs scope list.
+- Every item is one of five kinds: task, reminder, idea, rule, note. Only a task is proposed, and only a person's tap makes the card (Create card → To Do, assigned; Remind me instead; No card). No Staging list, no client or internal boards, no Needs scope list.
+- Every line the hub writes says who it is for and what to do, in the team's words; the action is spelled out on the button.
 - Speed: replies as instant as possible (Drop space read every 20 s; client picks re-run inline).
 - Commit messages end with the Co-Authored-By and Claude-Session lines; no model identifiers in code or docs.
 
@@ -37,4 +38,4 @@ same for a browser.
 
 ## Checks before pushing
 
-`npx tsc --noEmit` and `npx vitest run` (127 tests). Vercel deploys the branch in about two minutes.
+`npx tsc --noEmit` and `npx vitest run` (143 tests). Vercel deploys the branch in about two minutes.

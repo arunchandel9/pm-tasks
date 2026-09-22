@@ -3,6 +3,6 @@
     { "path": "/api/tick", "schedule": "* * * * *" },
     { "path": "/api/inbox-tick", "schedule": "* * * * *" },
     { "path": "/api/meet-tick", "schedule": "*/5 * * * *" },
-    { "path": "/api/eod", "schedule": "30 17 * * 1-5" }
+    { "path": "/api/eod", "schedule": "30 4 * * 1-5" }
   ]
 }

@@ -10,6 +10,10 @@ import { postAck, humanOutcome, threadTopic, closeNeedsHumanCard, type ThreadTop
 import { handleIntakeMessage } from "@/lib/chat-intake";
 import { reprocessSoon } from "@/lib/reprocess";
 import { acknowledgeReplies, ACK_WORDS } from "@/lib/slack-replies";
+import { decideProposal, answerProposal } from "@/lib/proposal";
+import { markReminderDone, moveReminder } from "@/lib/reminders";
+import { decideIdea } from "@/lib/ideas";
+import type { Priority } from "@/lib/types";
 import type { Message, Client } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -60,7 +64,7 @@ async function handle(ev: NormalisedEvent, raw: unknown, record: (extra: Record<
       // A typed reply (with @Task Hub) inside a card's thread answers that card: client name, "not a task", "make it a task", "approve".
       const topic = await threadTopic(ev.message.thread?.name);
       if (!topic) return reply("review_no_topic", replyText(f, "Reply inside the thread of the card you mean, with the client name, \"not a task\", \"make it a task\" or \"approve\"."));
-      const answer = await answerThread(topic, (ev.message.argumentText ?? ev.message.text ?? "").replace(/^@?Task Hub\s*/i, "").trim(), ev.user.displayName ?? ev.user.email ?? "unknown");
+      const answer = await answerThread(topic, (ev.message.argumentText ?? ev.message.text ?? "").replace(/^@?Task Hub\s*/i, "").trim(), ev.user.displayName ?? ev.user.email ?? "unknown", ev.user.name ?? ev.user.email ?? null);
       await sendText(reviewSpace(), answer, ev.message.thread?.name); // answer inside the same thread
       return reply("review_thread_reply", {});
     }
@@ -73,8 +77,14 @@ async function handle(ev: NormalisedEvent, raw: unknown, record: (extra: Record<
 }
 
 /** Interpret a typed reply in a PM Review card thread. Returns the one-line answer to post back in the thread. */
-async function answerThread(topic: ThreadTopic, text: string, who: string): Promise<string> {
+async function answerThread(topic: ThreadTopic, text: string, who: string, whoUser: string | null): Promise<string> {
   const t = text.toLowerCase();
+  if (topic.kind === "proposal") return answerProposal(topic.requestId, text, who, whoUser);
+  if (topic.kind === "reminder") {
+    if (/\b(done|handled|sorted|completed|finished)\b/.test(t)) return markReminderDone(topic.reminderId, who);
+    return (await moveReminder(topic.reminderId, text, who)) ?? "Say \"done\" when it is handled, or a day (\"Friday\", \"next week\", \"tomorrow 4pm\") to move it.";
+  }
+  if (topic.kind === "ideas") return "Tap Make it a task or Not now on the idea you mean.";
   const no = /\b(not a task|no task|ignore|skip|dismiss|drop it|nothing)\b/.test(t);
   const yes = /\b(make it a task|make a task|create|approve|yes|go ahead|ok(ay)?|separate task)\b/.test(t);
   if (topic.kind === "nudge") {
@@ -156,10 +166,29 @@ async function handleDialogSubmit(ev: NormalisedEvent) {
 }
 
 async function handleCardClick(ev: NormalisedEvent) {
-  const fn = ev.invokedFunction, p = ev.parameters, who = ev.user.displayName ?? ev.user.email ?? "unknown";
+  const fn = ev.invokedFunction, p = ev.parameters, who = ev.user.displayName ?? ev.user.email ?? "unknown", whoUser = ev.user.name ?? ev.user.email ?? null;
   const done = (text: string) => NextResponse.json(replyUpdateMessage(ev.format, text));
+  const field = (k: string) => ev.formInputs[k]?.stringInputs?.value?.[0];
   try {
     switch (fn) {
+      case "proposal_create": {
+        const due = field("due");
+        const assignee = field("assignee");
+        return done(await decideProposal("create", p.requestId, who, whoUser, {
+          department: field("department") || null, assignee: assignee === undefined ? undefined : assignee || null,
+          priority: (field("priority") as Priority | undefined) || null, dueAt: due ? new Date(due) : null,
+        }));
+      }
+      case "proposal_remind":
+        return done(await decideProposal("remind", p.requestId, who, whoUser, {}));
+      case "proposal_no":
+        return done(await decideProposal("no", p.requestId, who, whoUser, {}));
+      case "reminder_done":
+        return done(await markReminderDone(p.reminderId, who));
+      case "idea_task":
+        return done(await decideIdea(p.ideaId, "task", who, whoUser, p.threadKey ?? null));
+      case "idea_not_now":
+        return done(await decideIdea(p.ideaId, "not_now", who, whoUser, p.threadKey ?? null));
       case "approve":
         await approveRequest(p.requestId, who);
         return done(`✅ Approved by ${who} · request ${p.requestId.slice(0, 8)}`);

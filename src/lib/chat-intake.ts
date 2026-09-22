@@ -141,7 +141,7 @@ export async function handleIntakeMessage(msg: ChatMessage, raw: unknown, space:
     const filed = result.outcome === "attached" ? [] : reqs.filter((r) => r.status !== "merged").map((r) => String(r.title));
     const added = result.outcome === "attached" ? reqs.map((r) => String(r.title)) : reqs.filter((r) => r.status === "merged").map((r) => String(r.title));
     const vague = m.text.trim().split(/\s+/).length < 10 || reqs.some((r) => Number(r.confidence) < 0.7);
-    const parts = [filed.length ? `Filed: ${filed.join("; ")}.` : "", added.length ? `Added to the existing card: ${added.join("; ")}.` : ""].filter(Boolean).join(" ");
+    const parts = [filed.length ? `To confirm in the feed thread (one tap): ${filed.join("; ")}.` : "", added.length ? `Added to the existing card: ${added.join("; ")}.` : ""].filter(Boolean).join(" ");
     if (result.outcome === "attached" && !reqs.length) { if (transcriptNote) await say(`${heard}Added to the existing card in this thread.`); else await finish(); return; }
     if (transcriptNote || vague || added.length) await say(`${heard}${parts} Reply here to correct or add anything.`); else await finish();
     return;
@@ -155,7 +155,9 @@ function baseMessage(msg: ChatMessage, raw: unknown, sender: string, text: strin
   return {
     channel: "intake", externalId: msg.name, teamId: null, clientId: hit?.client.id ?? null, scope: hit ? hit.client.scope : "unknown",
     sender, senderIsStaff: true, sentAt: msg.createTime ? new Date(msg.createTime) : new Date(),
-    text: hit ? stripClientPrefix(text, hit.client) : text, permalink: permalinkFor(msg.name), threadRef: msg.thread?.name ?? null, raw,
+    text: hit ? stripClientPrefix(text, hit.client) : text, permalink: permalinkFor(msg.name), threadRef: msg.thread?.name ?? null,
+    // The sender's Chat account rides along so a proposal or reminder can @mention them.
+    raw: { ...(typeof raw === "object" && raw ? raw as Record<string, unknown> : { event: raw }), senderUser: msg.sender?.name ?? msg.sender?.email ?? null },
   };
 }
 
