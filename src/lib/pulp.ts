@@ -188,9 +188,37 @@ export const pulp = {
    * or objects depending on the Pulp version, so both shapes are read; `sample` keeps the first card's field names so
    * hub status shows what Pulp actually returns.
    */
-  async boardCards(boardId: string): Promise<{ cards: BoardCard[]; sample: { keys: string[]; labels: unknown; members: unknown } | null }> {
-    type Raw = { id: string; board_id?: string; list_id: string; name: string; updated_at?: string; created_at?: string; due_date?: string | null; labels?: unknown; members?: unknown; assignees?: unknown };
-    const rows = await call<Raw[]>("GET", `/boards/${boardId}/cards`);
+  async boardCards(boardId: string): Promise<{ cards: BoardCard[]; sample: { keys: string[]; labels: unknown; members: unknown } | null; capped: boolean; paging: string | null }> {
+    type Raw = { id: string; board_id?: string; list_id: string; name: string; closed?: boolean; updated_at?: string; created_at?: string; due_date?: string | null; labels?: unknown; members?: unknown; assignees?: unknown };
+    const CAP = 1000;
+    const all = new Map<string, Raw>();
+    const first = await call<Raw[]>("GET", `/boards/${boardId}/cards`);
+    for (const r of first) all.set(r.id, r);
+    // Past the cap (the SEO and Development boards), the rest is fetched the first way Pulp accepts: an offset, a page
+    // number, or list by list. A way that returns nothing new is not supported and the next is tried; none → capped.
+    let paging: string | null = null;
+    if (first.length >= CAP) {
+      const add = (rows: Raw[]) => { let fresh = 0; for (const r of rows) if (!all.has(r.id)) { all.set(r.id, r); fresh++; } return fresh; };
+      const ways: Array<[string, (n: number) => string]> = [["offset", (n) => `/boards/${boardId}/cards?offset=${n}&limit=${CAP}`], ["page", (n) => `/boards/${boardId}/cards?page=${Math.floor(n / CAP) + 1}&per_page=${CAP}`]];
+      for (const [name, url] of ways) {
+        let got = 0;
+        for (let guard = 0; guard < 20; guard++) {
+          const more = await call<Raw[]>("GET", url(all.size));
+          const fresh = add(more);
+          got += fresh;
+          if (!fresh || more.length < CAP) break;
+        }
+        if (got) { paging = name; break; }
+      }
+      if (!paging) {
+        try {
+          let got = 0;
+          for (const l of await this.listsOnBoard(boardId)) got += add(await call<Raw[]>("GET", `/lists/${l.id}/cards`));
+          if (got) paging = "lists";
+        } catch { /* no per-list read either */ }
+      }
+    }
+    const rows = [...all.values()].filter((r) => !r.closed);
     const names = (v: unknown, pick: string[]): string[] => Array.isArray(v)
       ? v.map((x) => typeof x === "string" ? x : x && typeof x === "object" ? String(pick.map((k) => (x as Record<string, unknown>)[k]).find((s) => typeof s === "string" && s) ?? (((x as { user?: Record<string, unknown> }).user) ? pick.map((k) => (x as { user: Record<string, unknown> }).user[k]).find((s) => typeof s === "string" && s) : "") ?? "") : "").filter(Boolean)
       : [];
@@ -198,8 +226,8 @@ export const pulp = {
       id: c.id, boardId: c.board_id ?? boardId, listId: c.list_id, title: c.name, updatedAt: c.updated_at, createdAt: c.created_at ?? null,
       labels: names(c.labels, ["name", "title"]), members: names(c.members ?? c.assignees, ["full_name", "name", "display_name", "email"]), dueAt: c.due_date ?? null,
     }));
-    const first = rows[0];
-    return { cards, sample: first ? { keys: Object.keys(first), labels: first.labels ?? null, members: first.members ?? first.assignees ?? null } : null };
+    const s = rows[0];
+    return { cards, sample: s ? { keys: Object.keys(s), labels: s.labels ?? null, members: s.members ?? s.assignees ?? null } : null, capped: first.length >= CAP && !paging, paging };
   },
 
   /** Link a PM can click. Template lives in boards.yaml (card_url) so it is one line to change once confirmed. */

@@ -15,8 +15,6 @@ import type { Client } from "./types";
 
 export const MIRROR_EVERY_MIN = 5;
 export const ARCHIVED_NOTE = "Archived or deleted in Pulp";
-/** Pulp's board read is capped at 1000 cards; past that a missing card may only be beyond the cap, so nothing is archived. */
-export const BOARD_READ_CAP = 1000;
 
 export interface KnownCard { id: string; pulp_card_id: string; list_id: string | null; origin: string; title: string; completed_at: string | null; notes: string | null; labels?: string[] | null }
 export interface MirrorPlan { insert: BoardCard[]; update: Array<{ id: string; card: BoardCard; moved: boolean; fromList: string | null }>; archive: string[] }
@@ -59,7 +57,7 @@ export function planMirror(known: KnownCard[], cards: BoardCard[], capped = fals
   return plan;
 }
 
-export interface MirrorReport { at: string; boards: Array<{ board: string; name: string; department: string; cards: number; capped: boolean; new: number; updated: number; archived: number }>; errors: string[]; sample: unknown; seconds: number }
+export interface MirrorReport { at: string; boards: Array<{ board: string; name: string; department: string; cards: number; capped: boolean; paging: string | null; new: number; updated: number; archived: number }>; errors: string[]; sample: unknown; seconds: number }
 
 /** The boards in boards.yaml, one entry per distinct board with the first department that names it. */
 async function mirroredBoards(): Promise<Array<{ id: string; department: string }>> {
@@ -92,9 +90,8 @@ export async function mirrorBoards(outOfTime: () => boolean = () => false): Prom
   for (const b of await mirroredBoards()) {
     if (outOfTime()) { report.errors.push(`stopped before ${names.get(b.id) ?? b.id}: out of time`); break; }
     try {
-      const { cards, sample } = await pulp.boardCards(b.id);
+      const { cards, sample, capped, paging } = await pulp.boardCards(b.id);
       if (!report.sample) report.sample = sample;
-      const capped = cards.length >= BOARD_READ_CAP;
       const lists = new Map((await pulp.listsOnBoard(b.id)).map((l) => [l.id, l.name]));
       const ids = cards.map((c) => c.id);
       const known = (await sql()`select id, pulp_card_id, list_id, origin, title, completed_at, notes, labels from tasks
@@ -128,7 +125,7 @@ export async function mirrorBoards(outOfTime: () => boolean = () => false): Prom
         if (u.moved) await sql()`insert into status_events (task_id, from_list, to_list, source) values (${u.id}, ${u.fromList ?? "unknown"}, ${u.card.listId}, 'poll')`;
       }
       if (plan.archive.length) await sql()`update tasks set completed_at = coalesce(completed_at, now()), notes = ${ARCHIVED_NOTE} where id = any(${plan.archive}::uuid[])`;
-      report.boards.push({ board: b.id, name: names.get(b.id) ?? b.id, department: b.department, cards: cards.length, capped, new: plan.insert.length, updated: plan.update.length, archived: plan.archive.length });
+      report.boards.push({ board: b.id, name: names.get(b.id) ?? b.id, department: b.department, cards: cards.length, capped, paging, new: plan.insert.length, updated: plan.update.length, archived: plan.archive.length });
     } catch (e) { report.errors.push(`${names.get(b.id) ?? b.id}: ${(e as Error).message.slice(0, 160)}`); }
   }
   // A mirrored card that later gets a sheet row (the PM pastes its link) or turns out to be a hub card is tracked there from then on.

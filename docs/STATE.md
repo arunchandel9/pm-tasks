@@ -32,9 +32,11 @@ Last updated: 2026-09-23 (board mirror, cards from Claude made at once, Remind m
   month, against the per-card polls' 90,000). Open point: the board read is capped at 1000 cards and the Development
   board is bigger; on a capped board nothing is archived, and `board_mirror_last.sample` in hub status shows the
   fields Pulp returns (labels, members) so the mapping can be checked on the first run. `tasks.labels` added.
-  First live run: the mirror inserted one card per round trip, hundreds of cards, ran past the minute and the tick was
-  cut off before it saved anything, so the read repeated every minute. Fixed at the root the same hour: one insert
-  statement per 300 cards, and the run is marked started before any read so a cut-off run waits its five minutes.
+  First live run: the SEO board alone took 84 s (947 cards inserted one round trip each) and the other six boards
+  waited for the next five-minute run. Fixed at the root the same hour: one insert statement per 300 cards, and the
+  run is marked started before any read so a run cut off by the function's limit could never repeat every minute.
+  The SEO board returned exactly 1000 cards (capped), so the read now tries an offset, a page number, then list by
+  list, and reports which worked (`board_mirror_last.boards[].paging`); closed cards are dropped.
   Sibling: a label "P1 Task" now counts as P1 (was exact "P1" only). Seen on the SEO board: labels carry the week
   ("Week 30"), the priority ("P1 Task") and the client ("HOH"), so week-wise questions answer from labels.
 - **2026-09-23, cards from Claude need no feed tap (Arun):** a card filed through Claude carries every decision already
