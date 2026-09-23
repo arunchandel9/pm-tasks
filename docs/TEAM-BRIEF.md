@@ -25,7 +25,13 @@ Thank you for the honest feedback last week. You were right: too many cards, a S
 What is different
 
 1. Only real work becomes a card.
-   Every message is now sorted into one of five things: a task, a reminder, an idea, a rule for a client, or a note. Scheduling, access, "look at this", feedback and conversation are notes: on record, no card. Last week that would have stopped about half of the 80 cards.
+   Task Hub now sorts everything that comes in into five kinds:
+   • Task: something that needs to be done
+   • Reminder: something you want to be reminded about later
+   • Idea: something to consider or decide on later
+   • Client rule: an instruction to remember for that client
+   • Note: useful information or context, kept on record, no task needed
+   So scheduling, access requests, "look at this", general feedback and conversation are stored as notes. Nothing is ignored or lost; it is recorded without another card. Last week that would have stopped about half of the 80 cards.
 
 2. You decide, in one tap.
    A task comes to you as a card in the feed thread, addressed to you, with Department, Assign to, Priority and Due already filled in. Check them, change any that is wrong, tap Create card. The Pulp card appears in To Do, assigned, and the sheet row is written at the same moment. Not a card? Tap No card. Want to be nudged later? Tap Remind me instead. No more Staging, no more dragging, no more assigning afterwards.
