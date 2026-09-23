@@ -34,10 +34,10 @@ What is different
    So scheduling, access requests, "look at this", general feedback and conversation are stored as notes. Nothing is ignored or lost; it is recorded without another card. Last week that would have stopped about half of the 80 cards.
 
 2. You decide, in one tap.
-   A task comes to you as a card in the feed thread, addressed to you, with Department, Assign to, Priority and Due already filled in. Check them, change any that is wrong, tap Create card. The Pulp card appears in To Do, assigned, and the sheet row is written at the same moment. Not a card? Tap No card. Want to be nudged later? Tap Remind me instead. No more Staging, no more dragging, no more assigning afterwards.
+   Only a task needs a decision; reminders, ideas, notes and client rules are recorded with one line in the thread and need nothing from you. A task comes to you as a card in the feed thread, addressed to you, with Department, Assign to, Priority, Due and Remind me on already filled in. Check them, change any that is wrong, tap Create card. The Pulp card appears in To Do on that board, assigned, and the sheet row is written at the same moment. Not a card? Tap No card. Want to be nudged later? Tap Remind me instead and it comes back on the day selected. No more Staging, no more dragging, no more assigning afterwards.
 
 3. The hub remembers for you.
-   Say "remind me tomorrow" or "chase this on Friday" in the Drop, and it comes back to you in the feed, @mentioned, every morning until you press Done.
+   Say "remind me tomorrow" or "chase this on Friday" in the Drop, the DM or an email, and it comes back to you in the feed, @mentioned, every morning until you press Done. No day given? Tomorrow at 10:00.
 
 4. Ideas do not get lost.
    Every idea comes back on Monday at 10:00 in one post: Make it a task, or Not now. An idea nobody decides on comes back the next Monday.

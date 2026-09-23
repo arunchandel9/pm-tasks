@@ -11,12 +11,12 @@ import type { Message } from "./types";
  * reply reminders. Decision 2026-09-22.
  */
 
-export const DEFAULT_DAYS = 2;
+export const DEFAULT_DAYS = 1; // "remind me" with no day means tomorrow at 10:00 (Arun, 2026-09-23: a default must be certain)
 export { createReminder, mention } from "./reminders-util";
 import { createReminder, mention } from "./reminders-util";
 export type { ReminderInput } from "./reminders-util";
 
-/** The due moment from the sender's words, else the default (two mornings from now). */
+/** The due moment from the sender's words, else tomorrow at 10:00. */
 export function dueFromWords(words: string | null | undefined, now = new Date()): Date {
   return parseWhen(words, now) ?? daysFromNow(now, DEFAULT_DAYS);
 }

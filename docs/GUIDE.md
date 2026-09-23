@@ -25,8 +25,8 @@ Put the client first when the message does not say it: `HOH: the booking form is
 
 ## PMs
 
-- **The proposal is the inbox.** When a message holds a task, the hub posts a card in that message's feed thread, addressed to you: the task, and four fields already filled in: Department, Assign to, Priority, Due. Check them, change any that is wrong, then tap **Create card**. The Pulp card appears in To Do on that board, assigned, and the sheet row is written at the same moment. No dragging, no assigning afterwards.
-- **Not a card?** Tap **No card** and nothing is made. Want to be nudged later instead? Tap **Remind me instead**: it comes back to you in two days (reply "Friday" or "next week" in the thread to change that).
+- **The proposal is the inbox.** When a message holds a task, the hub posts a card in that message's feed thread, addressed to you: the task, and four fields already filled in: Department, Assign to, Priority, Due, Remind me on. Check them, change any that is wrong, then tap **Create card**. The Pulp card appears in To Do on that board, assigned, and the sheet row is written at the same moment. No dragging, no assigning afterwards.
+- **Not a card?** Tap **No card** and nothing is made. Want to be nudged later instead? Tap **Remind me instead**: it comes back to you on the day selected in **Remind me on** (tomorrow unless you change it).
 - **You can also type in the thread:** "create", "create for Anuj", "remind me Friday", "no card".
 - **Cards on PMs - Board** get no sheet row from the hub: add the row yourself when it deserves one (paste the card link in the client's tab) and Status follows from then on. Move the card to a department board and the row is written at once.
 - **Status is automatic from then on.** Move the card, the row follows. Done fills Date Completed where the tab has that column and moves the row below the DONE divider. Moving back out of Done reopens it.

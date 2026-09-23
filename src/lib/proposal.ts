@@ -72,7 +72,7 @@ export async function postProposal(p: { requestId: string; client: Client | null
   }
   const card = gchat.proposalCard({
     requestId: p.requestId, askedName, askedUser, clientName: p.client?.name ?? "Unknown client", title: p.draft.title, description: p.draft.description, quote: p.quote,
-    departments: departmentOptions(), department: p.route.department, people, assignee, priority: p.route.priority, dues, due, rules,
+    departments: departmentOptions(), department: p.route.department, people, assignee, priority: p.route.priority, dues, due, remindOn: daysFromNowMorning(new Date(), 1).toISOString(), rules,
     urgentReason: p.route.priority === "P1" ? p.route.priorityReason : null,
   });
   const sent = await gchat.sendCard(gchat.reviewSpace(), card, `Task to confirm: ${p.draft.title}`, `prop-${p.requestId}`, threadKey);
@@ -80,7 +80,7 @@ export async function postProposal(p: { requestId: string; client: Client | null
   await sql()`update requests set proposal = coalesce(proposal, '{}'::jsonb) || ${JSON.stringify({ cardName: sent.name, thread: sent.thread })}::jsonb where id = ${p.requestId}`;
 }
 
-export interface ProposalChoice { department?: string | null; assignee?: string | null; priority?: Priority | null; dueAt?: Date | null }
+export interface ProposalChoice { department?: string | null; assignee?: string | null; priority?: Priority | null; dueAt?: Date | null; remindOn?: Date | null }
 
 /** The tap, or the typed word. Returns the outcome line that replaces the card. */
 export async function decideProposal(kind: "create" | "remind" | "no", requestId: string, who: string, whoUser: string | null, choice: ProposalChoice, words?: string): Promise<string> {
@@ -95,7 +95,8 @@ export async function decideProposal(kind: "create" | "remind" | "no", requestId
     return `— No card · ${who} · "${draft.title}"`;
   }
   if (kind === "remind") {
-    const dueAt = (words ? parseWhen(words) : null) ?? daysFromNowMorning(new Date(), 2);
+    // The day the person picked on the card, or typed; with nothing said, tomorrow at 10:00. Never a vague default.
+    const dueAt = choice.remindOn ?? (words ? parseWhen(words) : null) ?? daysFromNowMorning(new Date(), 1);
     // The reminder comes back in the same feed thread as the message it came from.
     const threadKey = (r.feed_thread as string | null) ?? `msg-${String(r.message_id)}`;
     await createReminder({ messageId: String(r.message_id), requestId, clientId: r.client_id as string | null, ownerName: who, ownerUser: whoUser, text: draft.title, dueAt, threadKey });

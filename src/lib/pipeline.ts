@@ -213,7 +213,7 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
       const requestId = String(ins[0].id);
       if (a.kind === "reminder") {
         const rem = await reminderFromMessage({ m, messageId, text: a.ask, remindAt: a.remind_at, requestId });
-        other.push(`⏰ Reminder set for ${who} · ${whenLabel(rem.dueAt, true)} · ${a.ask} · it comes back to you in the feed then`);
+        other.push(`⏰ Reminder set for ${who} · ${a.remind_at ? whenLabel(rem.dueAt, true) : `tomorrow 10:00 (${whenLabel(rem.dueAt)})`} · ${a.ask} · it comes back to you in the feed then; reply here with another day to change it`);
       } else if (a.kind === "idea") {
         await sql()`insert into ideas (client_id, message_id, text, said_by, source, source_link, said_at, request_id) values (${m.clientId}, ${messageId}, ${a.ask}, ${who}, ${src}, ${m.permalink}, ${m.sentAt.toISOString()}, ${requestId})`;
         other.push(`💡 Idea, up for a decision on Monday: ${a.ask}`);

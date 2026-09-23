@@ -244,6 +244,7 @@ export interface ProposalOptions {
   people: string[]; assignee: string | null;
   priority: "P1" | "P2" | "P3";
   dues: Array<{ value: string; text: string }>; due: string;
+  remindOn: string;
   rules: string[]; urgentReason: string | null;
 }
 export function proposalCard(p: ProposalOptions): chat_v1.Schema$GoogleAppsCardV1Card {
@@ -258,6 +259,7 @@ export function proposalCard(p: ProposalOptions): chat_v1.Schema$GoogleAppsCardV
     { selectionInput: { name: "assignee", label: "Assign to", type: "DROPDOWN", items: [{ text: "choose…", value: "", selected: !p.assignee }, ...p.people.map((n) => ({ text: n, value: n, selected: n === p.assignee }))] } },
     { selectionInput: { name: "priority", label: "Priority", type: "DROPDOWN", items: (["P1", "P2", "P3"] as const).map((x) => ({ text: x === "P1" ? "P1 · urgent, due in 4 hours" : x === "P2" ? "P2 · normal" : "P3 · when there is time", value: x, selected: x === p.priority })) } },
     { selectionInput: { name: "due", label: "Due", type: "DROPDOWN", items: p.dues.map((d) => ({ text: d.text, value: d.value, selected: d.value === p.due })) } },
+    { selectionInput: { name: "remind_on", label: "Remind me on (for Remind me instead)", type: "DROPDOWN", items: p.dues.filter((d) => !/^In 4 hours/.test(d.text)).map((d) => ({ text: d.text, value: d.value, selected: d.value === p.remindOn })) } },
     buttons([
       { text: "Create card", fn: "proposal_create", params: { requestId: p.requestId }, primary: true },
       { text: "Remind me instead", fn: "proposal_remind", params: { requestId: p.requestId } },

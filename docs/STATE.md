@@ -23,6 +23,9 @@ Last updated: 2026-09-22 (five kinds, the proposal card, reminders, Monday ideas
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-23, a reminder's day is never a guess (Arun):** the proposal card gets a fifth dropdown, Remind me on (tomorrow
+  by default), used by Remind me instead; "remind me" with no day means tomorrow at 10:00, said in the line. Two days as a
+  silent default was dropped.
 - **2026-09-22, five kinds and the proposal card (Arun, locked item by item):** the team said the hub was turning
   everything into cards (80 Staging cards in a week, about half scheduling, access, feedback, conversation, internal
   meeting items). Locked: (1) a card is proposed only when someone on the team has to produce something; every item is

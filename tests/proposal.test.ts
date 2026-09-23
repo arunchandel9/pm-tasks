@@ -31,14 +31,14 @@ describe("the proposal card", () => {
     expect(matchPerson("Shanur", people)).toBeNull();
     expect(matchPerson(null, people)).toBeNull();
   });
-  it("has four visible dropdowns and three buttons, addressed to the person", () => {
+  it("has five visible dropdowns and three buttons, addressed to the person", () => {
     const card = proposalCard({
       requestId: "r1", askedName: "Heena Ganotra", askedUser: "users/123", clientName: "The SKIN Firm", title: "Update pricing for Hair Treatment", description: "Change the hair treatment prices on the pricing page.", quote: "MOST URGENT task is to get the pricing changed",
-      departments: departmentOptions(), department: "content", people: ["Anuj Laddha"], assignee: null, priority: "P1", dues: dueOptions(null, now).dues, due: dueOptions(null, now).due, rules: ["Ask before changing durations"], urgentReason: "the sender said it is urgent",
+      departments: departmentOptions(), department: "content", people: ["Anuj Laddha"], assignee: null, priority: "P1", dues: dueOptions(null, now).dues, due: dueOptions(null, now).due, remindOn: "2026-09-23T04:30:00.000Z", rules: ["Ask before changing durations"], urgentReason: "the sender said it is urgent",
     });
     const widgets = card.sections![0].widgets!;
     const dropdowns = widgets.filter((w) => w.selectionInput?.type === "DROPDOWN").map((w) => w.selectionInput!.name);
-    expect(dropdowns).toEqual(["department", "assignee", "priority", "due"]);
+    expect(dropdowns).toEqual(["department", "assignee", "priority", "due", "remind_on"]);
     const buttons = widgets.find((w) => w.buttonList)!.buttonList!.buttons!.map((b) => b.text);
     expect(buttons).toEqual(["Create card", "Remind me instead", "No card"]);
     expect(JSON.stringify(widgets[0])).toContain("<users/123>: this needs your decision");

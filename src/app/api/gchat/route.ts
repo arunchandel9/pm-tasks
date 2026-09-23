@@ -179,8 +179,10 @@ async function handleCardClick(ev: NormalisedEvent) {
           priority: (field("priority") as Priority | undefined) || null, dueAt: due ? new Date(due) : null,
         }));
       }
-      case "proposal_remind":
-        return done(await decideProposal("remind", p.requestId, who, whoUser, {}));
+      case "proposal_remind": {
+        const on = field("remind_on");
+        return done(await decideProposal("remind", p.requestId, who, whoUser, { remindOn: on ? new Date(on) : null }));
+      }
       case "proposal_no":
         return done(await decideProposal("no", p.requestId, who, whoUser, {}));
       case "reminder_done":
