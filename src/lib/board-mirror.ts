@@ -35,9 +35,10 @@ export function clientFromCard(card: { title: string; labels: string[] }, client
   return resolveClientFromText(card.title, clients)?.client.id ?? null;
 }
 
+/** "P1", "P1 Task", "p2 - important" all count; anything else is P3. */
 export function priorityFromLabels(labels: string[]): "P1" | "P2" | "P3" {
-  const set = new Set(labels.map((l) => l.trim().toUpperCase()));
-  return set.has("P1") ? "P1" : set.has("P2") ? "P2" : "P3";
+  const set = new Set(labels.map((l) => l.trim().toUpperCase().match(/^P([123])\b/)?.[1] ?? ""));
+  return set.has("1") ? "P1" : set.has("2") ? "P2" : "P3";
 }
 
 /** Pure diff of one board's cards against what the hub knows. Cards tracked by another origin are left to their own polls. */
@@ -81,6 +82,11 @@ export async function mirrorBoards(outOfTime: () => boolean = () => false): Prom
   const started = Date.now();
   const report: MirrorReport = { at: new Date().toISOString(), boards: [], errors: [], sample: null, seconds: 0 };
   if (!pulp.configured()) return report;
+  // Marked as started before any read: a run cut short by the function's time limit must not repeat every minute.
+  // (First live run, 2026-09-23: one insert per card, hundreds of cards, ran past the minute and starved the tick.)
+  try {
+    await sql()`insert into settings (key, value) values ('board_mirror_last', ${JSON.stringify({ ...report, phase: "started" })}::jsonb) on conflict (key) do update set value = excluded.value, updated_at = now()`;
+  } catch { /* ignore */ }
   const clients = await allClients();
   const names = new Map((await pulp.boards()).map((b) => [b.id, b.name]));
   for (const b of await mirroredBoards()) {
@@ -101,10 +107,17 @@ export async function mirrorBoards(outOfTime: () => boolean = () => false): Prom
           priority: priorityFromLabels(card.labels), assignee: card.members[0] ?? null,
         };
       };
-      for (const card of plan.insert) {
-        const f = fields(card);
+      // One statement per 300 cards: the first read of a board brings hundreds, and a round trip per card ran past the minute.
+      const now = new Date().toISOString();
+      for (let i = 0; i < plan.insert.length; i += 300) {
+        const batch = plan.insert.slice(i, i + 300).map((card) => ({ card, f: fields(card) }));
+        const col = (fn: (x: { card: BoardCard; f: ReturnType<typeof fields> }) => string | null) => batch.map(fn);
         await sql()`insert into tasks (request_id, client_id, pulp_card_id, board_id, list_id, title, priority, assignee, due_at, staging, created_at, completed_at, origin, sheet_key, department, labels, last_moved_at)
-          values (null, ${f.clientId}, ${card.id}, ${b.id}, ${card.listId}, ${card.title}, ${f.priority}, ${f.assignee}, ${card.dueAt}, ${f.staging}, ${card.createdAt ?? new Date().toISOString()}, ${f.done ? new Date().toISOString() : null}, 'board', ${"board:" + card.id}, ${b.department}, ${card.labels}::text[], ${card.updatedAt ?? null})
+          select null, cl, c, ${b.id}, l, t, pr, a, d::timestamptz, s, cr::timestamptz, co::timestamptz, 'board', 'board:' || c, ${b.department}, string_to_array(lb, E'\\u0001'), lm::timestamptz
+          from unnest(${col((x) => x.f.clientId)}::text[], ${col((x) => x.card.id)}::text[], ${col((x) => x.card.listId)}::text[], ${col((x) => x.card.title)}::text[], ${col((x) => x.f.priority)}::text[],
+                      ${col((x) => x.f.assignee)}::text[], ${col((x) => x.card.dueAt)}::text[], ${batch.map((x) => x.f.staging)}::boolean[], ${col((x) => x.card.createdAt ?? now)}::text[], ${col((x) => x.f.done ? now : null)}::text[],
+                      ${col((x) => x.card.labels.join("\u0001"))}::text[], ${col((x) => x.card.updatedAt ?? null)}::text[])
+            as v(cl, c, l, t, pr, a, d, s, cr, co, lb, lm)
           on conflict (sheet_key) where sheet_key is not null do update set list_id = excluded.list_id, title = excluded.title, labels = excluded.labels`;
       }
       for (const u of plan.update) {

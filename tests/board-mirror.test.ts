@@ -34,6 +34,8 @@ describe("the board mirror", () => {
   });
   it("reads the priority from the labels", () => {
     expect(priorityFromLabels(["Task Hub", "p1"])).toBe("P1");
+    expect(priorityFromLabels(["Week 30", "P1 Task", "HOH"])).toBe("P1");
+    expect(priorityFromLabels(["P10"])).toBe("P3");
     expect(priorityFromLabels(["P2"])).toBe("P2");
     expect(priorityFromLabels([])).toBe("P3");
   });
