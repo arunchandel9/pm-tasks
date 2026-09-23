@@ -10,6 +10,8 @@
 import { boards as boardsConfig } from "./config";
 
 export interface PulpCard { id: string; boardId: string; listId: string; title: string; updatedAt?: string }
+/** A card as the board read returns it: labels and members by name, due date, for the board mirror. */
+export interface BoardCard extends PulpCard { labels: string[]; members: string[]; dueAt: string | null; createdAt: string | null }
 export interface PulpList { id: string; name: string; position: number }
 export interface PulpBoard { id: string; name: string }
 interface Member { user_id?: string; id?: string; email?: string; full_name?: string; name?: string; display_name?: string; profile?: { email?: string; full_name?: string; name?: string } }
@@ -181,10 +183,23 @@ export const pulp = {
     return { id: c.id, boardId: c.board_id, listId: c.list_id, title: c.name, listName: c.list_name, description: c.description, updatedAt: c.updated_at, attachments: c.attachments };
   },
 
-  /** All open cards on a board. The minute poll diffs these against the tasks table (Pulp has no webhook yet). */
-  async openCards(boardId: string): Promise<PulpCard[]> {
-    const rows = await call<Array<{ id: string; board_id: string; list_id: string; name: string; updated_at?: string }>>("GET", `/boards/${boardId}/cards`);
-    return rows.map((c) => ({ id: c.id, boardId: c.board_id ?? boardId, listId: c.list_id, title: c.name, updatedAt: c.updated_at }));
+  /**
+   * Every card on a board in one call (capped at 1000 by Pulp), for the board mirror. Labels and members come as names
+   * or objects depending on the Pulp version, so both shapes are read; `sample` keeps the first card's field names so
+   * hub status shows what Pulp actually returns.
+   */
+  async boardCards(boardId: string): Promise<{ cards: BoardCard[]; sample: { keys: string[]; labels: unknown; members: unknown } | null }> {
+    type Raw = { id: string; board_id?: string; list_id: string; name: string; updated_at?: string; created_at?: string; due_date?: string | null; labels?: unknown; members?: unknown; assignees?: unknown };
+    const rows = await call<Raw[]>("GET", `/boards/${boardId}/cards`);
+    const names = (v: unknown, pick: string[]): string[] => Array.isArray(v)
+      ? v.map((x) => typeof x === "string" ? x : x && typeof x === "object" ? String(pick.map((k) => (x as Record<string, unknown>)[k]).find((s) => typeof s === "string" && s) ?? (((x as { user?: Record<string, unknown> }).user) ? pick.map((k) => (x as { user: Record<string, unknown> }).user[k]).find((s) => typeof s === "string" && s) : "") ?? "") : "").filter(Boolean)
+      : [];
+    const cards = rows.map((c) => ({
+      id: c.id, boardId: c.board_id ?? boardId, listId: c.list_id, title: c.name, updatedAt: c.updated_at, createdAt: c.created_at ?? null,
+      labels: names(c.labels, ["name", "title"]), members: names(c.members ?? c.assignees, ["full_name", "name", "display_name", "email"]), dueAt: c.due_date ?? null,
+    }));
+    const first = rows[0];
+    return { cards, sample: first ? { keys: Object.keys(first), labels: first.labels ?? null, members: first.members ?? first.assignees ?? null } : null };
   },
 
   /** Link a PM can click. Template lives in boards.yaml (card_url) so it is one line to change once confirmed. */

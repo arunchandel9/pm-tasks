@@ -11,7 +11,7 @@ Entries below are dated; a later entry supersedes an earlier one (for example th
 nudges described in older entries are gone: Drop space and 20 min / 1 h / 1 day / daily reminders since 2026-09-15).
 Keep it updated with every change.
 
-Last updated: 2026-09-22 (five kinds, the proposal card, reminders, Monday ideas, the 10:00 Today brief; 21 Sep: no Slack reactions; 18 Sep: PMs board rules, short headlines, Vercel cost, `main` branch; `CLAUDE.md` is the entry point).
+Last updated: 2026-09-23 (board mirror, cards from Claude made at once, Remind me on; 22 Sep: five kinds, the proposal card, reminders, Monday ideas, the 10:00 Today brief; 21 Sep: no Slack reactions; 18 Sep: PMs board rules, short headlines, Vercel cost, `main` branch; `CLAUDE.md` is the entry point).
 
 ## Decisions finalised
 
@@ -23,6 +23,15 @@ Last updated: 2026-09-22 (five kinds, the proposal card, reminders, Monday ideas
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-23, the hub reads the whole boards (Arun):** a PM asked Claude for the HBOT videos on the Video Sprint board
+  and the hub had none, because it mirrored the sheet, not the boards. Now every five minutes each board in
+  `config/boards.yaml` is read in one call (`GET /boards/{id}/cards`) and every card nobody else tracks is kept as a task
+  with origin `board` (title, list, labels, assignee, due, client from a label or the title). Reads only; the sheet and
+  Pulp are never written from it; hub cards and sheet-linked cards keep their per-card polls; a mirrored card that
+  gets a sheet row moves to the sheet's tracking. Cost: seven board reads every five minutes (about 2,000 requests a
+  month, against the per-card polls' 90,000). Open point: the board read is capped at 1000 cards and the Development
+  board is bigger; on a capped board nothing is archived, and `board_mirror_last.sample` in hub status shows the
+  fields Pulp returns (labels, members) so the mapping can be checked on the first run. `tasks.labels` added.
 - **2026-09-23, cards from Claude need no feed tap (Arun):** a card filed through Claude carries every decision already
   (who asks, client, the ask, assignee; department, priority, due when said), so it is created at once in To Do,
   assigned, sheet row written; the feed shows the line and the outcome, no card with buttons. One confirmation, in

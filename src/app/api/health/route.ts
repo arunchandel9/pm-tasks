@@ -15,7 +15,7 @@ export async function GET() {
   try {
     const r = await sql()`select (select count(*) from clients)::int as clients, (select count(*) from slack_workspaces)::int as workspaces, (select team_name from slack_workspaces where is_home limit 1) as home`;
     out.db = { ok: true, clients: r[0].clients, slackWorkspaces: r[0].workspaces, homeWorkspace: r[0].home };
-    const last = await sql()`select key, value from settings where key in ('gchat_last_event', 'slack_last_event', 'pulp_poll_last', 'gmail_poll_last', 'sheet_sync_last', 'meet_poll_last', 'sheet_cards_last', 'voice_last', 'tick_last', 'chat_inbox_last')`;
+    const last = await sql()`select key, value from settings where key in ('gchat_last_event', 'slack_last_event', 'pulp_poll_last', 'gmail_poll_last', 'sheet_sync_last', 'meet_poll_last', 'sheet_cards_last', 'voice_last', 'tick_last', 'chat_inbox_last', 'board_mirror_last')`;
     out.chatInboxLast = last.find((x) => x.key === "chat_inbox_last")?.value ?? null;
     const tickLast = last.find((x) => x.key === "tick_last")?.value as string | undefined;
     out.tickLast = tickLast ?? null;
@@ -24,7 +24,7 @@ export async function GET() {
     // stood still for a day while everything else looked fine). Ages in seconds, with the limit each may reach.
     const ageOf = (key: string) => { const v = last.find((x) => x.key === key)?.value as { at?: string } | string | undefined; const at = typeof v === "string" ? v : v?.at; return at ? Math.round((Date.now() - new Date(at).getTime()) / 1000) : null; };
     const stale: string[] = [];
-    const limits: Array<[string, number, string]> = [["gmail_poll_last", 300, "mailbox"], ["chat_inbox_last", 300, "Task Hub Drop"], ["meet_poll_last", 1200, "Meet notes"], ["pulp_poll_last", 300, "Pulp"], ["sheet_cards_last", 300, "sheet cards"]];
+    const limits: Array<[string, number, string]> = [["gmail_poll_last", 300, "mailbox"], ["chat_inbox_last", 300, "Task Hub Drop"], ["meet_poll_last", 1200, "Meet notes"], ["pulp_poll_last", 300, "Pulp"], ["sheet_cards_last", 300, "sheet cards"], ["board_mirror_last", 1200, "board mirror"]];
     for (const [key, limit, name] of limits) { const age = ageOf(key); if (age === null || age > limit) stale.push(`${name}: ${age === null ? "never ran" : `${Math.round(age / 60)} min ago`}`); }
     out.stale = stale;
     out.ok = !!tickLast && (out.tickAgeSeconds as number) < 300 && stale.length === 0;
@@ -34,6 +34,7 @@ export async function GET() {
     out.sheetSyncLast = last.find((x) => x.key === "sheet_sync_last")?.value ?? null;
     out.meetPollLast = last.find((x) => x.key === "meet_poll_last")?.value ?? null;
     out.sheetCardsLast = last.find((x) => x.key === "sheet_cards_last")?.value ?? null;
+    out.boardMirrorLast = last.find((x) => x.key === "board_mirror_last")?.value ?? null;
     out.voiceLast = last.find((x) => x.key === "voice_last")?.value ?? null;
     const recent = await sql()`select channel, sender, left(text, 80) as text, skip_reason, created_at from messages order by created_at desc limit 3`;
     out.recentMessages = recent;

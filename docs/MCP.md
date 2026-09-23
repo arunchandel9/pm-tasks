@@ -3,7 +3,9 @@
 One link per Claude account (accounts are shared, so the hub asks who is filing a request). Add it to Claude, Codex or Cursor once, then ask in plain language:
 "what is open for HOH", "anything overdue this week", "what did Dr Mehta ask on Tuesday", "summarise today",
 "add a request for PSS: the gallery page shows old photos". Answers come from the hub's database, not from a model
-guessing. Creating a card from Claude: Claude asks who is asking, the client, the ask and the assignee (department, priority and due date only if you say them), then the card is made at once in To Do, assigned, with its sheet row; the feed shows the line and the outcome, nothing to tap there.
+guessing. Every card on the Pulp department boards is in it (since 23 Sep), sheet row or not, with its board, list, labels,
+assignee and due date; a hand-made card is filed under a client when a client label or the client's name in the title
+says so, otherwise ask by words ("HBOT videos") or department without naming the client. Creating a card from Claude: Claude asks who is asking, the client, the ask and the assignee (department, priority and due date only if you say them), then the card is made at once in To Do, assigned, with its sheet row; the feed shows the line and the outcome, nothing to tap there.
 
 ## Get a link
 

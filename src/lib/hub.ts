@@ -7,13 +7,18 @@ import { pulp } from "./pulp";
  */
 
 export interface TaskRow {
-  origin: string; sheetTab: string | null; notes: string | null;
+  origin: string; sheetTab: string | null; notes: string | null; board: string | null; labels: string[];
   id: string; title: string; client: string | null; department: string | null; priority: string | null; status: string;
   staging: boolean; assignee: string | null; due: string | null; created: string; completed: string | null; lastMoved: string | null;
   pulpLink: string | null; sourceChannel: string | null; sourceLink: string | null; sender: string | null; waitingOnClientSince: string | null;
 }
 
 const listNameCache = new Map<string, string>();
+async function boardName(boardId: string | null): Promise<string | null> {
+  if (!boardId || !pulp.configured()) return null;
+  try { return (await pulp.boards()).find((b) => b.id === boardId)?.name ?? null; } catch { return null; }
+}
+const ARCHIVED = "Archived or deleted in Pulp";
 async function listName(boardId: string | null, listId: string | null, staging: boolean, needsScope = false): Promise<string> {
   if (staging) return needsScope ? "Needs scope" : "Staging";
   if (!boardId || !listId) return "Unknown";
@@ -77,7 +82,7 @@ export async function searchTasks(q: TaskQuery): Promise<TaskRow[]> {
   const { since, until } = windowBounds(q, null);
   const rows = await sql()`
     select t.id, t.title, c.name as client, coalesce(r.department, t.department) as department, t.priority, t.staging, r.status as request_status, t.assignee, t.due_at, t.created_at, t.completed_at, t.last_moved_at,
-           t.board_id, t.list_id, t.pulp_card_id, t.waiting_on_client_since, t.origin, t.sheet_status, t.sheet_tab, t.notes, m.channel, m.permalink, m.sender
+           t.board_id, t.list_id, t.pulp_card_id, t.waiting_on_client_since, t.origin, t.sheet_status, t.sheet_tab, t.notes, t.labels, m.channel, m.permalink, m.sender
     from tasks t
     left join clients c on c.id = t.client_id
     left join requests r on r.id = t.request_id
@@ -100,8 +105,8 @@ export async function searchTasks(q: TaskQuery): Promise<TaskRow[]> {
     out.push({
       id: String(t.id), title: String(t.title), client: (t.client as string | null) ?? null, department: (t.department as string | null) ?? null,
       priority: (t.priority as string | null) ?? null,
-      status: t.origin === "sheet" ? String(t.sheet_status ?? (t.completed_at ? "Done" : "Open")) : await listName(t.board_id as string | null, t.list_id as string | null, !!t.staging, t.request_status === "needs_scope"),
-      origin: String(t.origin ?? "hub"), sheetTab: (t.sheet_tab as string | null) ?? null, notes: (t.notes as string | null) ?? null,
+      status: t.origin === "sheet" ? String(t.sheet_status ?? (t.completed_at ? "Done" : "Open")) : t.notes === ARCHIVED ? "Archived" : await listName(t.board_id as string | null, t.list_id as string | null, !!t.staging, t.request_status === "needs_scope"),
+      origin: String(t.origin ?? "hub"), sheetTab: (t.sheet_tab as string | null) ?? null, notes: (t.notes as string | null) ?? null, board: await boardName(t.board_id as string | null), labels: (t.labels as string[] | null) ?? [],
       staging: !!t.staging, assignee: (t.assignee as string | null) ?? null, due: t.due_at ? new Date(t.due_at as string).toISOString().slice(0, 10) : null,
       created: new Date(t.created_at as string).toISOString(), completed: t.completed_at ? new Date(t.completed_at as string).toISOString() : null,
       lastMoved: t.last_moved_at ? new Date(t.last_moved_at as string).toISOString() : null,

@@ -74,6 +74,15 @@ export async function GET(req: Request) {
   }
   report.queue = { ok, failed };
 
+  // 2b. Board mirror every five minutes: each department board read in one call, so every card on the boards is known
+  //     to the hub (sheet row or not) with its list, labels, assignee and due date. Reads only. Decision 2026-09-23.
+  if (pulp.configured()) {
+    try {
+      const { shouldMirror, mirrorBoards } = await import("@/lib/board-mirror");
+      if (await shouldMirror()) report.boardMirror = await mirrorBoards(() => elapsed() > 45_000);
+    } catch (e) { report.boardMirror = { error: (e as Error).message }; }
+  }
+
   // 3. Pulp poll: each hub card is fetched by id (GET /cards/{id}); the board-cards list is capped at 1000 and the
   //    sprint boards are bigger than that. A card whose list differs from ours has been moved. The sheet is reconciled
   //    independently: the status the sheet last got (settings sheet_stage:<task>) is compared with the card's current
