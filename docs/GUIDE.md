@@ -32,7 +32,7 @@ Put the client first when the message does not say it: `HOH: the booking form is
 - **Status is automatic from then on.** Move the card, the row follows. Done fills Date Completed where the tab has that column and moves the row below the DONE divider. Moving back out of Done reopens it.
 - **Not a task?** Archive the card in Pulp. No row exists yet, nothing else to do.
 - **Cards you make by hand in Pulp:** paste the card link in a new row of the client's tab. The Task cell may stay blank, the hub fills it from the card within 10 minutes. Status follows from the next move.
-- **Ask the hub from Claude:** "what is pending for HOH", "what happened in the last meeting with TED", "what happened on 12 September", "anything overdue this week". To file a request from Claude it asks who is asking: answer with your name, and the card reads "Anuj via Claude-Arun".
+- **Ask the hub from Claude:** "what is pending for HOH", "what happened in the last meeting with TED", "what happened on 12 September", "anything overdue this week". To create a card from Claude, it asks who is asking, the client, the ask and who to assign it to; the card is made at once (To Do, assigned, sheet row) and the feed shows the outcome, nothing to tap there. The card reads "Anuj via Claude-Arun".
 - **Today, at 10:00** on weekdays: one line in the feed, and in its thread every item that is waiting on a named person, you @mentioned on yours: proposals you have not answered, reminders due, clients waiting in Slack. Nothing waiting, no post.
 - **Monday, 10:00:** the week's ideas, one card each. Tap **Make it a task** or **Not now**. An idea nobody decides on comes back the next Monday.
 

@@ -7,6 +7,7 @@ import { searchTasks, taskDetail, clientSummary, recentMessages, dailySummaryTex
 import { processMessage } from "@/lib/pipeline";
 import { humanOutcome } from "@/lib/review";
 import type { Message } from "@/lib/types";
+import { parseWhen, whenLabel } from "@/lib/when";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export const maxDuration = 60;
 /**
  * The MCP hub: a PM connects their own Claude / Codex / Cursor to https://pm-tasks.vercel.app/api/mcp/<their key>
  * and asks questions in plain language. Read tools run plain SQL; the one write tool (add_request) goes through the
- * normal intake pipeline, so it lands in Staging like everything else. Model cost is on the PM's assistant, not the hub.
+ * normal intake pipeline with the details decided in the chat, so the card is made at once. Model cost is on the PM's assistant, not the hub.
  */
 function buildHandler(owner: McpKeyOwner) {
   return createMcpHandler(
@@ -73,30 +74,49 @@ function buildHandler(owner: McpKeyOwner) {
       }, async ({ days, from, to }) => text(await dailySummaryText(days ?? 1, { from, to })));
 
       server.registerTool("add_request", {
-        title: "Add a request", description: "File a client request. It goes through the normal pipeline: one line in the Task Hub Feed and, for a task, a proposal card in its thread that the person confirms with one tap (Create card, Remind me instead, No card). Use the client's words. This assistant account may be shared by several people, so `by` (the name of the person asking you) is required: ask them if you do not know it, never guess it.",
+        title: "Create a card", description: "Create a Pulp card for a client ask, with every detail decided here in this chat (2026-09-23): the card is made at once in To Do, assigned, the sheet row is written, and the Task Hub Feed gets the line and the outcome. Nothing to confirm in the feed. Before calling: ask who is asking (`by`), which client, what was asked (their words), and who it should be assigned to (`assignee`, a name from `people`, call it if you do not know the names). Department, priority and due are optional: pass them when the person said them, otherwise the hub decides. If what was asked is not a task (a reminder, an idea, a rule, information) the hub records it as such and says so. This assistant account may be shared by several people, so `by` is required: ask, never guess.",
         inputSchema: z.object({
           client: z.string().describe("Client name, id or alias"),
           request: z.string().describe("What was asked, as close to the original words as possible"),
           by: z.string().min(2).describe("The name the person gave when you asked them 'Who is this request from?' in this chat. Their answer verbatim. Never the connection owner's name, never inferred."),
           asked: z.literal(true).describe("true only if you asked the person for their name in this chat and they answered. If you have not asked, ask first; do not call this tool."),
-          priority: z.enum(["P1", "P2", "P3"]).optional(),
+          assignee: z.string().min(2).describe("Who does the work: a name exactly as `people` lists it. Ask the person; never guess."),
+          department: z.enum(["dev", "content", "design", "seo", "automation", "video", "general", "internal"]).optional().describe("Only when the person said it; otherwise the hub decides"),
+          priority: z.enum(["P1", "P2", "P3"]).optional().describe("Only when the person said it; otherwise the hub decides (urgent words give P1)"),
+          due: z.string().optional().describe("Only when the person said it: a date YYYY-MM-DD, or words like 'Friday', 'in 3 days', 'within 24 hours'"),
           source: z.string().optional().describe("Where it came from: WhatsApp, phone, meeting…"),
         }),
-      }, async ({ client, request, by, priority, source }) => {
+      }, async ({ client, request, by, assignee, department, priority, due, source }) => {
         const who = by.trim();
         const label = `${who} via Claude-${owner.name.trim()}`; // the person, then the Claude account it came through
         const clients = await allClients();
         const c = clients.find((x) => x.id.toLowerCase() === client.toLowerCase() || x.name.toLowerCase() === client.toLowerCase() || (x.aliases ?? []).some((a) => a.toLowerCase() === client.toLowerCase()));
         if (!c) return text({ error: `unknown client "${client}"; call list_clients` });
-        const body = [request, source ? `\nCame via: ${source}` : "", priority === "P1" ? "\nMarked urgent (P1) by the team." : priority === "P2" ? "\nMarked important by the team." : ""].join("");
+        const { peopleOptions, matchPerson } = await import("@/lib/proposal");
+        const person = matchPerson(assignee, await peopleOptions());
+        if (!person) return text({ error: `"${assignee}" is not on any board; call people and ask the person to pick a name from it` });
+        const dueAt = due ? parseWhen(due) : null;
+        if (due && !dueAt) return text({ error: `could not read the due date "${due}"; use YYYY-MM-DD or words like "Friday", "in 3 days"` });
+        const body = [request, source ? `\nCame via: ${source}` : ""].join("");
         const m: Message = {
           channel: "task_cmd", externalId: `mcp:${owner.email}:${Date.now()}`, teamId: null, clientId: c.id, scope: c.scope,
-          sender: label, senderIsStaff: true, sentAt: new Date(), text: body, permalink: null, threadRef: null, raw: { mcp: true, by: who, account: owner.email },
+          sender: label, senderIsStaff: true, sentAt: new Date(), text: body, permalink: null, threadRef: null,
+          raw: { mcp: true, by: who, account: owner.email, direct: { assignee: person, department: department ?? null, priority: priority ?? null, dueAt: dueAt?.toISOString() ?? null } },
         };
         const r = await processMessage(m, { skip: false, reason: null });
-        const n = r.requestIds?.length ?? 0;
-        return text(n ? `${n} task${n > 1 ? "s" : ""} proposed for ${c.name} in the Task Hub Feed; ${who} confirms each with one tap on the card there (Create card, Remind me instead, or No card).` : humanOutcome(r.outcome, r.reason));
+        const ids = r.requestIds ?? [];
+        if (!ids.length) return text(humanOutcome(r.outcome, r.reason));
+        const made = await sql()`select t.title, t.board_id, t.pulp_card_id, t.priority, t.assignee, t.due_at, r.status, r.department from requests r left join tasks t on t.request_id = r.id where r.id = any(${ids}::uuid[])`;
+        const { pulp } = await import("@/lib/pulp");
+        return text(made.map((t) => t.pulp_card_id
+          ? `Card created for ${c.name}: "${t.title}" · ${String(t.department)} · ${t.priority} · assigned to ${t.assignee}${t.due_at ? ` · due ${whenLabel(new Date(String(t.due_at)), true)}` : ""} · ${pulp.cardUrl(String(t.board_id), String(t.pulp_card_id))}. The feed has the line; the sheet row is written.`
+          : `"${t.title ?? request}" could not be created now (status ${String(t.status)}); it stays proposed in the feed thread and can be confirmed there.`).join("\n"));
       });
+
+      server.registerTool("people", {
+        title: "People on the boards", description: "The names a card can be assigned to (everyone on the department boards). Use before add_request when you do not know the exact name.",
+        inputSchema: z.object({}),
+      }, async () => { const { peopleOptions } = await import("@/lib/proposal"); return text(await peopleOptions()); });
 
       server.registerTool("meetings", {
         title: "Meetings", description: "Recent meetings (Google Meet notes read by the hub): title, date, client, summary, and counts of actions, ideas, decisions. Filter by client and days (default 30) or from/to.",
@@ -134,7 +154,7 @@ function buildHandler(owner: McpKeyOwner) {
     },
     {
       serverInfo: { name: "mangoeyes-task-hub", version: "1.0.0" },
-      instructions: `You are connected to the MangoEyes Task Hub. This connection is shared by several people, so you do not know who is talking to you. Clients are aesthetic clinics; tasks live on Pulp department boards and in the PM Overview sheet. Use search_tasks / client_summary for status questions, task_detail to read the original ask, daily_summary for "what happened today", meetings / meeting_detail for "what happened in the last call with X", ideas and decisions for what was raised or agreed, from/to (YYYY-MM-DD) on any of these for "what happened on 12 March" or "between 1 and 15 March", add_request to file a new client ask (it goes to Staging for a PM to approve). Reading needs nothing. Before add_request, ask the person "Who is this request from?" and wait for their answer; never fill in a name yourself, not from this connection's owner, not from earlier context.`,
+      instructions: `You are connected to the MangoEyes Task Hub. This connection is shared by several people, so you do not know who is talking to you. Clients are aesthetic clinics; tasks live on Pulp department boards and in the PM Overview sheet. Use search_tasks / client_summary for status questions, task_detail to read the original ask, daily_summary for "what happened today", meetings / meeting_detail for "what happened in the last call with X", ideas and decisions for what was raised or agreed, from/to (YYYY-MM-DD) on any of these for "what happened on 12 March" or "between 1 and 15 March", add_request to create a card for a client ask: it is made at once in Pulp with the details decided in this chat, and the feed shows the outcome. Reading needs nothing. Before add_request, ask the person "Who is this request from?" and wait for their answer (never fill in a name yourself, not from this connection's owner, not from earlier context), then ask which client, what was asked, and who it should be assigned to (the names come from the people tool). Department, priority and due date only if the person says them; otherwise the hub decides.`,
     },
   );
 }

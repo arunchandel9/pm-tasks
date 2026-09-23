@@ -23,6 +23,10 @@ Last updated: 2026-09-22 (five kinds, the proposal card, reminders, Monday ideas
   mirrored, title filled from the card). Added: `from`/`to` calendar days on every MCP look-back tool. Handover:
   `docs/GUIDE.md` (one page per role), `docs/OPS.md` (operations), `docs/TEAM-BRIEF.md` (the message for the feed),
   `docs/POST-LAUNCH.md` (what is left to watch and what could come next).
+- **2026-09-23, cards from Claude need no feed tap (Arun):** a card filed through Claude carries every decision already
+  (who asks, client, the ask, assignee; department, priority, due when said), so it is created at once in To Do,
+  assigned, sheet row written; the feed shows the line and the outcome, no card with buttons. One confirmation, in
+  Claude. New MCP tool `people` lists the assignable names.
 - **2026-09-23, a reminder's day is never a guess (Arun):** the proposal card gets a fifth dropdown, Remind me on (tomorrow
   by default), used by Remind me instead; "remind me" with no day means tomorrow at 10:00, said in the line. Two days as a
   silent default was dropped.
@@ -236,7 +240,7 @@ Last updated: 2026-09-22 (five kinds, the proposal card, reminders, Monday ideas
 - **MCP hub** (built 2026-09-09). `https://pm-tasks.vercel.app/api/mcp/<key>` (Streamable HTTP via `mcp-handler`
   2.x / `@modelcontextprotocol/server` 2.0). Per-person keys `mh_…` minted with `/api/setup?mcp_key=<name>|<email>`,
   sha256 stored in settings `mcp_key:<hash>`, revoked with `?mcp_revoke=`. Tools: list_clients, search_tasks,
-  task_detail, client_summary, recent_messages, daily_summary, add_request (→ normal pipeline, Staging), hub_status.
+  task_detail, client_summary, recent_messages, daily_summary, add_request (→ card created at once with the details given in Claude), people, hub_status.
   Read side lives in `src/lib/hub.ts`; the EOD route uses the same `dailySummaryText` (`/api/eod?dry=1` previews).
   How-to for PMs: `docs/MCP.md`.
 - **Cost.** Only two model calls per message; ~$6/month at 500 messages on Sonnet 5. Hub questions run on each PM's

@@ -57,14 +57,21 @@ export function matchPerson(owner: string | null | undefined, people: string[]):
   return people.find((p) => p.toLowerCase() === o) ?? people.find((p) => p.toLowerCase().startsWith(o) || o.startsWith(p.toLowerCase().split(" ")[0])) ?? null;
 }
 
-export async function postProposal(p: { requestId: string; client: Client | null; message: Message; messageId: string; draft: Draft; route: RouteDecision; owner: string | null; quote: string }): Promise<void> {
+/** The hub's own defaults for a task (assignee, due, department, priority), stored on the request so a decision, a typed reply or a repost falls back to them. */
+export async function storeProposal(p: { requestId: string; message: Message; route: RouteDecision; owner: string | null }): Promise<{ people: string[]; assignee: string | null; dues: Array<{ value: string; text: string }>; due: string }> {
   const people = await peopleOptions();
   const assignee = matchPerson(p.owner, people);
   const { dues, due } = dueOptions(p.route.dueAt);
   const askedUser = senderUserOf(p.message);
+  await sql()`update requests set proposal = ${JSON.stringify({ assignee, dueAt: due, department: p.route.department, priority: p.route.priority })}::jsonb, asked_user = ${askedUser} where id = ${p.requestId}`;
+  return { people, assignee, dues, due };
+}
+
+export async function postProposal(p: { requestId: string; client: Client | null; message: Message; messageId: string; draft: Draft; route: RouteDecision; owner: string | null; quote: string }): Promise<void> {
+  const { people, assignee, dues, due } = await storeProposal(p);
+  const askedUser = senderUserOf(p.message);
   const askedName = p.message.senderIsStaff ? p.message.sender.replace(/\s*<[^>]+>\s*$/, "") : null;
   const rules = p.client ? await rulesFor(p.client.id) : [];
-  await sql()`update requests set proposal = ${JSON.stringify({ assignee, dueAt: due, department: p.route.department, priority: p.route.priority })}::jsonb, asked_user = ${askedUser} where id = ${p.requestId}`;
   const threadKey = feedThreadKeyOf(p.message, p.messageId);
   if (!gchat.gchatConfigured()) {
     await postText(`Task to confirm: ${p.draft.title} · ${DEPT_LABEL[p.route.department] ?? p.route.department} · ${p.route.priority} · reply "create", "remind me" or "no card"`, { threadKey });

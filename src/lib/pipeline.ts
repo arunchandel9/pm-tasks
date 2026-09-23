@@ -12,7 +12,7 @@ import { postProposal } from "./proposal";
 import { reminderFromMessage, senderName } from "./reminders";
 import { whenLabel } from "./when";
 import type { AskKindT } from "./llm/extract";
-import type { Draft, RouteDecision } from "./types";
+import type { Draft, RouteDecision, Priority } from "./types";
 
 export interface ProcessResult {
   messageId: string;
@@ -295,6 +295,27 @@ export async function processMessage(m: Message, noiseVerdict: { skip: boolean; 
     if (inSharedThread(m)) { if (detail) await postText(detail, { threadKey }); }
     else await postFeed({ headline: head, detail, threadKey });
     return feed.length ? { messageId, outcome: "review", requestIds } : { messageId, outcome: "skipped", reason, requestIds };
+  }
+
+  // Filed through Claude with the details already given (2026-09-23): the person confirmed in Claude, so the card is
+  // made at once and the feed gets the line and the outcome, no card with buttons.
+  const direct = (m.raw as { direct?: { assignee?: string | null; department?: string | null; priority?: Priority | null; dueAt?: string | null } } | null)?.direct;
+  if (direct) {
+    const { decideProposal, storeProposal } = await import("./proposal");
+    const p1 = proposals.filter((p) => (direct.priority ?? p.route.priority) === "P1").length;
+    const what = proposals.length === 1 ? (p1 ? "P1 card created via Claude" : "card created via Claude") : `${proposals.length} cards created via Claude`;
+    await postFeed({ headline: feedHeadline({ icon: p1 ? "🔴" : "🆕", client, what, message: m }), detail, threadKey });
+    const outcomes: string[] = [];
+    for (const p of proposals) {
+      try {
+        // The hub's defaults go on the request first, so anything Claude did not say (due, department, priority) is the hub's decision, as on the card.
+        await storeProposal({ requestId: p.requestId, message: m, route: p.route, owner: direct.assignee ?? p.owner });
+        const line = await decideProposal("create", p.requestId, m.sender, null, { department: direct.department ?? null, assignee: direct.assignee ?? null, priority: direct.priority ?? null, dueAt: direct.dueAt ? new Date(direct.dueAt) : null });
+        outcomes.push(line);
+      } catch (e) { outcomes.push(`⚠️ Card not created for "${p.draft.title}": ${(e as Error).message.slice(0, 160)}. It stays proposed; reply "create" here to try again.`); await enqueue("post_proposal", { requestId: p.requestId }, 60); }
+    }
+    await postText(outcomes.join("\n"), { threadKey });
+    return { messageId, outcome: "review", requestIds };
   }
 
   // Tasks: one feed line for the message; the words, the other items and one proposal card per task in its thread.

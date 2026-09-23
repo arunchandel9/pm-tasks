@@ -3,7 +3,7 @@
 One link per Claude account (accounts are shared, so the hub asks who is filing a request). Add it to Claude, Codex or Cursor once, then ask in plain language:
 "what is open for HOH", "anything overdue this week", "what did Dr Mehta ask on Tuesday", "summarise today",
 "add a request for PSS: the gallery page shows old photos". Answers come from the hub's database, not from a model
-guessing. Filing a request goes through the normal pipeline: a proposal card in the feed that the person confirms with one tap.
+guessing. Creating a card from Claude: Claude asks who is asking, the client, the ask and the assignee (department, priority and due date only if you say them), then the card is made at once in To Do, assigned, with its sheet row; the feed shows the line and the outcome, nothing to tap there.
 
 ## Get a link
 
@@ -43,7 +43,8 @@ codex mcp add task-hub --url https://pm-tasks.vercel.app/api/mcp/mh_YOUR_KEY
 | `client_summary` | one client at a glance: counts + open list |
 | `recent_messages` | what came in, by client/channel, incl. updates that were not tasks |
 | `daily_summary` | the PM summary for today, the last N days, or a past day / range (from/to) |
-| `add_request` | file a client ask → feed line + proposal card (Create card / Remind me instead / No card) |
+| `add_request` | create a card with the details decided in the chat (who asks, client, the ask, assignee; department, priority, due optional) → card in To Do, sheet row, feed line with the outcome. No confirmation in the feed |
+| `people` | the names a card can be assigned to |
 | `meetings`, `meeting_detail`, `ideas`, `decisions` | Meet notes: what was said, raised and agreed, by client and days or from/to |
 | `hub_status` | volumes, spend, last polls |
 
