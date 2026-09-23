@@ -16,7 +16,7 @@ import type { Client } from "./types";
 export const MIRROR_EVERY_MIN = 5;
 export const ARCHIVED_NOTE = "Archived or deleted in Pulp";
 
-export interface KnownCard { id: string; pulp_card_id: string; list_id: string | null; origin: string; title: string; completed_at: string | null; notes: string | null; labels?: string[] | null }
+export interface KnownCard { id: string; pulp_card_id: string; list_id: string | null; origin: string; title: string; completed_at: string | null; notes: string | null; labels?: string[] | null; client_id?: string | null }
 export interface MirrorPlan { insert: BoardCard[]; update: Array<{ id: string; card: BoardCard; moved: boolean; fromList: string | null }>; archive: string[] }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -27,7 +27,8 @@ export function clientFromCard(card: { title: string; labels: string[] }, client
   for (const label of card.labels) {
     const l = norm(label);
     if (l.length < 2) continue;
-    const hit = candidates.find((c) => l === norm(c.name) || l === norm(c.id) || (c.aliases ?? []).some((a) => norm(a) === l));
+    const hit = candidates.find((c) => l === norm(c.name) || l === norm(c.id) || (c.aliases ?? []).some((a) => norm(a) === l))
+      ?? resolveClientFromText(label, clients)?.client; // "HOH - House Of Health", "House of Health (HoH)"
     if (hit) return hit.id;
   }
   return resolveClientFromText(card.title, clients)?.client.id ?? null;
@@ -94,7 +95,7 @@ export async function mirrorBoards(outOfTime: () => boolean = () => false): Prom
       if (!report.sample) report.sample = sample;
       const lists = new Map((await pulp.listsOnBoard(b.id)).map((l) => [l.id, l.name]));
       const ids = cards.map((c) => c.id);
-      const known = (await sql()`select id, pulp_card_id, list_id, origin, title, completed_at, notes, labels from tasks
+      const known = (await sql()`select id, pulp_card_id, list_id, origin, title, completed_at, notes, labels, client_id from tasks
         where pulp_card_id = any(${ids}::text[]) or (origin = 'board' and board_id = ${b.id})`) as unknown as KnownCard[];
       const plan = planMirror(known, cards, capped);
       const fields = (card: BoardCard) => {
@@ -125,6 +126,10 @@ export async function mirrorBoards(outOfTime: () => boolean = () => false): Prom
         if (u.moved) await sql()`insert into status_events (task_id, from_list, to_list, source) values (${u.id}, ${u.fromList ?? "unknown"}, ${u.card.listId}, 'poll')`;
       }
       if (plan.archive.length) await sql()`update tasks set completed_at = coalesce(completed_at, now()), notes = ${ARCHIVED_NOTE} where id = any(${plan.archive}::uuid[])`;
+      // A mirrored card still without a client gets one as soon as a label or the title gives it (matching widened 2026-09-23).
+      const byCard = new Map(known.map((k) => [k.pulp_card_id, k]));
+      const claim = cards.map((card) => ({ k: byCard.get(card.id), clientId: clientFromCard(card, clients) })).filter((x) => x.k?.origin === "board" && !x.k.client_id && x.clientId);
+      if (claim.length) await sql()`update tasks t set client_id = v.cl from unnest(${claim.map((x) => x.k!.id)}::uuid[], ${claim.map((x) => x.clientId)}::text[]) as v(id, cl) where t.id = v.id and t.client_id is null`;
       report.boards.push({ board: b.id, name: names.get(b.id) ?? b.id, department: b.department, cards: cards.length, capped, paging, new: plan.insert.length, updated: plan.update.length, archived: plan.archive.length });
     } catch (e) { report.errors.push(`${names.get(b.id) ?? b.id}: ${(e as Error).message.slice(0, 160)}`); }
   }

@@ -31,6 +31,8 @@ describe("the board mirror", () => {
     expect(clientFromCard({ title: "HOH - HBOT week 3 video", labels: [] }, clients)).toBe("hoh");
     expect(clientFromCard({ title: "Skin Firm pricing page", labels: [] }, clients)).toBe("tsf");
     expect(clientFromCard({ title: "HBOT week 3 video", labels: ["Task Hub"] }, clients)).toBeNull();
+    expect(clientFromCard({ title: "(META AD 2) HBOT", labels: ["House of Health (HoH)", "Week 84 Ads"] }, clients)).toBe("hoh");
+    expect(clientFromCard({ title: "HBOT page", labels: ["HOH - House Of Health"] }, clients)).toBe("hoh");
   });
   it("reads the priority from the labels", () => {
     expect(priorityFromLabels(["Task Hub", "p1"])).toBe("P1");

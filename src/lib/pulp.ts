@@ -194,30 +194,10 @@ export const pulp = {
     const all = new Map<string, Raw>();
     const first = await call<Raw[]>("GET", `/boards/${boardId}/cards`);
     for (const r of first) all.set(r.id, r);
-    // Past the cap (the SEO and Development boards), the rest is fetched the first way Pulp accepts: an offset, a page
-    // number, or list by list. A way that returns nothing new is not supported and the next is tried; none → capped.
-    let paging: string | null = null;
-    if (first.length >= CAP) {
-      const add = (rows: Raw[]) => { let fresh = 0; for (const r of rows) if (!all.has(r.id)) { all.set(r.id, r); fresh++; } return fresh; };
-      const ways: Array<[string, (n: number) => string]> = [["offset", (n) => `/boards/${boardId}/cards?offset=${n}&limit=${CAP}`], ["page", (n) => `/boards/${boardId}/cards?page=${Math.floor(n / CAP) + 1}&per_page=${CAP}`]];
-      for (const [name, url] of ways) {
-        let got = 0;
-        for (let guard = 0; guard < 20; guard++) {
-          const more = await call<Raw[]>("GET", url(all.size));
-          const fresh = add(more);
-          got += fresh;
-          if (!fresh || more.length < CAP) break;
-        }
-        if (got) { paging = name; break; }
-      }
-      if (!paging) {
-        try {
-          let got = 0;
-          for (const l of await this.listsOnBoard(boardId)) got += add(await call<Raw[]>("GET", `/lists/${l.id}/cards`));
-          if (got) paging = "lists";
-        } catch { /* no per-list read either */ }
-      }
-    }
+    // Four boards are past the cap (SEO, Writers, Development, Video). Tried live on 2026-09-23 and not accepted by
+    // Pulp: ?offset=, ?page=, and GET /lists/{id}/cards. Pulp is MangoEyes' own tool, so the fix is on its side
+    // (a higher cap or a paging parameter); until then a capped board is read as the 1000 Pulp chooses to return.
+    const paging: string | null = null;
     const rows = [...all.values()].filter((r) => !r.closed);
     const names = (v: unknown, pick: string[]): string[] => Array.isArray(v)
       ? v.map((x) => typeof x === "string" ? x : x && typeof x === "object" ? String(pick.map((k) => (x as Record<string, unknown>)[k]).find((s) => typeof s === "string" && s) ?? (((x as { user?: Record<string, unknown> }).user) ? pick.map((k) => (x as { user: Record<string, unknown> }).user[k]).find((s) => typeof s === "string" && s) : "") ?? "") : "").filter(Boolean)
